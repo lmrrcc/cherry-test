@@ -1,0 +1,3 @@
+# Rule and skill test corpora are committed test data; exclude from codebase indexing.
+.cursor/rules/**/*-test/
+.cursor/skills/**/*-test/

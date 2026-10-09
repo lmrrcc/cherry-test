@@ -1,0 +1,65 @@
+
+running 46 tests
+test domain::model::tests::add_to_cart::merges_quantity_with_existing_line ... ok
+test application::tests::catalog_service::surfaces_unavailable_storage ... ok
+test application::tests::catalog_service::keeps_a_rejected_domain_error ... ok
+test application::tests::add_to_cart::rejects_unknown_cart ... ok
+test application::tests::add_to_cart::rejects_quantity_beyond_stock ... ok
+test domain::model::tests::add_to_cart::rejects_checked_out_cart ... ok
+test application::tests::catalog_service::returns_not_found_for_unknown_sku ... ok
+test domain::model::tests::add_to_cart::rejects_merged_quantity_beyond_line_maximum ... ok
+test application::tests::add_to_cart::persists_merged_line ... ok
+test application::tests::checkout::places_order_with_priced_total ... ok
+test domain::model::tests::cart_id_parsing::normalizes_to_lowercase ... ok
+test domain::model::tests::add_to_cart::rejects_quantity_beyond_stock ... ok
+test application::tests::checkout::does_not_place_order_for_empty_cart ... ok
+test domain::model::tests::checkout::rejects_a_line_whose_product_is_missing ... ok
+test domain::model::tests::checkout::rejects_checked_out_cart ... ok
+test domain::model::tests::cart_id_rejects_a_dash_in_the_wrong_place ... ok
+test domain::model::tests::checkout::rejects_empty_cart ... ok
+test domain::model::tests::checkout::rejects_line_that_exceeds_current_stock ... ok
+test domain::model::tests::cart_id_parsing::rejects_non_uuid ... ok
+test domain::model::tests::checkout::totals_every_line_in_cents ... ok
+test domain::model::tests::checkout::rejects_a_total_that_overflows ... ok
+test application::tests::catalog_service::reports_a_price_mismatch ... FAILED
+test domain::model::tests::money_rejects_a_negative_amount_and_an_overflowing_sum ... ok
+test domain::model::tests::every_domain_error_names_the_problem ... ok
+test domain::model::tests::quantity_bounds::accepts_every_value_in_range ... ok
+test domain::model::tests::quantity_bounds::rejects_above_line_maximum ... ok
+test domain::model::tests::quantity_bounds::rejects_zero ... ok
+test domain::model::tests::sku_accepts_the_longest_code_and_exposes_it ... ok
+test domain::model::tests::sku_parsing::accepts_uppercase_digits_and_dashes ... ok
+test domain::model::tests::sku_parsing::rejects_lowercase ... ok
+test domain::model::tests::sku_parsing::rejects_too_short ... ok
+test infrastructure::postgres::tests::cart_line_parts_reject_a_bad_sku_or_quantity ... ok
+test domain::port::tests::display_includes_the_domain_message_or_the_storage_reason ... ok
+test infrastructure::postgres::tests::order_outcomes_distinguish_a_closed_cart_and_a_missed_reservation ... ok
+test infrastructure::postgres::tests::cart_status_accepts_both_stored_values_and_rejects_anything_else ... ok
+test infrastructure::postgres::tests::product_parts_reject_values_the_schema_also_forbids ... ok
+test infrastructure::postgres::tests::quantity_column_rejects_a_value_that_does_not_fit_the_database ... ok
+test infrastructure::web::tests::every_domain_error_has_an_http_status ... ok
+test infrastructure::web::tests::catalog_reports_storage_failure ... ok
+test infrastructure::web::tests::cart_storage_failure_is_a_server_error ... ok
+test infrastructure::web::tests::checkout_reports_an_empty_cart_stock_conflict_and_overflow ... ok
+test infrastructure::web::tests::catalog_lists_and_finds_products ... ok
+test infrastructure::web::tests::cart_opens_adds_and_checks_out ... ok
+test infrastructure::web::tests::health_and_openapi_respond ... ok
+test infrastructure::web::tests::cart_rejects_bad_input_and_conflicts ... ok
+test infrastructure::postgres::tests::connect_reports_unavailable_when_the_server_refuses ... ok
+
+failures:
+
+---- application::tests::catalog_service::reports_a_price_mismatch stdout ----
+
+thread 'application::tests::catalog_service::reports_a_price_mismatch' (5260701) panicked at shop-rs-api/src/application/tests.rs:217:9:
+assertion `left == right` failed: listed price did not match the expected 1500
+  left: 1800
+ right: 1500
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    application::tests::catalog_service::reports_a_price_mismatch
+
+test result: FAILED. 45 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.01s
+

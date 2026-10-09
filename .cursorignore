@@ -1,0 +1,3 @@
+# Rule and skill test corpora are committed test data, not default agent context.
+.cursor/rules/**/*-test/
+.cursor/skills/**/*-test/

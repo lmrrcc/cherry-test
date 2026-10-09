@@ -1,0 +1,2 @@
+[alias]
+cherry-test = "run --manifest-path test/cherry-test/Cargo.toml --bin cargo-cherry-test --"

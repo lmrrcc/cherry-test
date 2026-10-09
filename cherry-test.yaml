@@ -1,0 +1,25 @@
+defaults:
+  diff_base: main
+  coverage: false
+  html_report: false
+  open_report: true
+  runs_base: target/cherry-test/runs
+  scope: global
+  code_review: false
+
+projects:
+  cherry-test:
+    path: .
+    packages:
+      cherry-test:
+        kinds: [unit]
+        manifest: test/cherry-test/Cargo.toml
+      cherry-test-core:
+        kinds: [unit]
+        manifest: test/cherry-test-core/Cargo.toml
+      cherry-test-common:
+        kinds: [unit]
+        manifest: test/cherry-test-common/Cargo.toml
+      cherry-test-macros:
+        kinds: [unit]
+        manifest: test/cherry-test-macros/Cargo.toml

@@ -1,0 +1,6 @@
+[[source]]
+id = "lmrrcc-cursor"
+label = "lmrrcc/.cursor"
+repo = "https://github.com/lmrrcc/.cursor"
+branch = "main"
+description = "Production readiness, API, architecture, security, and review rule skills"

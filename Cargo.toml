@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+  "test/cherry-test",
+  "test/cherry-test-common",
+  "test/cherry-test-core",
+  "test/cherry-test-macros",
+]
+
+[workspace.package]
+version = "0.3.16"
+edition = "2021"
+license = "MIT"

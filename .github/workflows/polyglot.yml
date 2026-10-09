@@ -1,0 +1,67 @@
+name: cherry-test polyglot
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prices:
+    name: Price backends (${{ matrix.execution }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        execution: [local, container]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: llvm-tools-preview
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install local tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y maven clang llvm cmake make libpq-dev libcurl4-openssl-dev libcivetweb-dev libcjson-dev libcpp-httplib-dev nlohmann-json3-dev libgtest-dev
+          cargo install cargo-llvm-cov --version 0.6.21 --locked
+          npm install -g pnpm@9.15.0
+          pnpm --dir app/mini install --frozen-lockfile
+      - name: Prepare container toolchains and browser
+        if: matrix.execution == 'container'
+        run: python3 app/mini/polyglot/tools/prepare.py
+      - name: Prepare browser for local toolchains
+        if: matrix.execution == 'local'
+        run: python3 app/mini/polyglot/tools/prepare.py --browser-only
+      - name: Build cherry-test
+        run: cargo build --locked -p cherry-test --bins
+      - name: Check every backend and phase
+        run: target/debug/cherry-test prices --root app/mini --execution ${{ matrix.execution }} --strict --no-open
+      - name: Keep browsable reports on success or failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cherry-test-prices-${{ matrix.execution }}
+          path: |
+            app/mini/target/cherry-test/runs/*/reports/
+            app/mini/target/cherry-test/runs/*/coverage/
+            !app/mini/target/cherry-test/runs/*/reports/adapters/**/target/
+            !app/mini/target/cherry-test/runs/*/reports/adapters/**/build/
+            !app/mini/target/cherry-test/runs/*/reports/adapters/**/service-coverage/
+          retention-days: 14
+          if-no-files-found: error

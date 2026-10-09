@@ -1,0 +1,15 @@
+[package]
+name = "cherry-test-macros"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "cherry-test proc macros"
+
+[lib]
+proc-macro = true
+path = "src/lib.rs"
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }

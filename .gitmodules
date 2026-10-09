@@ -1,0 +1,4 @@
+[submodule "mini"]
+	path = app/mini
+	url = https://github.com/lmrrcc/mini.git
+	branch = mini

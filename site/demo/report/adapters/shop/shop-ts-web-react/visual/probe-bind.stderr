@@ -1,0 +1,2 @@
+2026-10-09T08:36:37.244108Z ERROR shop_rs_api: bind failed error=Address already in use (os error 48) address=127.0.0.1:55447
+2026-10-09T08:36:37.244234Z ERROR shop_rs_api: shop-rs-api failed error=bind 127.0.0.1:55447: Address already in use (os error 48)

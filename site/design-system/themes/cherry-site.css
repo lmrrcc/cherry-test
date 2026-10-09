@@ -1,0 +1,15 @@
+:root[data-brand="cherry"] .brand-logo { display: block; width: 170px; height: auto; }
+:root[data-brand="cherry"] .footer .brand-logo { width: 140px; }
+:root[data-brand="cherry"] .brand-logo-dark { display: none; }
+:root[data-brand="cherry"] .navbar-inner { height: 64px; }
+:root[data-brand="cherry"] .heading-1,
+:root[data-brand="cherry"] .display { color: var(--text-heading); }
+:root[data-brand="cherry"][data-theme="dark"] .brand-logo-light { display: none; }
+:root[data-brand="cherry"][data-theme="dark"] .brand-logo-dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root[data-brand="cherry"]:not([data-theme="light"]) .brand-logo-light { display: none; }
+  :root[data-brand="cherry"]:not([data-theme="light"]) .brand-logo-dark { display: block; }
+}
+@media (max-width: 380px) {
+  :root[data-brand="cherry"] .navbar .brand-logo { width: 148px; }
+}

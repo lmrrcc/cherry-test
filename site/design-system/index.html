@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design system</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+<style>
+  .specimen { display: grid; gap: var(--space-3); }
+  .specimen-row { display: grid; grid-template-columns: minmax(0, 140px) 1fr; gap: var(--space-4); align-items: baseline; padding-block: var(--space-3); border-bottom: 1px solid var(--border-subtle); min-width: 0; }
+  .specimen-row > *:last-child { min-width: 0; overflow-wrap: anywhere; }
+  .scale-label { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+  .semantic { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .space-bar { height: 12px; background: var(--accent-9); border-radius: 2px; }
+  .surface-sample { padding: var(--space-5); border-radius: var(--radius-3); border: 1px solid var(--border-default); font-size: var(--text-sm); }
+</style>
+</head>
+<body>
+<header class="navbar">
+  <div class="container navbar-inner">
+    <a class="brand" href="../index.html">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+      <span data-project="name">Cherry Test</span>
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#color">Color</a>
+      <a href="#type">Type</a>
+      <a href="#space">Space</a>
+      <a href="#components">Components</a>
+    </nav>
+    <div class="navbar-actions">
+      <a class="button button-ghost button-small" href="../index.html">Landing page</a>
+      <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle colour theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg></button>
+    </div>
+  </div>
+</header>
+<main>
+  <section class="section">
+    <div class="container section-header">
+      <span class="eyebrow">Design system</span>
+      <h1 class="display">Quiet surfaces, loud results</h1>
+      <p class="lead">A no-build CSS system for developer tools: two files, <code>tokens.css</code> and <code>components.css</code>. Neutral 12-step scales in the Radix Colors model, one accent, and pass / fail / warn reserved for test outcomes. Set in Geist and Geist Mono. Every token flips for dark mode.</p>
+      <div class="cluster"><span class="badge badge-plain">tokens.css</span><span class="badge badge-plain">components.css</span><span class="badge badge-accent">light + dark</span></div>
+    </div>
+  </section>
+
+  <section class="section" id="color">
+    <div class="container stack" style="--stack-gap: var(--space-6)">
+      <div class="section-header"><span class="eyebrow">Color</span><h2 class="heading-1">Scales and roles</h2><p class="muted">Steps 1–2 backgrounds, 3–5 component fills, 6–8 borders, 9–10 solid, 11–12 text.</p></div>
+      <div class="stack"><h3 class="heading-3">Gray</h3><div class="swatch-row"><span class="swatch" style="background: var(--gray-1)" title="--gray-1"></span><span class="swatch" style="background: var(--gray-2)" title="--gray-2"></span><span class="swatch" style="background: var(--gray-3)" title="--gray-3"></span><span class="swatch" style="background: var(--gray-4)" title="--gray-4"></span><span class="swatch" style="background: var(--gray-5)" title="--gray-5"></span><span class="swatch" style="background: var(--gray-6)" title="--gray-6"></span><span class="swatch" style="background: var(--gray-7)" title="--gray-7"></span><span class="swatch" style="background: var(--gray-8)" title="--gray-8"></span><span class="swatch" style="background: var(--gray-9)" title="--gray-9"></span><span class="swatch" style="background: var(--gray-10)" title="--gray-10"></span><span class="swatch" style="background: var(--gray-11)" title="--gray-11"></span><span class="swatch" style="background: var(--gray-12)" title="--gray-12"></span></div><div class="scale-label"><span>1</span><span>12</span></div></div>
+      <div class="stack"><h3 class="heading-3">Accent</h3><div class="swatch-row"><span class="swatch" style="background: var(--accent-1)" title="--accent-1"></span><span class="swatch" style="background: var(--accent-2)" title="--accent-2"></span><span class="swatch" style="background: var(--accent-3)" title="--accent-3"></span><span class="swatch" style="background: var(--accent-4)" title="--accent-4"></span><span class="swatch" style="background: var(--accent-5)" title="--accent-5"></span><span class="swatch" style="background: var(--accent-6)" title="--accent-6"></span><span class="swatch" style="background: var(--accent-7)" title="--accent-7"></span><span class="swatch" style="background: var(--accent-8)" title="--accent-8"></span><span class="swatch" style="background: var(--accent-9)" title="--accent-9"></span><span class="swatch" style="background: var(--accent-10)" title="--accent-10"></span><span class="swatch" style="background: var(--accent-11)" title="--accent-11"></span><span class="swatch" style="background: var(--accent-12)" title="--accent-12"></span></div><div class="scale-label"><span>1</span><span>12</span></div></div>
+      <div class="grid" style="--grid-min: 220px">
+        <div class="stack"><h3 class="heading-3">Pass</h3><div class="semantic"><span class="swatch" style="background: var(--pass-3)"></span><span class="swatch" style="background: var(--pass-7)"></span><span class="swatch" style="background: var(--pass-9)"></span><span class="swatch" style="background: var(--pass-11)"></span></div></div>
+        <div class="stack"><h3 class="heading-3">Fail</h3><div class="semantic"><span class="swatch" style="background: var(--fail-3)"></span><span class="swatch" style="background: var(--fail-7)"></span><span class="swatch" style="background: var(--fail-9)"></span><span class="swatch" style="background: var(--fail-11)"></span></div></div>
+        <div class="stack"><h3 class="heading-3">Warn</h3><div class="semantic"><span class="swatch" style="background: var(--warn-3)"></span><span class="swatch" style="background: var(--warn-7)"></span><span class="swatch" style="background: var(--warn-9)"></span><span class="swatch" style="background: var(--warn-11)"></span></div></div>
+      </div>
+      <div class="grid" style="--grid-min: 200px">
+        <div class="surface-sample" style="background: var(--surface-page)"><code>--surface-page</code></div>
+        <div class="surface-sample" style="background: var(--surface-raised); box-shadow: var(--shadow-1)"><code>--surface-raised</code></div>
+        <div class="surface-sample" style="background: var(--surface-sunken)"><code>--surface-sunken</code></div>
+        <div class="surface-sample" style="background: var(--surface-code); color: var(--code-text)"><code>--surface-code</code></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="type">
+    <div class="container stack" style="--stack-gap: var(--space-5)">
+      <div class="section-header"><span class="eyebrow">Type</span><h2 class="heading-1">Geist for prose, Geist Mono for anything you could paste</h2></div>
+      <div class="specimen">
+        <div class="specimen-row"><code>.display</code><span class="display">Run every test</span></div>
+        <div class="specimen-row"><code>.heading-1</code><span class="heading-1">Released binaries</span></div>
+        <div class="specimen-row"><code>.heading-2</code><span class="heading-2">Describe the workspace once</span></div>
+        <div class="specimen-row"><code>.heading-3</code><span class="heading-3">Coverage you can inspect</span></div>
+        <div class="specimen-row"><code>.lead</code><span class="lead">Run tests across a mixed workspace and review the results in your browser.</span></div>
+        <div class="specimen-row"><code>body</code><span>Integration tests reach services started by Docker Compose scopes.</span></div>
+        <div class="specimen-row"><code>.small .muted</code><span class="small muted">Generated from conventional commits between version tags.</span></div>
+        <div class="specimen-row"><code>.eyebrow</code><span class="eyebrow">Changelog</span></div>
+        <div class="specimen-row"><code>.mono</code><span class="mono">cargo cherry-test --no-coverage --no-open</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="space">
+    <div class="container stack" style="--stack-gap: var(--space-5)">
+      <div class="section-header"><span class="eyebrow">Space and shape</span><h2 class="heading-1">A 4px rhythm</h2></div>
+      <div class="specimen">
+        <div class="specimen-row"><code>--space-1</code><span class="space-bar" style="width: var(--space-1)"></span></div>
+        <div class="specimen-row"><code>--space-2</code><span class="space-bar" style="width: var(--space-2)"></span></div>
+        <div class="specimen-row"><code>--space-3</code><span class="space-bar" style="width: var(--space-3)"></span></div>
+        <div class="specimen-row"><code>--space-4</code><span class="space-bar" style="width: var(--space-4)"></span></div>
+        <div class="specimen-row"><code>--space-5</code><span class="space-bar" style="width: var(--space-5)"></span></div>
+        <div class="specimen-row"><code>--space-6</code><span class="space-bar" style="width: var(--space-6)"></span></div>
+        <div class="specimen-row"><code>--space-7</code><span class="space-bar" style="width: var(--space-7)"></span></div>
+        <div class="specimen-row"><code>--space-8</code><span class="space-bar" style="width: var(--space-8)"></span></div>
+        <div class="specimen-row"><code>--space-9</code><span class="space-bar" style="width: var(--space-9)"></span></div>
+      </div>
+      <div class="grid" style="--grid-min: 160px">
+        <div class="card" style="border-radius: var(--radius-1)"><code>--radius-1</code></div>
+        <div class="card" style="border-radius: var(--radius-2)"><code>--radius-2</code></div>
+        <div class="card" style="border-radius: var(--radius-3); box-shadow: var(--shadow-2)"><code>--radius-3 · shadow-2</code></div>
+        <div class="card" style="border-radius: var(--radius-4); box-shadow: var(--shadow-3)"><code>--radius-4 · shadow-3</code></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="components">
+    <div class="container stack" style="--stack-gap: var(--space-7)">
+      <div class="section-header"><span class="eyebrow">Components</span><h2 class="heading-1">Building blocks</h2></div>
+      <div class="stack"><h3 class="heading-3">Buttons</h3><div class="cluster"><button class="button button-primary" type="button">Primary</button><button class="button button-secondary" type="button">Secondary</button><button class="button button-ghost" type="button">Ghost</button><button class="button button-primary button-small" type="button">Small</button><button class="button button-secondary" type="button" disabled>Disabled</button></div></div>
+      <div class="stack"><h3 class="heading-3">Badges</h3><div class="cluster"><span class="badge badge-plain">plain</span><span class="badge badge-accent">accent</span><span class="badge badge-pass">pass</span><span class="badge badge-fail">fail</span><span class="badge badge-warn">warn</span></div></div>
+      <div class="stack"><h3 class="heading-3">Callout and empty state</h3>
+        <div class="callout callout-info">The install script builds from source with <code>cargo install</code>.</div>
+        <div class="empty-state"><span class="badge badge-warn">No binaries published</span><p class="muted">Tagged releases will list their assets here.</p></div>
+      </div>
+      <div class="stack"><h3 class="heading-3">Terminal with copy</h3>
+        <div class="terminal">
+          <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">shell</span><button class="copy-button" type="button" data-copy="sample-shell"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span data-copy-label>Copy</span></button></div>
+<pre id="sample-shell"><span class="prompt">$ </span>cargo cherry-test mini --no-open
+<span class="comment"># unit, integration and coverage for one project group</span>
+<span class="pass">pass</span>  <span class="key">mini-rs-api</span>     <span class="number">42</span> tests
+<span class="fail">fail</span>  <span class="key">mini-ui-react</span>   <span class="number">1</span> of <span class="number">18</span></pre>
+        </div>
+        <p class="small muted">The terminal output above is an illustration of the component, not a recorded run.</p>
+      </div>
+      <div class="stack"><h3 class="heading-3">Tabs</h3>
+        <div class="tabs" role="tablist" aria-label="Tabs example">
+          <button class="tab" role="tab" type="button" id="demo-tab-a" aria-controls="demo-panel-a" aria-selected="true">Script</button>
+          <button class="tab" role="tab" type="button" id="demo-tab-b" aria-controls="demo-panel-b" aria-selected="false" tabindex="-1">Cargo</button>
+        </div>
+        <div class="card" role="tabpanel" id="demo-panel-a" aria-labelledby="demo-tab-a"><code>curl -fsSL &lt;install-url&gt; | bash</code></div>
+        <div class="card" role="tabpanel" id="demo-panel-b" aria-labelledby="demo-tab-b" hidden><code>cargo install --git &lt;repository&gt; --locked cherry-test</code></div>
+      </div>
+      <div class="stack"><h3 class="heading-3">Cards</h3>
+        <div class="grid" style="--grid-min: 240px">
+          <article class="card stack"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h10M4 17h7"/></svg></span><h4 class="heading-3">Card</h4><p class="muted">Static container for feature copy.</p></article>
+          <a class="card card-interactive stack" href="#components"><h4 class="heading-3">Interactive card</h4><p class="muted">Hover lifts the border and shadow.</p></a>
+        </div>
+      </div>
+      <div class="stack"><h3 class="heading-3">Table</h3>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Token</th><th>Role</th></tr></thead><tbody>
+          <tr><td><code>--text-primary</code></td><td>Headings and body</td></tr>
+          <tr><td><code>--text-secondary</code></td><td>Supporting copy</td></tr>
+          <tr><td><code>--text-muted</code></td><td>Metadata and labels</td></tr>
+        </tbody></table></div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer class="footer"><div class="container cluster" style="justify-content: space-between"><span>Color model after Radix Colors · type in Geist</span><a href="../index.html">Back to the landing page</a></div></footer>
+<script src="../project.js"></script>
+<script src="../app.js"></script>
+</body>
+</html>

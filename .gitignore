@@ -1,0 +1,24 @@
+**/node_modules/
+review.local.yaml
+/.claude/
+/.cursor/
+/.idea/
+/.cherry-test/
+/mini/target/
+/node_modules/
+/target/
+/target/cherry-test/
+.wrangler/
+*.profraw
+
+/test/cherry-test/assets/rules/
+/test/cherry-test/assets/rules.yaml
+/test/cherry-test/assets/catalog/
+# BEGIN skills-cli managed
+# Installed skill content — commit skills.toml and skills.lock instead.
+# Reproduce locally with: skills install --locked
+# END skills-cli managed
+
+# Local agent tooling artifacts (regenerated per machine)
+.agents/
+skills-lock.json

@@ -1,0 +1,23 @@
+
+ RUN  v2.1.9 ~/shop/shop-ts-web-react
+      Coverage enabled with v8
+
+ ✓ src/shopApi.test.ts (8 tests) 5ms
+ ✓ src/mount.test.tsx (2 tests) 47ms
+ ✓ src/shop.test.tsx (14 tests) 264ms
+
+ Test Files  3 passed (3)
+      Tests  24 passed (24)
+   Start at  10:35:22
+   Duration  1.38s (transform 64ms, setup 562ms, collect 572ms, tests 316ms, environment 1.34s, prepare 133ms)
+
+JSON report written to ~/shop/target/cherry-test/runs/20261009-083427-6623d8/reports/adapters/shop/shop-ts-web-react/unit/results.json
+ % Coverage report from v8
+------------|---------|----------|---------|---------|-------------------
+File        | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+------------|---------|----------|---------|---------|-------------------
+All files   |     100 |      100 |     100 |     100 |                   
+ Shop.tsx   |     100 |      100 |     100 |     100 |                   
+ mount.tsx  |     100 |      100 |     100 |     100 |                   
+ shopApi.ts |     100 |      100 |     100 |     100 |                   
+------------|---------|----------|---------|---------|-------------------

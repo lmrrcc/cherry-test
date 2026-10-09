@@ -1,0 +1,34 @@
+name: Rust
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  workspace:
+    name: Workspace checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt
+        run: cargo fmt --all --check
+      - name: cargo test
+        run: |
+          cargo test -p cherry-test-common
+          cargo test -p cherry-test-core
+          cargo test -p cherry-test
+          cargo test -p cherry-test-macros
+      - name: cherry-test commands
+        run: |
+          cargo run -p cherry-test --bin cherry-test -- --help
+          cargo run -p cherry-test --bin cherry-test -- update --help
+          cargo run -p cherry-test --bin cargo-cherry-test -- cherry-test --help

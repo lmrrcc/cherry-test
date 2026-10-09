@@ -1,0 +1,43 @@
+rules:
+  - rust
+  - security
+  - architecture
+  - api-design
+  - testing
+  - production-readiness
+  - naming-conventions
+  - logging
+  - code-quality
+  - frontend
+  - formal-verification
+  - review-methodology
+  - static-checks
+
+# Optional scoped profiles: `review-it <profile>` or `review-it --profile <name>`
+# restricts the review to the listed topics, cutting LLM cost for focused passes.
+# static-checks are deterministic detectors (near-free); included in every profile.
+profiles:
+  quick:
+    - rust
+    - security
+    - production-readiness
+    - static-checks
+  rust-core:
+    - rust
+    - formal-verification
+    - code-quality
+    - testing
+    - static-checks
+  api:
+    - rust
+    - api-design
+    - security
+    - architecture
+    - static-checks
+  frontend:
+    - frontend
+    - security
+    - code-quality
+    - static-checks
+  static-only:
+    - static-checks

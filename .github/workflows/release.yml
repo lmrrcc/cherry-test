@@ -1,0 +1,27 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch-lmrr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger lmrr.cc release pipeline
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.LMRR_RELEASE_TOKEN }}
+          repository: lmrrcc/lmrr.cc
+          event-type: cherry-test-release
+          client-payload: >-
+            {
+              "version": "${{ github.ref_name }}",
+              "ref": "${{ github.ref_name }}",
+              "repo": "${{ github.repository }}",
+              "sha": "${{ github.sha }}"
+            }

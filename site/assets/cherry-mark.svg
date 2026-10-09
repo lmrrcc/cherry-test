@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112" viewBox="0 0 112 112" role="img" aria-labelledby="title"><title id="title">Cherry</title><g fill="none" stroke="#624930" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M29 60 C35 40 58 30 66 11"/>
+      <path d="M81 51 C83 35 74 19 66 11"/>
+    </g>
+    <path d="M66 12 C73 0 88 1 95 5 C89 16 77 20 66 12Z" fill="#624930"/>
+    <path d="M29 59 C17 55 4 66 4 80 C4 94 15 105 29 105 C43 105 54 94 54 80 C54 66 42 55 29 59Z" fill="#B40A0A"/>
+    <path d="M81 50 C68 47 57 57 57 71 C57 86 68 97 81 97 C95 97 106 86 106 71 C106 57 94 47 81 50Z" fill="#B40A0A"/></svg>

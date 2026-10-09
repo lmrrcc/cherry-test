@@ -1,0 +1,8 @@
+/app.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/demo/shop.cast
+  Cache-Control: public, max-age=0, must-revalidate
+
+/demo/report/*
+  Cache-Control: public, max-age=0, must-revalidate

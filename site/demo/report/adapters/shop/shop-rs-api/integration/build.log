@@ -1,0 +1,10 @@
+   Compiling ring v0.17.14
+   Compiling rustls v0.23.45
+   Compiling rustls-webpki v0.103.15
+   Compiling sqlx-core v0.8.6
+   Compiling sqlx-postgres v0.8.6
+   Compiling sqlx-macros-core v0.8.6
+   Compiling sqlx-macros v0.8.6
+   Compiling sqlx v0.8.6
+   Compiling shop-rs-api v0.1.0 (~/shop/shop-rs-api)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 12.23s

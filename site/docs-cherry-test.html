@@ -1,0 +1,730 @@
+<meta charset="utf-8">
+<title>Cherry Test · Docs</title>
+<meta name="description" content="Installation, configuration, integration tests, coverage, CI and command reference for Cherry Test.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="design-system/tokens.css">
+<link rel="stylesheet" href="design-system/components.css">
+<style>
+  .split { display: grid; gap: var(--space-6); align-items: start; }
+    .split > * { min-width: 0; }
+  @media (min-width: 980px) { .split { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); } }
+  .option-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+  .option-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border-subtle); font-size: var(--text-sm); }
+  .option-list li:last-child { border-bottom: 0; }
+  .option-list code { justify-self: start; overflow-wrap: anywhere; }
+  .toc { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+  .toc a { display: inline-flex; align-items: center; min-height: 30px; padding: 0 12px; border-radius: var(--radius-full); border: 1px solid var(--border-subtle); background: var(--surface-raised); color: var(--text-secondary); text-decoration: none; font-size: var(--text-sm); }
+  .toc a:hover { color: var(--text-primary); border-color: var(--border-default); }
+  .doc-block { display: flex; flex-direction: column; gap: var(--space-4); padding-top: var(--space-7); border-top: 1px solid var(--border-subtle); }
+  .doc-block .section-header { margin-bottom: 0; }
+  .steps { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: var(--space-2); color: var(--text-secondary); font-size: var(--text-sm); }
+  .arch { display: grid; gap: var(--space-4); }
+  @media (min-width: 980px) { .arch { grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.6fr); align-items: stretch; } }
+  .arch-root { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; padding: var(--space-4); border: 1px solid var(--border-default); border-radius: var(--radius-4); background: var(--surface-sunken); }
+  .arch-root-other { border-style: dashed; background: transparent; }
+  .arch-kicker { font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--accent-11); }
+  .arch-row { display: grid; gap: var(--space-3); }
+  @media (min-width: 640px) { .arch-row { grid-template-columns: 1fr 1fr; } }
+  .arch-box { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: var(--space-3); border-radius: var(--radius-2); border: 1px solid var(--border-subtle); background: var(--surface-raised); }
+  .arch-box strong { font-size: var(--text-sm); }
+  .arch-box span, .arch-note { font-size: var(--text-xs); color: var(--text-secondary); }
+  .arch-box.service { border-color: var(--accent-6); background: var(--accent-2); }
+  .arch-note { font-family: var(--font-mono); }
+  .tree { margin: 0; padding: var(--space-4); overflow-x: auto; border-radius: var(--radius-3); border: 1px solid var(--border-subtle); background: var(--surface-code); color: var(--code-text); font-family: var(--font-mono); font-size: 13px; line-height: 1.65; }
+</style>
+
+<a class="visually-hidden" href="#top">Skip to content</a>
+<header class="navbar">
+  <div class="container navbar-inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      </span>
+      <span data-project="name">Cherry Test</span>
+    </a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="index.html#demo">Demo</a>
+      <a href="docs.html" aria-current="page">Docs</a>
+      <a data-project-href href="https://github.com/lmrrcc/test">GitHub</a>
+    </nav>
+    <div class="navbar-actions">
+      <a class="button button-primary button-small" href="index.html#get-started">Get started</a>
+      <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle colour theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="section" id="guide">
+    <div class="container stack" style="--stack-gap: var(--space-6)">
+      <div class="section-header">
+        <span class="eyebrow">Docs</span>
+        <h1 class="heading-1">Cherry Test documentation</h1>
+        <p class="lead">Installation, configuration, integration tests, coverage, CI and the command reference. Each configuration root has its own run and report.</p>
+      </div>
+      <nav class="toc" aria-label="On this page">
+        <a href="#support">Support</a>
+        <a href="#install">Install</a>
+        <a href="#quick-start">Quick start</a>
+        <a href="#shop">Shop</a>
+        <a href="#config">Configuration</a>
+        <a href="#integration">Integration tests</a>
+        <a href="#coverage">Coverage</a>
+        <a href="#ci">CI review</a>
+        <a href="#mutation">Mutation testing</a>
+        <a href="#crap">CRAP</a>
+        <a href="#commands">Commands</a>
+        <a href="#limits">Limits</a>
+        <a href="changelog.html">Changelog</a>
+      </nav>
+      <div class="section-header" id="support">
+        <h2 class="heading-1">What Cherry Test supports</h2>
+        <p class="lead">A change in one service can break another package. Cherry Test runs those parts in one configured flow: mixed languages, nested Git checkouts, Compose services, merged LCOV against a Git base, and a report a reviewer can open without an IDE.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <caption class="visually-hidden">What Cherry Test runs today</caption>
+          <thead><tr><th>Area</th><th>Support today</th></tr></thead>
+          <tbody>
+            <tr><td>Rust</td><td>Unit and integration tests through Cargo. Coverage through <code>cargo-llvm-cov</code>.</td></tr>
+            <tr><td>JavaScript and TypeScript</td><td>Vitest tests, JSON results, and LCOV coverage.</td></tr>
+            <tr><td>Java and Kotlin</td><td>Maven or Gradle, JUnit XML, and JaCoCo source coverage.</td></tr>
+            <tr><td>C and C++</td><td>CMake/CTest, Unity or GoogleTest, and LLVM source coverage.</td></tr>
+            <tr><td>React and Vue</td><td>Vitest unit tests, plus Playwright functional tests and screenshots.</td></tr>
+            <tr><td>Browser tests</td><td>Playwright results, screenshots, expected/actual/diff images, and trace attachments.</td></tr>
+            <tr><td>Other commands</td><td>A <code>functional</code> runner launches an external command and reads its exit status.</td></tr>
+            <tr><td>Test containers</td><td>Docker Compose starts the stacks named by a scope.</td></tr>
+            <tr><td>Mocks</td><td>Use the test framework's mocks, or run a mock server as a Compose service.</td></tr>
+            <tr><td>Reports</td><td>Terminal summary, HTML report, LCOV files, and recorded integration requests.</td></tr>
+            <tr><td>Mutation testing</td><td>Run an external tool beside Cherry Test. The HTML report has no mutant results.</td></tr>
+            <tr><td>CRAP scoring</td><td>Calculated on a normal run from cyclomatic complexity and line coverage. <code>--no-crap</code> skips it.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted small">Adapters run local tools or container toolchains. An external executable adapter can add a language without rebuilding Cherry Test. See the <a href="https://github.com/lmrrcc/test/blob/main/docs/adapters.md">adapter guide</a> and the <a href="https://github.com/lmrrcc/mini/blob/mini/polyglot/README.md">six-backend price sample</a>.</p>
+    </div>
+  </section>
+
+  <section class="section" id="install">
+    <div class="container stack" style="--stack-gap: var(--space-6)">
+      <div class="section-header">
+        <span class="eyebrow">Install</span>
+        <h2 class="heading-1">A binary, or Cargo from this repository</h2>
+        <p class="lead">Release 0.3.16 ships prebuilt <code>cherry-test</code> and <code>cargo-cherry-test</code> for macOS on Apple Silicon. Other platforms build from source. Cargo's binary directory, usually <code>~/.cargo/bin</code>, needs to be on <code>PATH</code> when you install with Cargo.</p>
+      </div>
+      <div class="split">
+        <div class="stack">
+          <div class="cluster" style="--cluster-gap: var(--space-3)">
+            <a class="button button-primary" href="releases/v0.3.16/cherry-test-0.3.16-aarch64-apple-darwin.tar.gz" download>Download for macOS · arm64</a>
+            <a class="button button-secondary" href="releases/v0.3.16/cherry-test-0.3.16-aarch64-apple-darwin.tar.gz.sha256" download>SHA-256</a>
+          </div>
+          <ul class="option-list" aria-label="Release 0.3.16 asset">
+            <li><code>cherry-test-0.3.16-aarch64-apple-darwin.tar.gz</code><span class="muted">7.6 MB · unsigned build</span></li>
+            <li><code>3be05cd7…09e2bafa</code><span class="muted">SHA-256 of the archive</span></li>
+          </ul>
+          <p class="muted small">Verify the checksum, unpack both binaries into <code>~/.local/bin</code>, and clear the quarantine attribute. Running the binary does not need a Rust toolchain.</p>
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="terminal-title">verify and install · macOS arm64</span>
+            <button class="copy-button" type="button" data-copy="install-binary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              <span data-copy-label>Copy</span>
+            </button>
+          </div>
+<pre id="install-binary"><span class="prompt">$ </span>shasum -a 256 -c <span class="string">cherry-test-0.3.16-aarch64-apple-darwin.tar.gz.sha256</span>
+<span class="prompt">$ </span>tar -xzf <span class="string">cherry-test-0.3.16-aarch64-apple-darwin.tar.gz</span>
+<span class="prompt">$ </span>mkdir -p ~/.local/bin
+<span class="prompt">$ </span>mv cherry-test-0.3.16-aarch64-apple-darwin/cherry-test cherry-test-0.3.16-aarch64-apple-darwin/cargo-cherry-test ~/.local/bin/
+<span class="prompt">$ </span>xattr -d com.apple.quarantine ~/.local/bin/cherry-test ~/.local/bin/cargo-cherry-test 2>/dev/null; cherry-test --version</pre>
+        </div>
+      </div>
+      <div class="split">
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="terminal-title">cargo install</span>
+            <button class="copy-button" type="button" data-copy="install-cargo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              <span data-copy-label>Copy</span>
+            </button>
+          </div>
+          <pre id="install-cargo"><span class="prompt">$ </span>cargo install --git https://github.com/lmrrcc/test --branch main --locked --bins cherry-test</pre>
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="terminal-title">local checkout</span>
+            <button class="copy-button" type="button" data-copy="install-local">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              <span data-copy-label>Copy</span>
+            </button>
+          </div>
+<pre id="install-local"><span class="prompt">$ </span>git clone https://github.com/lmrrcc/test.git
+<span class="prompt">$ </span>cd test
+<span class="prompt">$ </span>cargo install --path test/cherry-test --locked --bins
+<span class="prompt">$ </span>cargo cherry-test</pre>
+        </div>
+      </div>
+      <p class="muted small">Inside this checkout, <code>cargo cherry-test</code> runs from source without a separate install. A hosted script is also published at <code>https://lmrr-cc.pages.dev/install/cherry-test.sh</code>.</p>
+
+      <div class="doc-block" id="tools">
+        <div class="section-header">
+          <h3 class="heading-2">Tools you need</h3>
+          <p class="lead">The binary runs without Rust. Coverage, Node packages, and containers need the tools for the packages you actually select.</p>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Tool</th><th>When you need it</th></tr></thead>
+            <tbody>
+              <tr><td>Rust and Cargo</td><td>To build Cherry Test from source and to run Rust packages.</td></tr>
+              <tr><td>Git</td><td>To discover changed files and compare a branch.</td></tr>
+              <tr><td>Node.js and a package manager</td><td>To install and run Vitest or Playwright packages.</td></tr>
+              <tr><td><code>cargo-llvm-cov</code> and LLVM tools</td><td>To collect Rust coverage.</td></tr>
+              <tr><td>A Vitest coverage provider</td><td>To collect Node coverage. Match its version to Vitest.</td></tr>
+              <tr><td>Docker with Compose</td><td>To start the configured service stacks.</td></tr>
+              <tr><td>A web browser</td><td>To open the HTML report. CI can skip the automatic open.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">Rust coverage</span></div>
+<pre><span class="prompt">$ </span>cargo install cargo-llvm-cov --locked
+<span class="prompt">$ </span>rustup component add llvm-tools-preview</pre>
+        </div>
+        <p class="muted small">Install Node dependencies before the run, for example <code>pnpm install</code> in a pnpm workspace. Browser tests also need the browsers named by the Playwright config.</p>
+      </div>
+
+      <div class="doc-block" id="update">
+        <div class="section-header">
+          <h3 class="heading-2">Update</h3>
+          <p class="lead">The updater and <code>install.sh</code> default to <code>lmrrcc/test</code>. <code>--repo</code> or <code>CHERRY_TEST_REPO</code> selects another checkout.</p>
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">update</span></div>
+          <pre><span class="prompt">$ </span><span data-project="binary">cherry-test</span> update --repo https://github.com/lmrrcc/test --branch main</pre>
+        </div>
+      </div>
+
+      <div class="doc-block" id="quick-start">
+        <div class="section-header">
+          <h3 class="heading-2">Quick start</h3>
+          <p class="lead"><code>--init-only</code> writes <code data-project="configFile">cherry-test.yaml</code> from discovered packages and services. Review paths, kinds, and scopes before the first full run. Running with no configuration file creates one and starts the tests in the same invocation.</p>
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="terminal-title">first run</span>
+            <button class="copy-button" type="button" data-copy="quick-start">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              <span data-copy-label>Copy</span>
+            </button>
+          </div>
+<pre id="quick-start"><span class="prompt">$ </span><span data-project="binary">cherry-test</span> --init-only
+<span class="prompt">$ </span><span data-project="binary">cherry-test</span>
+<span class="prompt">$ </span><span data-project="binary">cherry-test</span> --no-open</pre>
+        </div>
+        <p class="muted small">Coverage and the browser report are on by default. <code>--no-open</code> leaves the report on disk. With the default paths, open <code>target/cherry-test/latest/reports/index.html</code>. The terminal prints the same path.</p>
+      </div>
+
+      <div class="doc-block" id="binaries">
+        <div class="section-header">
+          <h3 class="heading-2">Released binaries</h3>
+          <p class="lead">Prebuilt binaries attached to tagged releases. Generated <span class="mono" data-release-generated>2026-10-08</span> from the repository.</p>
+        </div>
+        <div id="binaries-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="shop">
+    <div class="container stack" style="--stack-gap: var(--space-6)">
+      <div class="section-header">
+        <span class="eyebrow">Architecture</span>
+        <h2 class="heading-1">Shop is one root. Each other repository is another run.</h2>
+        <p class="lead">A multi-repository workspace is several checkouts side by side. Cherry Test reads one <code>cherry-test.yaml</code> per run and writes one report for that root. Shop, at <code>app/shop</code> in this repository, is that root: a Rust API, a TypeScript cart library, a React storefront, and Postgres.</p>
+      </div>
+      <div class="arch" aria-label="Shop configuration root next to a separate repository">
+        <div class="arch-root">
+          <span class="arch-kicker">app/shop · one cherry-test.yaml · one report</span>
+          <p class="arch-note">Cargo.toml · docker-compose.test.yml · pnpm-workspace.yaml</p>
+          <div class="arch-row">
+            <div class="arch-box service">
+              <strong>shop-rs-api</strong>
+              <span>Rust workspace member. Axum. Unit and integration.</span>
+              <span>domain → application → infrastructure (postgres, web)</span>
+            </div>
+            <div class="arch-box service">
+              <strong>shop-db</strong>
+              <span>postgres:16-alpine. Compose service shop-db.</span>
+              <span>Health check: pg_isready. API waits until it is healthy.</span>
+            </div>
+          </div>
+          <p class="arch-note">scope shop_checkout starts the stack, then tests call service "api" on port 3000</p>
+          <div class="arch-row">
+            <div class="arch-box">
+              <strong>shop-ts-lib-cart</strong>
+              <span>TypeScript library. Vitest unit and integration tests. The storefront prices lines through this package.</span>
+            </div>
+            <div class="arch-box">
+              <strong>shop-ts-web-react</strong>
+              <span>React 18 storefront on Vite 6. Vitest unit tests, Playwright functional tests, and Playwright visual snapshots.</span>
+            </div>
+          </div>
+        </div>
+        <div class="arch-root arch-root-other">
+          <span class="arch-kicker">another checkout</span>
+          <h3 class="heading-3">Its own cherry-test.yaml</h3>
+          <p class="muted small">A payments service, or any other Git checkout with its own Cargo workspace, stays outside shop. Run <code data-project="binary">cherry-test</code> <code>--root</code> there. That run writes its own report. Cherry Test does not clone repositories or merge those reports into shop.</p>
+        </div>
+      </div>
+      <div class="split">
+        <pre class="tree">app/shop/
+├── Cargo.toml                  members = ["shop-rs-api", "tools/shop-adapter"]
+├── docker-compose.test.yml     shop-rs-api + shop-db
+├── cherry-test.yaml
+├── pnpm-workspace.yaml         shop-ts-lib-cart, shop-ts-web-react
+├── tools/shop-adapter/         integration, functional, and visual
+├── shop-rs-api/
+│   ├── Dockerfile
+│   ├── src/domain/
+│   ├── src/application/
+│   ├── src/infrastructure/     postgres, web
+│   └── tests/integration.rs
+├── shop-ts-lib-cart/
+│   ├── package.json
+│   ├── vitest.config.ts
+│   └── src/cart.ts
+└── shop-ts-web-react/
+    ├── package.json
+    ├── vite.config.ts
+    └── src/Shop.tsx</pre>
+        <div class="stack">
+          <p>Shop is a directory in this repository, with one Cargo workspace and one pnpm workspace. It is the shape of a configuration root you keep next to other repositories.</p>
+          <p class="muted small">Rust packages in one run have to be reachable from that root's Cargo workspace. Setting <code>manifest</code> helps discovery. It does not point the Rust runner at a different workspace. Give each independent Rust workspace its own <code>cherry-test.yaml</code> and invoke it with <code>--root</code>.</p>
+          <div class="terminal">
+            <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">two roots, two reports</span></div>
+<pre><span class="prompt">$ </span><span data-project="binary">cherry-test</span> --root app/shop --no-open
+<span class="prompt">$ </span><span data-project="binary">cherry-test</span> --root /path/to/payments --no-open</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="doc-block" id="config">
+        <div class="section-header">
+          <h3 class="heading-2">Configuration</h3>
+          <p class="lead">Put <code>cherry-test.yaml</code> beside the workspace it describes. <code>manifest</code>, <code>compose</code>, and runner <code>cwd</code> paths are relative to that file. Package names match the Cargo or npm manifest. Compose service names match <code>docker-compose.test.yml</code>.</p>
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="terminal-title">app/shop/cherry-test.yaml</span>
+            <button class="copy-button" type="button" data-copy="shop-yaml">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              <span data-copy-label>Copy</span>
+            </button>
+          </div>
+<pre id="shop-yaml"><span class="key">defaults</span>:
+  <span class="key">coverage</span>: <span class="keyword">true</span>
+  <span class="key">html_report</span>: <span class="keyword">true</span>
+  <span class="key">runs_base</span>: <span class="string">target/cherry-test/runs</span>
+  <span class="key">scope</span>: <span class="string">global</span>
+  <span class="key">diff_base</span>: <span class="string">main</span>
+
+<span class="key">adapters</span>:
+  <span class="key">shop</span>:
+    <span class="key">command</span>: <span class="string">cargo</span>
+    <span class="key">args</span>: [<span class="string">run</span>, <span class="string">--target-dir</span>, <span class="string">target/adapter</span>, <span class="string">-p</span>, <span class="string">shop-adapter</span>, <span class="string">--quiet</span>, <span class="string">--</span>]
+    <span class="key">timeout_secs</span>: <span class="number">1800</span>
+
+<span class="key">projects</span>:
+  <span class="key">shop</span>:
+    <span class="key">path</span>: <span class="string">.</span>
+    <span class="key">diff_base</span>: <span class="string">main</span>
+    <span class="key">compose</span>: <span class="string">docker-compose.test.yml</span>
+    <span class="key">packages</span>:
+      <span class="key">shop-rs-api</span>:
+        <span class="key">kinds</span>: [<span class="string">unit</span>, <span class="string">integration</span>]
+        <span class="key">integration</span>:
+          <span class="key">adapter</span>: <span class="string">shop</span>
+          <span class="key">scope</span>: <span class="string">shop_checkout</span>
+      <span class="key">shop-ts-lib-cart</span>:
+        <span class="key">runtime</span>: <span class="string">node</span>
+        <span class="key">manifest</span>: <span class="string">shop-ts-lib-cart/package.json</span>
+        <span class="key">kinds</span>: [<span class="string">unit</span>, <span class="string">integration</span>]
+        <span class="key">unit</span>:
+          <span class="key">command</span>: <span class="string">pnpm</span>
+          <span class="key">args</span>: [<span class="string">exec</span>, <span class="string">vitest</span>, <span class="string">run</span>, <span class="string">--coverage</span>, <span class="string">src</span>]
+          <span class="key">cwd</span>: <span class="string">shop-ts-lib-cart</span>
+        <span class="key">integration</span>:
+          <span class="key">command</span>: <span class="string">pnpm</span>
+          <span class="key">args</span>: [<span class="string">exec</span>, <span class="string">vitest</span>, <span class="string">run</span>, <span class="string">--coverage</span>, <span class="string">integration</span>]
+          <span class="key">cwd</span>: <span class="string">shop-ts-lib-cart</span>
+      <span class="key">shop-ts-web-react</span>:
+        <span class="key">runtime</span>: <span class="string">node</span>
+        <span class="key">manifest</span>: <span class="string">shop-ts-web-react/package.json</span>
+        <span class="key">kinds</span>: [<span class="string">unit</span>, <span class="string">functional</span>, <span class="string">visual</span>]
+        <span class="key">unit</span>:
+          <span class="key">command</span>: <span class="string">pnpm</span>
+          <span class="key">args</span>: [<span class="string">exec</span>, <span class="string">vitest</span>, <span class="string">run</span>, <span class="string">--coverage</span>]
+          <span class="key">cwd</span>: <span class="string">shop-ts-web-react</span>
+        <span class="key">functional</span>:
+          <span class="key">adapter</span>: <span class="string">shop</span>
+          <span class="key">scope</span>: <span class="string">shop_checkout</span>
+        <span class="key">visual</span>:
+          <span class="key">adapter</span>: <span class="string">shop</span>
+          <span class="key">scope</span>: <span class="string">shop_checkout</span>
+    <span class="key">services</span>:
+      <span class="key">api</span>:
+        <span class="key">service</span>: <span class="string">shop-rs-api</span>
+        <span class="key">port</span>: <span class="number">3000</span>
+        <span class="key">health</span>: <span class="string">/health</span>
+      <span class="key">db</span>:
+        <span class="key">service</span>: <span class="string">shop-db</span>
+        <span class="key">port</span>: <span class="number">5432</span>
+        <span class="key">kind</span>: <span class="string">postgres</span>
+
+<span class="key">scopes</span>:
+  <span class="key">shop_checkout</span>:
+    <span class="key">projects</span>: [<span class="string">shop</span>]</pre>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Setting</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>defaults.coverage</code></td><td>Collect coverage. Default <code>true</code>.</td></tr>
+              <tr><td><code>defaults.html_report</code></td><td>Write the browser report. Default <code>true</code>.</td></tr>
+              <tr><td><code>defaults.open_report</code></td><td>Open the report after a local run. Default <code>true</code>. Shop omits it and keeps the default.</td></tr>
+              <tr><td><code>defaults.runs_base</code></td><td>Run directory. Default <code>target/cherry-test/runs</code>.</td></tr>
+              <tr><td><code>defaults.diff_base</code></td><td>Git ref to compare. Default <code>main</code>. A project can override it, including inside a nested repository.</td></tr>
+              <tr><td><code>defaults.scope</code></td><td><code>global</code>, <code>none</code>, a project id, or a named scope.</td></tr>
+              <tr><td><code>defaults.coverage_ignore</code></td><td>Exclusion file. Default <code>.coverageignore</code>.</td></tr>
+              <tr><td><code>packages.&lt;name&gt;.kinds</code></td><td><code>unit</code>, <code>integration</code>, <code>functional</code>, <code>visual</code>, <code>ui</code>, or <code>mutation</code>. <code>mutation</code> runs only when <code>--kinds</code> names it. CRAP is calculated on a normal run. <code>--no-crap</code> skips it.</td></tr>
+              <tr><td><code>scopes.&lt;name&gt;.projects</code></td><td>Projects whose Compose stacks that scope starts.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted small"><code>cherry-test.yml</code> and <code>cherry-test.toml</code> are accepted. <code>--init-only</code> scans six directory levels for Cargo, Vitest, Maven, Gradle, and CMake packages, common Compose filenames, and <code>#[cherry_test]</code> scopes. It skips <code>.git</code>, <code>target</code>, and <code>node_modules</code>. <code>--force-init</code> rewrites <code>cherry-test.yaml</code>; review that diff. For an unusual layout, edit the file and pass <code>--root</code>.</p>
+        <p class="muted small">A <code>functional</code> or <code>ui</code> block uses <code>command</code>, <code>args</code>, and <code>cwd</code>, and the kind has to appear in <code>kinds</code>. Set <code>adapter: playwright</code> on a browser phase to import results and screenshots. Strict runs require individual test results. The command adapter's exit-status check is for non-strict runs.</p>
+      </div>
+
+      <div class="doc-block" id="vitest">
+        <div class="section-header">
+          <h3 class="heading-2">Vitest output</h3>
+          <p class="lead">Cherry Test passes <code>VITEST_JSON_REPORT</code> and, when coverage is on, <code>VITEST_COVERAGE_DIR</code>. The cart library and the React storefront write both into the current run. The Node runner uses the Vitest installed in <code>cwd</code>. Functional and visual phases run Playwright through the shop adapter. Browser coverage from those phases is merged with the storefront unit LCOV, and with the cart library the page imports.</p>
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">shop-ts-lib-cart/vitest.config.ts</span></div>
+<pre><span class="keyword">import</span> { defineConfig } <span class="keyword">from</span> <span class="string">"vitest/config"</span>;
+
+<span class="keyword">const</span> jsonReport = process.env.VITEST_JSON_REPORT;
+<span class="keyword">const</span> coverageDir = process.env.VITEST_COVERAGE_DIR;
+
+<span class="keyword">export default</span> defineConfig({
+  test: {
+    environment: <span class="string">"node"</span>,
+    reporters: jsonReport ? [<span class="string">"default"</span>, <span class="string">"json"</span>] : [<span class="string">"default"</span>],
+    outputFile: jsonReport ? { json: jsonReport } : <span class="keyword">undefined</span>,
+    coverage: {
+      provider: <span class="string">"v8"</span>,
+      enabled: Boolean(coverageDir),
+      reportsDirectory: coverageDir ?? <span class="string">"coverage"</span>,
+      reporter: [<span class="string">"lcov"</span>, <span class="string">"text"</span>],
+    },
+  },
+});</pre>
+        </div>
+      </div>
+
+      <div class="doc-block" id="integration">
+        <div class="section-header">
+          <h3 class="heading-2">Integration tests, mocks, and containers</h3>
+          <p class="lead">Scoped integration tests start Compose with <code>up -d --build --wait</code>. Cherry Test reads the mapped ports and tears the stacks and their volumes down afterwards. Shop publishes container ports without a fixed host port. The API image waits for <code>shop-db</code>, then <code>wget</code> checks <code>/health</code>. Database credentials come from <code>SHOP_DB_*</code> in <code>.env</code>.</p>
+        </div>
+        <div class="callout callout-info">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
+          <p>When Docker is unavailable, scoped integration tests are recorded as skipped. A non-strict run can still succeed. <code>--strict</code> fails the run when a required test is skipped. Check Docker before CI starts.</p>
+        </div>
+        <p class="muted small">Add <code>TestEnv</code> with these dev-dependencies. The macro uses <code>tokio</code> and <code>anyhow</code> in the package under test. In this checkout, <code>shop-rs-api</code> points <code>cherry-test-core</code> at <code>test/cherry-test-core</code> instead of the git source. Commit the lockfile.</p>
+        <div class="terminal">
+          <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">Cargo.toml · dev-dependencies</span></div>
+<pre>[<span class="key">dev-dependencies</span>]
+<span class="key">anyhow</span> = <span class="string">"1"</span>
+<span class="key">cherry-test-core</span> = { <span class="key">git</span> = <span class="string">"https://github.com/lmrrcc/test"</span>, <span class="key">branch</span> = <span class="string">"main"</span> }
+<span class="key">tokio</span> = { <span class="key">version</span> = <span class="string">"1"</span>, <span class="key">features</span> = [<span class="string">"macros"</span>, <span class="string">"rt-multi-thread"</span>] }</pre>
+        </div>
+        <p>The checkout test opens a cart, adds three units of <code>NB-DOT-A5</code>, posts checkout, and checks the order total and the stock decrease. Names follow <code>{project}_project_{suite}_suite_{test}_test</code>. The macro requires an async function, one <code>env: TestEnv</code> argument, and no declared return type. <code>?</code> is allowed in the body. Ordinary <code>cargo test</code> sees these tests as ignored. Cherry Test selects them in the integration phase. The React storefront covers the same API again with functional tests and visual snapshots: the catalog, cart lines, checkout, and the rejection cases.</p>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="terminal-title">shop-rs-api/tests/integration.rs</span>
+            <button class="copy-button" type="button" data-copy="shop-test">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              <span data-copy-label>Copy</span>
+            </button>
+          </div>
+<pre id="shop-test"><span class="keyword">use</span> cherry_test_core::prelude::*;
+
+<span class="comment">#[cherry_test(scope = </span><span class="string">"shop_checkout"</span><span class="comment">)]</span>
+<span class="keyword">async fn</span> <span class="key">shop_project_checkout_suite_places_order_and_decrements_stock_test</span>(env: TestEnv) {
+    <span class="keyword">let</span> stock_before = stock_of(&amp;env, <span class="string">"NB-DOT-A5"</span>).<span class="keyword">await</span>?;
+    <span class="keyword">let</span> cart_id = open_cart(&amp;env).<span class="keyword">await</span>?;
+    add_item(&amp;env, &amp;cart_id, <span class="string">"NB-DOT-A5"</span>, <span class="number">3</span>).<span class="keyword">await</span>?.assert_status(<span class="number">200</span>);
+    <span class="keyword">let</span> response = env
+        .project(<span class="string">"shop"</span>)
+        .service(<span class="string">"api"</span>)?
+        .post(&amp;format!(<span class="string">"/v1/carts/{cart_id}/checkout"</span>))
+        .send()
+        .<span class="keyword">await</span>;
+    response.assert_status(<span class="number">201</span>);
+    <span class="keyword">let</span> order = response.response_body_json()?;
+    assert_eq!(order[<span class="string">"total_cents"</span>], <span class="number">4200</span>);
+    assert_eq!(stock_of(&amp;env, <span class="string">"NB-DOT-A5"</span>).<span class="keyword">await</span>?, stock_before - <span class="number">3</span>);
+}</pre>
+        </div>
+        <p class="muted small">Use framework mocks for a timeout or an unavailable third-party API, or add the mock server to Compose. Cherry Test runs the tests and services you configure. For a full path, run the real API and database, and add browser tests when the UI is part of the flow. A mocked dependency checks the behavior that mock represents.</p>
+      </div>
+
+      <div class="doc-block" id="coverage">
+        <div class="section-header">
+          <h3 class="heading-2">Coverage and the browser report</h3>
+          <p class="lead">Rust coverage comes from <code>cargo-llvm-cov</code>, Node from Vitest, JVM from JaCoCo, and C/C++ from LLVM. Cherry Test converts those into LCOV and summarizes by package, project, and phase. The HTML file carries its own styles, so reading it needs no IDE and no report server.</p>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Report area</th><th>What you can inspect</th></tr></thead>
+            <tbody>
+              <tr><td>Run summary</td><td>Package status, test counts, coverage, and the run id.</td></tr>
+              <tr><td>Projects</td><td>Package results, with unit, integration, and combined coverage.</td></tr>
+              <tr><td>Tests</td><td>Pass, fail, and skip, plus timing, filters, and failure reasons.</td></tr>
+              <tr><td>Test details</td><td>HTTP records and source snippets when the runner captured them.</td></tr>
+              <tr><td>Changes</td><td>Project and file diffs, line numbers, and coverage markers.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted small">Markers distinguish covered lines, uncovered lines, and lines with no coverage data. A covered line still needs an assertion that checks the behavior. Set <code>diff_base</code> to the branch or commit under review, and fetch it first. <code>empty</code>, <code>empty-tree</code>, and <code>root</code> compare the tracked tree with an empty Git tree. Discovery includes commits since the base, staged changes, unstaged changes, and untracked files.</p>
+        <div class="terminal">
+          <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">diff base and coverage ignore</span></div>
+<pre><span class="key">defaults</span>:
+  <span class="key">diff_base</span>: <span class="string">origin/development</span>
+
+<span class="comment"># .coverageignore at the configuration root</span>
+**/generated/**</pre>
+        </div>
+        <p class="muted small">Keep ignore rules narrow. An exclusion changes what the coverage percentage means, so review edits to that file with the tests.</p>
+      </div>
+
+      <div class="doc-block" id="ci">
+        <div class="section-header">
+          <h3 class="heading-2">Review the change in CI</h3>
+          <p class="lead">Use the report as evidence before a merge, whether a person or an agent wrote the change. A green exit code covers the packages and phases you selected.</p>
+        </div>
+        <ol class="steps">
+          <li>Check out the change, submodules, and the target branch history.</li>
+          <li>Install project dependencies and coverage tools.</li>
+          <li>Start Docker when integration tests need containers.</li>
+          <li>From the configuration root, run <code data-project="binary">cherry-test</code> <code>--strict --no-open</code>.</li>
+          <li>Save <code>reports/</code> and <code>coverage/</code> from the run directory, including when the step fails. <code>latest</code> is a Unix symlink.</li>
+          <li>Review failures, skips, uncovered edits, and the assertions on the changed behavior.</li>
+          <li>Require the CI checks and the code review before the merge.</li>
+        </ol>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="terminal-title">shop root</span>
+            <button class="copy-button" type="button" data-copy="ci-step">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              <span data-copy-label>Copy</span>
+            </button>
+          </div>
+<pre id="ci-step"><span class="prompt">$ </span>set -euo pipefail
+<span class="prompt">$ </span>export CI=true
+<span class="prompt">$ </span>cargo llvm-cov --version
+<span class="prompt">$ </span>docker info >/dev/null
+<span class="prompt">$ </span>docker compose version
+<span class="prompt">$ </span><span data-project="binary">cherry-test</span> --root app/shop --strict --no-open
+<span class="prompt">$ </span>test -s app/shop/target/cherry-test/latest/reports/index.html
+<span class="prompt">$ </span>test -s app/shop/target/cherry-test/latest/coverage/merged.lcov</pre>
+        </div>
+        <p class="muted small">Run that in a fresh checkout with <code>coverage: true</code> and <code>html_report: true</code>. Upload the run's <code>reports/</code> and <code>coverage/</code> under <code>target/cherry-test/runs/</code>. From inside <code>app/shop</code> the same files are <code>target/cherry-test/latest/...</code>. <code>--strict</code> rejects failed or skipped tests, empty required phases, missing requested coverage, and invalid adapter results. A normal run reports CRAP. A high score does not fail the run. Minimum coverage and mutation score stay separate required checks. Review edits to tests, ignore files, and package selection along with the product code.</p>
+      </div>
+
+      <div class="doc-block" id="mutation">
+        <div class="section-header">
+          <h3 class="heading-2">Mutation testing</h3>
+          <p class="lead">Line coverage can stay high while assertions stay weak. Mutation testing is a separate check. Cherry Test does not create mutants or score them.</p>
+        </div>
+        <p class="muted small">A tool changes a comparison, a return value, or an operation, then reruns the tests. A change the tests catch is a killed mutant. A change that leaves the tests passing is a surviving mutant. Some survivors are missing tests. Some do not change observable behavior. Cherry Test starts that tool only when you pass <code>--kinds mutation</code>. Rust uses <code>cargo mutants</code>. C and C++ use Mull. Java and Kotlin use PIT. Node, React, and Vue use StrykerJS with Vitest. Keep that report next to the Cherry Test report and let the mutation tool fail the job.</p>
+        <div class="terminal">
+          <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">mutation</span></div>
+<pre><span class="prompt">$ </span>cargo install cargo-mutants --locked
+<span class="prompt">$ </span><span data-project="binary">cherry-test</span> --root app/mini --kinds mutation --no-open</pre>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Environment</th><th>Tool</th><th>Sample package</th></tr></thead>
+            <tbody>
+              <tr><td>Rust</td><td>cargo-mutants</td><td><code>mini-rs-lib-mcap</code></td></tr>
+              <tr><td>C</td><td>Mull</td><td><code>mini-c-mcap</code></td></tr>
+              <tr><td>C++</td><td>Mull</td><td><code>mini-cpp-mcap</code></td></tr>
+              <tr><td>Java</td><td>PIT</td><td><code>mini-java-spring-mcap</code></td></tr>
+              <tr><td>Kotlin</td><td>PIT</td><td><code>mini-kotlin-spring-mcap</code>, <code>mini-kotlin-ktor-mcap</code></td></tr>
+              <tr><td>Node</td><td>StrykerJS</td><td><code>mini-ts-lib-price</code></td></tr>
+              <tr><td>React</td><td>StrykerJS</td><td><code>mini-ts-web-react</code></td></tr>
+              <tr><td>Vue</td><td>StrykerJS</td><td><code>mini-ts-web-vue</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted small">Further reading: <a href="https://mutants.rs/getting-started.html">cargo-mutants</a>, <a href="https://mull.readthedocs.io/en/latest/Installation.html">Mull</a>, <a href="https://pitest.org/">PIT</a>, <a href="https://stryker-mutator.io/docs/stryker-js/introduction/">StrykerJS</a>, and <a href="https://stryker-mutator.io/docs/mutation-testing-elements/mutant-states-and-metrics/">mutant states</a>.</p>
+      </div>
+
+      <div class="doc-block" id="crap">
+        <div class="section-header">
+          <h3 class="heading-2">CRAP</h3>
+          <p class="lead">CRAP (Change Risk Anti-Patterns) combines cyclomatic complexity with coverage. A function with many paths and little coverage scores higher. Coverage in the formula is a fraction from 0 to 1. The original metric uses basis-path coverage, so compare tools only after checking their definition. The aggregate LCOV percentage in the Cherry Test report is not a CRAP score.</p>
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">CRAP</span></div>
+<pre>CRAP = complexity^2 * (1 - coverage)^3 + complexity
+
+<span class="comment"># complexity 10 → 110 at no coverage,</span>
+<span class="comment"># 22.5 at half coverage, 10 at full coverage</span></pre>
+        </div>
+        <p class="muted small">A normal run calculates cyclomatic complexity for each function in measured source and reports CRAP in the terminal and the HTML report. Pass <code>--no-crap</code> to skip that calculation. Complexity starts at 1 and adds one for each <code>if</code>, loop, <code>catch</code>, switch <code>case</code>, match arm, <code>&amp;&amp;</code>, <code>||</code>, and ternary. Coverage is the fraction of measured lines inside the function, not basis-path coverage. Rust, C, C++, Java, Kotlin, JavaScript, TypeScript, and Vue script blocks are scored. Crap load is 0 when the score is under 30, and <code>complexity * (1 - coverage) + complexity / 30</code> when the score is at or above 30. A score of exactly 30 counts. The HTML report shows each function's complexity, measured-line coverage, CRAP, and crap load, then the workspace totals: function count, total complexity, total CRAP, mean, median, worst score, the count and percent at or above 30, and total crap load. Those totals are repeated per project when each scored file falls under one configured project path. The terminal prints the workspace totals and at most four of the worst functions, each with one source line, and then the suite summary. Files outside every project are labeled outside projects. A high score does not by itself fail the run.</p>
+        <div class="terminal">
+          <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">cherry-test</span></div>
+<pre><span class="prompt">$ </span><span data-project="binary">cherry-test</span> --root app/mini --no-open
+<span class="prompt">$ </span><span data-project="binary">cherry-test</span> --root app/mini --no-crap --no-open</pre>
+        </div>
+        <p class="muted small">Further reading: <a href="https://testing.googleblog.com/2011/02/this-code-is-crap.html">Alberto Savoia's CRAP note</a>.</p>
+      </div>
+
+      <div class="doc-block" id="commands">
+        <div class="section-header">
+          <h3 class="heading-2">Commands</h3>
+          <p class="lead">Inside this repository, <code>cargo cherry-test</code> is the same CLI built from source. A filter selects a project id or a package name.</p>
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">shop</span></div>
+<pre><span class="prompt">$ </span><span data-project="binary">cherry-test</span> --root app/shop --no-open
+<span class="prompt">$ </span><span data-project="binary">cherry-test</span> shop
+<span class="prompt">$ </span><span data-project="binary">cherry-test</span> shop-rs-api
+<span class="prompt">$ </span><span data-project="binary">cherry-test</span> --no-coverage --no-open
+<span class="prompt">$ </span><span data-project="binary">cherry-test</span> -- --nocapture</pre>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Option</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td><code>&lt;filter&gt;</code></td><td>Select a project id or a package name. <code>shop</code> and <code>shop-rs-api</code> are filters once that root is loaded.</td></tr>
+              <tr><td><code>--root &lt;path&gt;</code></td><td>Select a configuration root. Shop in this repo is <code>app/shop</code>.</td></tr>
+              <tr><td><code>--init-only</code></td><td>Load or create the configuration, then exit.</td></tr>
+              <tr><td><code>--force-init</code></td><td>Regenerate <code>cherry-test.yaml</code> from discovery.</td></tr>
+              <tr><td><code>--no-coverage</code></td><td>Run without collecting coverage.</td></tr>
+              <tr><td><code>--no-crap</code></td><td>Skip cyclomatic complexity and the CRAP report.</td></tr>
+              <tr><td><code>--kinds &lt;list&gt;</code></td><td>Run only these phases. <code>mutation</code> runs only when it is named.</td></tr>
+              <tr><td><code>--no-html</code></td><td>Skip HTML generation.</td></tr>
+              <tr><td><code>--no-open</code></td><td>Write the report and leave the browser closed.</td></tr>
+              <tr><td><code>--no-banner</code></td><td>Skip the startup banner.</td></tr>
+              <tr><td><code>-q</code>, <code>--quiet</code></td><td>Reduce terminal output.</td></tr>
+              <tr><td><code>-- &lt;args&gt;</code></td><td>Forward arguments to Rust's test harness.</td></tr>
+              <tr><td><code>--help</code></td><td>Show the full CLI help.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="doc-block" id="runs">
+        <div class="section-header">
+          <h3 class="heading-2">Run files and environment</h3>
+          <p class="lead">Each run has its own directory. Build output can reach several gigabytes, so delete runs you no longer need. When you copy a report, keep adapter results and attachments. Leave rebuildable <code>target/</code> and <code>build/</code> trees behind. Keep generated files out of Git. On systems without the <code>latest</code> symlink, use the path printed in the terminal.</p>
+        </div>
+        <pre class="tree">target/cherry-test/
+  latest -> runs/&lt;run-id&gt;/
+  runs/&lt;run-id&gt;/
+    coverage/
+      &lt;project&gt;/
+      merged.lcov
+    reports/
+      index.html
+      phases.html
+      integration/*.jsonl
+      adapters/&lt;project&gt;/&lt;package&gt;/&lt;phase&gt;/
+        request.json
+        result.json
+        coverage.lcov
+    env.json</pre>
+        <p class="muted small">Files appear for the runners that ran. <code>env.json</code> records the service endpoints the runtime discovered. The runner loads <code>.env.test</code> from the configuration root when that file exists, or from the project-id directory. CI suppresses the automatic browser open.</p>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Variable</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td><code>CHERRY_TEST_WORKSPACE_ROOT</code></td><td>Override the configuration root.</td></tr>
+              <tr><td><code>CHERRY_TEST_SKIP_COVERAGE=1</code></td><td>Disable coverage collection.</td></tr>
+              <tr><td><code>CHERRY_TEST_NO_OPEN=1</code></td><td>Disable the automatic browser open.</td></tr>
+              <tr><td><code>CHERRY_TEST_SKIP_DOCKER=1</code></td><td>Skip container startup and use supplied endpoints. Scoped test selection still depends on Docker preflight.</td></tr>
+              <tr><td><code>CHERRY_TEST_{PROJECT}_{SERVICE}_HOST</code></td><td>Service host exported after startup.</td></tr>
+              <tr><td><code>CHERRY_TEST_{PROJECT}_{SERVICE}_PORT</code></td><td>Mapped service port exported after startup.</td></tr>
+              <tr><td><code>CHERRY_TEST_{PROJECT}_{SERVICE}_URL</code></td><td>HTTP service URL exported after startup.</td></tr>
+              <tr><td><code>CHERRY_TEST_RUN_DIR</code></td><td>Current run directory, set by Cherry Test.</td></tr>
+              <tr><td><code>CHERRY_TEST_REPORT_DIR</code></td><td>Current report directory, set by Cherry Test.</td></tr>
+              <tr><td><code>VITEST_JSON_REPORT</code></td><td>JSON output path passed to Vitest.</td></tr>
+              <tr><td><code>VITEST_COVERAGE_DIR</code></td><td>Coverage directory passed to Vitest.</td></tr>
+              <tr><td><code>RUST_LOG</code></td><td>Tracing filter, such as <code>cherry_test=info</code>.</td></tr>
+              <tr><td><code>NO_COLOR</code></td><td>Disable terminal colors.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="doc-block" id="limits">
+        <div class="section-header">
+          <h3 class="heading-2">Current limits</h3>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Limit</th><th>What to do</th></tr></thead>
+            <tbody>
+              <tr><td>Docker skips</td><td>Unavailable Docker skips scoped integration tests. Confirm those tests ran in CI.</td></tr>
+              <tr><td>Rust coverage</td><td>Missing <code>cargo-llvm-cov</code> fails a strict coverage run. A non-strict local run can continue with a warning.</td></tr>
+              <tr><td>Rust test selection</td><td>Unit runs use <code>cargo test --lib</code>. Integration runs use ignored integration targets. Doctests and other Cargo targets stay out of that selection.</td></tr>
+              <tr><td>Container coverage</td><td>The service image needs instrumentation and collection. Starting a container does not measure coverage by itself. The price sample collects service coverage for integration, functional, and visual phases.</td></tr>
+              <tr><td>Independent Cargo workspaces</td><td>Rust execution uses the configuration root's workspace. Separate roots mean separate runs and reports.</td></tr>
+              <tr><td>External results</td><td>A custom tool follows the adapter protocol to import tests, coverage, and artifacts.</td></tr>
+              <tr><td><code>--keep-going</code></td><td>It is checked between configuration roots. Inside a root, package processing already continues after a package failure. It is not a general recovery policy.</td></tr>
+              <tr><td>Concurrent container runs</td><td>Each CLI run uses its own Compose project name. Compose files also need to avoid fixed host ports and fixed container names.</td></tr>
+              <tr><td>Quality gates</td><td>CRAP is reported on a normal run and does not by itself fail the job. Mutation score and a minimum coverage threshold stay external tools or extra CI checks.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="doc-block" id="development">
+        <div class="section-header">
+          <h3 class="heading-2">Development</h3>
+          <p class="lead">Four crates implement the runner. <code>app/mini</code> is a second sample, in its own Git submodule and Cargo workspace. Read <a href="https://github.com/lmrrcc/test/blob/main/AGENTS.md">AGENTS.md</a> before changing the code. A wrong success or a missing coverage file can hide defects in every project that uses the runner.</p>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+</main>
+
+<footer class="footer">
+  <div class="container cluster" style="justify-content: space-between">
+    <a class="brand" href="index.html"><span data-project="name">Cherry Test</span></a>
+    <nav class="cluster" aria-label="Footer">
+      <a href="docs.html">Docs</a>
+      <a data-project-href href="https://github.com/lmrrcc/test">GitHub</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="https://github.com/lmrrcc/test/issues">Report an issue</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="project.js"></script>
+<script src="data/releases.js"></script>
+<script src="app.js"></script>

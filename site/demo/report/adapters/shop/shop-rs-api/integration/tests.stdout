@@ -1,0 +1,31 @@
+   Compiling ring v0.17.14
+   Compiling rustls v0.23.45
+   Compiling rustls-webpki v0.103.15
+   Compiling sqlx-core v0.8.6
+   Compiling tokio-rustls v0.26.6
+   Compiling hyper-rustls v0.27.10
+   Compiling reqwest v0.12.28
+   Compiling cherry-test-core v0.3.16 (~/cherry-test/test/cherry-test-core)
+   Compiling sqlx-postgres v0.8.6
+   Compiling sqlx-macros-core v0.8.6
+   Compiling sqlx-macros v0.8.6
+   Compiling sqlx v0.8.6
+   Compiling shop-rs-api v0.1.0 (~/shop/shop-rs-api)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.53s
+     Running tests/integration.rs (target/debug/deps/integration-bed5a23d62e684e4)
+
+running 11 tests
+test shop_project_cart_suite_adds_line_to_cart_test ... ok
+test shop_project_cart_suite_rejects_quantity_beyond_stock_test ... ok
+test shop_project_cart_suite_rejects_zero_quantity_test ... ok
+test shop_project_cart_suite_unknown_cart_not_found_test ... ok
+test shop_project_catalog_suite_lists_seeded_products_test ... ok
+test shop_project_catalog_suite_rejects_invalid_sku_test ... ok
+test shop_project_catalog_suite_serves_openapi_test ... ok
+test shop_project_catalog_suite_unknown_sku_not_found_test ... ok
+test shop_project_checkout_suite_places_order_and_decrements_stock_test ... ok
+test shop_project_checkout_suite_rejects_empty_cart_test ... ok
+test shop_project_checkout_suite_rejects_second_checkout_test ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+

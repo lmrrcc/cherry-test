@@ -1,0 +1,263 @@
+<meta charset="utf-8">
+<title>Cherry Test</title>
+<meta name="description" content="Cherry Test runs your workspace's tests and brings the results and coverage together. Built for projects with different languages, frameworks and services.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="design-system/tokens.css">
+<link rel="stylesheet" href="design-system/components.css">
+<link rel="stylesheet" href="vendor/asciinema-player.css">
+<style>
+  .hero { padding: var(--space-8) 0 var(--space-7); position: relative; overflow: hidden; }
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 30%, transparent 75%);
+    pointer-events: none;
+  }
+  .hero-copy { position: relative; display: flex; flex-direction: column; gap: var(--space-4); align-items: flex-start; max-width: 760px; }
+  .accent-text { color: var(--accent-11); }
+  .reading { max-width: 62ch; }
+  .reading p { margin: 0; }
+  .section-subtle { background: var(--surface-sunken); border-block: 1px solid var(--border-subtle); }
+  .steps-grid { display: grid; gap: var(--space-5); margin: 0; padding: 0; list-style: none; }
+  @media (min-width: 820px) { .steps-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-6); } }
+  .steps-grid li { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
+  .steps-grid p { margin: 0; color: var(--text-secondary); }
+  #demo { padding-top: var(--space-5); }
+  .run-stage { width: 100%; margin: 0; border: 1px solid var(--border-default); border-radius: var(--radius-4); overflow: hidden; background: var(--surface-code); box-shadow: var(--shadow-3); }
+  .run-stage-view { position: relative; width: 100%; aspect-ratio: 2 / 1; overflow: hidden; background: #12161d; }
+  #run-player { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .run-stage .ap-wrapper { width: 100%; height: 100%; align-items: center; justify-content: center; background: #12161d; }
+  .run-stage .ap-player { border-radius: 0; max-width: 100%; max-height: 100%; }
+  .run-stage .ap-overlay-start { display: none; }
+  .run-unavailable { display: none; place-items: center; height: 100%; padding: var(--space-5); color: var(--code-text); text-align: center; }
+  .run-stage[data-state="unavailable"] .run-unavailable { display: grid; }
+  .run-stage[data-state="unavailable"] #run-player { display: none; }
+
+  .report-split { display: grid; gap: var(--space-6); align-items: start; }
+  .report-split > * { min-width: 0; }
+  @media (min-width: 980px) { .report-split { grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr); } }
+  .benefits { display: flex; flex-direction: column; gap: var(--space-5); margin: 0; padding: 0; list-style: none; }
+  .benefits li { display: flex; flex-direction: column; gap: var(--space-2); }
+  .benefits p { margin: 0; color: var(--text-secondary); }
+  .report-frame { margin: 0; border: 1px solid var(--border-default); border-radius: var(--radius-4); overflow: hidden; background: var(--surface-raised); box-shadow: var(--shadow-2); }
+  .report-frame iframe { display: block; width: 100%; height: 34rem; border: 0; background: var(--surface-page); }
+  .report-frame figcaption { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); font-size: var(--text-sm); color: var(--text-secondary); }
+  .tools-table td:first-child { white-space: nowrap; font-weight: var(--weight-medium); }
+  @media (max-width: 640px) {
+    .tools-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+    .tools-table tr { display: block; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+    .tools-table tr:last-child { border-bottom: 0; }
+    .tools-table td { display: block; padding: 0; border: 0; }
+    .tools-table td:first-child { margin-bottom: 4px; }
+  }
+</style>
+
+<a class="visually-hidden" href="#top">Skip to content</a>
+<header class="navbar">
+  <div class="container navbar-inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      </span>
+      <span data-project="name">Cherry Test</span>
+    </a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="#demo">Demo</a>
+      <a href="docs.html">Docs</a>
+      <a data-project-href href="https://github.com/lmrrcc/test">GitHub</a>
+    </nav>
+    <div class="navbar-actions">
+      <a class="button button-primary button-small" href="#get-started">Get started</a>
+      <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle colour theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="container">
+      <div class="hero-copy">
+      <h1 class="display">Run your tests.<br><span class="accent-text">Read one report.</span></h1>
+      <p class="lead"><span data-project="name">Cherry Test</span> runs your workspace’s tests and brings the results and coverage together. Built for projects with different languages, frameworks and services.</p>
+      <p class="muted">Run it locally or in CI. Read the summary in your terminal and open the browser report for the details.</p>
+      <div class="cluster">
+        <a class="button button-primary" href="#get-started">Get started</a>
+        <a class="button button-secondary" href="#demo">Watch the demo</a>
+      </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="problem" aria-labelledby="problem-title">
+    <div class="container">
+      <div class="stack reading" style="--stack-gap: var(--space-4)">
+      <h2 class="heading-1" id="problem-title">One product, several test setups</h2>
+      <p>Your frontend, backend and shared libraries might live in one monorepo or across several repositories. They use different languages and test tools, but they still need to work together.</p>
+      <p>Checking a change means running several commands, starting databases and services, and reading separate reports. A passing test suite in one package doesn’t tell you whether the checkout flow still works—or whether another service is affected.</p>
+      <p>As the project grows, keeping that process consistent becomes a job of its own.</p>
+      <p><span data-project="name">Cherry Test</span> gives each workspace a common way to configure, run and inspect its tests.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="workflow" aria-labelledby="workflow-title">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="heading-1" id="workflow-title">From configuration to results</h2>
+      </div>
+      <ol class="steps-grid">
+        <li>
+          <span class="eyebrow">Step 1</span>
+          <h3 class="heading-3">Choose what to test</h3>
+          <p>Generate a <code>cherry-test.yaml</code> file and review the packages it finds. Configure the test suites and services your workspace needs.</p>
+        </li>
+        <li>
+          <span class="eyebrow">Step 2</span>
+          <h3 class="heading-3">Run the tests together</h3>
+          <p><span data-project="name">Cherry Test</span> runs your configured test tools and starts Docker Compose services for integration tests that need them.</p>
+        </li>
+        <li>
+          <span class="eyebrow">Step 3</span>
+          <h3 class="heading-3">Open the report</h3>
+          <p>See passed, failed and skipped tests alongside coverage. Start with the summary, then inspect the details.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section" id="demo" aria-labelledby="demo-title">
+    <div class="container stack" style="--stack-gap: var(--space-5)">
+      <div class="section-header" style="margin-bottom: 0">
+        <h2 class="heading-1" id="demo-title">See Shop run in 13 seconds</h2>
+        <p class="lead">Shop is one configuration root, <code>app/shop</code>, with one <code>cherry-test.yaml</code> and one report. That root holds three components: <code>shop-rs-api</code> (Rust, Axum), <code>shop-ts-lib-cart</code> (TypeScript) and <code>shop-ts-web-react</code> (React). Postgres is the Compose database, and the <code>shop_checkout</code> scope starts that stack. Another repository is another <code>--root</code> and its own report.</p>
+        <p class="muted"><code>cherry-test --root app/shop --verbose</code> loads that file, runs Cargo, Vitest and Playwright where each package asks for them, and lists every suite and test at the end. This recording is about 13 seconds. The real run takes about two minutes, mostly while Docker builds the API. The sample report stays on its own button.</p>
+      </div>
+      <figure class="run-stage" id="run-stage" data-state="player">
+        <div class="run-stage-view">
+          <div id="run-player" role="region" aria-label="Terminal recording of cherry-test --root app/shop --verbose, about 13 seconds"></div>
+          <p class="run-unavailable">The recording could not be loaded. Open the sample report to see the results of this run.</p>
+        </div>
+      </figure>
+      <div class="cluster" style="justify-content: space-between">
+        <span class="muted small">Recorded run of <code>cherry-test --root app/shop --verbose</code>.</span>
+        <span class="cluster" style="--cluster-gap: var(--space-2)">
+          <button class="button button-primary" type="button" id="run-play">Play demo</button>
+          <a class="button button-secondary" href="demo/report/index.html">Open sample report</a>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="report" aria-labelledby="report-title">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="heading-1" id="report-title">Find what needs your attention</h2>
+      </div>
+      <div class="report-split">
+        <div class="stack" style="--stack-gap: var(--space-6)">
+          <ul class="benefits">
+            <li>
+              <h3 class="heading-3">Investigate failures</h3>
+              <p>See which tests failed and why. Inspect captured requests, screenshots and browser traces when available.</p>
+            </li>
+            <li>
+              <h3 class="heading-3">Check coverage on your changes</h3>
+              <p>View code changes alongside coverage to spot lines that your tests haven’t reached.</p>
+            </li>
+            <li>
+              <h3 class="heading-3">Review the results in a browser</h3>
+              <p>Open the HTML report locally or save it as a CI artifact for your team to review.</p>
+            </li>
+          </ul>
+          <div><a class="button button-secondary" href="demo/report/index.html">Explore the sample report</a></div>
+        </div>
+        <figure class="report-frame">
+          <iframe src="demo/report/index.html" title="HTML report from the recorded shop run" loading="lazy"></iframe>
+          <figcaption>The HTML report produced by the recorded run. Scroll inside it, or open it in its own tab.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="tools" aria-labelledby="tools-title">
+    <div class="container stack" style="--stack-gap: var(--space-4)">
+      <h2 class="heading-1" id="tools-title">Works with the tools your project uses</h2>
+      <div class="table-wrap">
+        <table class="table tools-table">
+          <thead><tr><th scope="col">Your stack</th><th scope="col">Supported tools</th></tr></thead>
+          <tbody>
+            <tr><td>Rust</td><td>Cargo</td></tr>
+            <tr><td>JavaScript and TypeScript</td><td>Vitest and Playwright, including React and Vue projects</td></tr>
+            <tr><td>Java and Kotlin</td><td>Maven or Gradle, with JUnit results</td></tr>
+            <tr><td>C and C++</td><td>CMake/CTest, Unity and GoogleTest</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted small">Coverage comes from the tools configured for each package.</p>
+      <p><a href="docs.html#support">View support and setup details</a></p>
+    </div>
+  </section>
+
+  <section class="section section-subtle" id="get-started" aria-labelledby="get-started-title">
+    <div class="container">
+      <div class="stack reading" style="--stack-gap: var(--space-4)">
+      <h2 class="heading-1" id="get-started-title">Try it on your workspace</h2>
+      <p>Follow the <a href="docs.html#install">installation guide</a>, then generate a configuration:</p>
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span class="terminal-title">generate cherry-test.yaml</span>
+          <button class="copy-button" type="button" data-copy="command-init" aria-label="Copy the configuration command">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+            <span data-copy-label>Copy</span>
+          </button>
+        </div>
+        <pre id="command-init"><span class="prompt">$ </span><span data-project="binary">cherry-test</span> --init-only</pre>
+      </div>
+      <p>Review the packages, test suites and services in <code>cherry-test.yaml</code>. When you’re ready, run:</p>
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span class="terminal-title">run the tests</span>
+          <button class="copy-button" type="button" data-copy="command-run" aria-label="Copy the run command">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+            <span data-copy-label>Copy</span>
+          </button>
+        </div>
+        <pre id="command-run"><span class="prompt">$ </span><span data-project="binary">cherry-test</span></pre>
+      </div>
+      <p><span data-project="name">Cherry Test</span> prints a terminal summary and opens the browser report.</p>
+      <p class="muted">Each configuration root has its own run and report. Independent workspaces are run separately.</p>
+      <div class="cluster">
+        <a class="button button-primary" href="docs.html#install">Install Cherry Test</a>
+        <a class="button button-secondary" href="docs.html#quick-start">Read the quick start</a>
+      </div>
+      <p class="muted small"><span data-project="name">Cherry Test</span> is in early development. If something doesn’t work for your project, tell us about it on <a href="https://github.com/lmrrcc/test/issues">GitHub</a>.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="container cluster" style="justify-content: space-between">
+    <a class="brand" href="index.html"><span data-project="name">Cherry Test</span></a>
+    <nav class="cluster" aria-label="Footer">
+      <a href="docs.html">Docs</a>
+      <a data-project-href href="https://github.com/lmrrcc/test">GitHub</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="https://github.com/lmrrcc/test/issues">Report an issue</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="project.js"></script>
+<script src="vendor/asciinema-player.min.js"></script>
+<script src="app.js?v=20261009-summary"></script>
