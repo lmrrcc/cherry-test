@@ -4,10 +4,13 @@ import com.cherrytest.cli.adapters.Adapters;
 import com.cherrytest.cli.adapters.ProcessRunner;
 import com.cherrytest.cli.nativeos.Terminal;
 import com.cherrytest.common.rustcompat.AnyhowError;
+import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public final class Main {
     public static final String VERSION = "0.3.16";
@@ -58,13 +61,19 @@ public final class Main {
             List<String> command = new ArrayList<>();
             command.add("--enable-native-access=ALL-UNNAMED");
             command.add("-cp");
-            command.add(System.getProperty("java.class.path"));
+            command.add(absoluteClassPath(System.getProperty("java.class.path"), currentDirectory()));
             command.add(Main.class.getName());
             command.add("adapter");
             command.add(name);
             command.add("run");
             return new ProcessRunner.Spec(java, command, Map.of(), workingDirectory, stdin);
         };
+    }
+
+    static String absoluteClassPath(String classPath, Path base) {
+        return Arrays.stream(classPath.split(File.pathSeparator, -1))
+                .map(entry -> base.resolve(entry).normalize().toString())
+                .collect(Collectors.joining(File.pathSeparator));
     }
 
     static Path currentDirectory() {
