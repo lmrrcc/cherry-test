@@ -2,3 +2,11 @@
 	path = app/mini
 	url = https://github.com/lmrrcc/mini.git
 	branch = mini
+[submodule "mini-java"]
+	path = app/mini-java
+	url = https://github.com/lmrrcc/mini.git
+	branch = java
+[submodule "shop-java"]
+	path = app/shop-java
+	url = https://github.com/lmrrcc/shop.git
+	branch = java
