@@ -1,0 +1,1698 @@
+{
+  "strings": [
+    {
+      "chars_count": 0,
+      "input": "",
+      "lines": [],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "",
+      "to_lowercase": "",
+      "to_uppercase": "",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 0
+    },
+    {
+      "chars_count": 1,
+      "input": " ",
+      "lines": [
+        " "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": " ",
+      "to_lowercase": " ",
+      "to_uppercase": " ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 1
+    },
+    {
+      "chars_count": 1,
+      "input": "a",
+      "lines": [
+        "a"
+      ],
+      "split_whitespace": [
+        "a"
+      ],
+      "to_ascii_lowercase": "a",
+      "to_lowercase": "a",
+      "to_uppercase": "A",
+      "trim": "a",
+      "trim_start": "a",
+      "utf8_len": 1
+    },
+    {
+      "chars_count": 3,
+      "input": " a ",
+      "lines": [
+        " a "
+      ],
+      "split_whitespace": [
+        "a"
+      ],
+      "to_ascii_lowercase": " a ",
+      "to_lowercase": " a ",
+      "to_uppercase": " A ",
+      "trim": "a",
+      "trim_start": "a ",
+      "utf8_len": 3
+    },
+    {
+      "chars_count": 3,
+      "input": "\ta\n",
+      "lines": [
+        "\ta"
+      ],
+      "split_whitespace": [
+        "a"
+      ],
+      "to_ascii_lowercase": "\ta\n",
+      "to_lowercase": "\ta\n",
+      "to_uppercase": "\tA\n",
+      "trim": "a",
+      "trim_start": "a\n",
+      "utf8_len": 3
+    },
+    {
+      "chars_count": 4,
+      "input": "a\r\nb",
+      "lines": [
+        "a",
+        "b"
+      ],
+      "split_whitespace": [
+        "a",
+        "b"
+      ],
+      "to_ascii_lowercase": "a\r\nb",
+      "to_lowercase": "a\r\nb",
+      "to_uppercase": "A\r\nB",
+      "trim": "a\r\nb",
+      "trim_start": "a\r\nb",
+      "utf8_len": 4
+    },
+    {
+      "chars_count": 3,
+      "input": "a\rb",
+      "lines": [
+        "a\rb"
+      ],
+      "split_whitespace": [
+        "a",
+        "b"
+      ],
+      "to_ascii_lowercase": "a\rb",
+      "to_lowercase": "a\rb",
+      "to_uppercase": "A\rB",
+      "trim": "a\rb",
+      "trim_start": "a\rb",
+      "utf8_len": 3
+    },
+    {
+      "chars_count": 2,
+      "input": "a\r",
+      "lines": [
+        "a\r"
+      ],
+      "split_whitespace": [
+        "a"
+      ],
+      "to_ascii_lowercase": "a\r",
+      "to_lowercase": "a\r",
+      "to_uppercase": "A\r",
+      "trim": "a",
+      "trim_start": "a\r",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 2,
+      "input": "a\n",
+      "lines": [
+        "a"
+      ],
+      "split_whitespace": [
+        "a"
+      ],
+      "to_ascii_lowercase": "a\n",
+      "to_lowercase": "a\n",
+      "to_uppercase": "A\n",
+      "trim": "a",
+      "trim_start": "a\n",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 3,
+      "input": "a\n\n",
+      "lines": [
+        "a",
+        ""
+      ],
+      "split_whitespace": [
+        "a"
+      ],
+      "to_ascii_lowercase": "a\n\n",
+      "to_lowercase": "a\n\n",
+      "to_uppercase": "A\n\n",
+      "trim": "a",
+      "trim_start": "a\n\n",
+      "utf8_len": 3
+    },
+    {
+      "chars_count": 1,
+      "input": "\n",
+      "lines": [
+        ""
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "\n",
+      "to_lowercase": "\n",
+      "to_uppercase": "\n",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 1
+    },
+    {
+      "chars_count": 2,
+      "input": "\r\n",
+      "lines": [
+        ""
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "\r\n",
+      "to_lowercase": "\r\n",
+      "to_uppercase": "\r\n",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 1,
+      "input": "\r",
+      "lines": [
+        "\r"
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "\r",
+      "to_lowercase": "\r",
+      "to_uppercase": "\r",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 1
+    },
+    {
+      "chars_count": 4,
+      "input": "a\r\r\n",
+      "lines": [
+        "a\r"
+      ],
+      "split_whitespace": [
+        "a"
+      ],
+      "to_ascii_lowercase": "a\r\r\n",
+      "to_lowercase": "a\r\r\n",
+      "to_uppercase": "A\r\r\n",
+      "trim": "a",
+      "trim_start": "a\r\r\n",
+      "utf8_len": 4
+    },
+    {
+      "chars_count": 4,
+      "input": "a\n\rb",
+      "lines": [
+        "a",
+        "\rb"
+      ],
+      "split_whitespace": [
+        "a",
+        "b"
+      ],
+      "to_ascii_lowercase": "a\n\rb",
+      "to_lowercase": "a\n\rb",
+      "to_uppercase": "A\n\rB",
+      "trim": "a\n\rb",
+      "trim_start": "a\n\rb",
+      "utf8_len": 4
+    },
+    {
+      "chars_count": 18,
+      "input": "line1\nline2\r\nline3",
+      "lines": [
+        "line1",
+        "line2",
+        "line3"
+      ],
+      "split_whitespace": [
+        "line1",
+        "line2",
+        "line3"
+      ],
+      "to_ascii_lowercase": "line1\nline2\r\nline3",
+      "to_lowercase": "line1\nline2\r\nline3",
+      "to_uppercase": "LINE1\nLINE2\r\nLINE3",
+      "trim": "line1\nline2\r\nline3",
+      "trim_start": "line1\nline2\r\nline3",
+      "utf8_len": 18
+    },
+    {
+      "chars_count": 18,
+      "input": "  two  words\there ",
+      "lines": [
+        "  two  words\there "
+      ],
+      "split_whitespace": [
+        "two",
+        "words",
+        "here"
+      ],
+      "to_ascii_lowercase": "  two  words\there ",
+      "to_lowercase": "  two  words\there ",
+      "to_uppercase": "  TWO  WORDS\tHERE ",
+      "trim": "two  words\there",
+      "trim_start": "two  words\there ",
+      "utf8_len": 18
+    },
+    {
+      "chars_count": 3,
+      "input": "x\u0000y",
+      "lines": [
+        "x\u0000y"
+      ],
+      "split_whitespace": [
+        "x\u0000y"
+      ],
+      "to_ascii_lowercase": "x\u0000y",
+      "to_lowercase": "x\u0000y",
+      "to_uppercase": "X\u0000Y",
+      "trim": "x\u0000y",
+      "trim_start": "x\u0000y",
+      "utf8_len": 3
+    },
+    {
+      "chars_count": 1,
+      "input": "ß",
+      "lines": [
+        "ß"
+      ],
+      "split_whitespace": [
+        "ß"
+      ],
+      "to_ascii_lowercase": "ß",
+      "to_lowercase": "ß",
+      "to_uppercase": "SS",
+      "trim": "ß",
+      "trim_start": "ß",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 1,
+      "input": "ŉ",
+      "lines": [
+        "ŉ"
+      ],
+      "split_whitespace": [
+        "ŉ"
+      ],
+      "to_ascii_lowercase": "ŉ",
+      "to_lowercase": "ŉ",
+      "to_uppercase": "ʼN",
+      "trim": "ŉ",
+      "trim_start": "ŉ",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 1,
+      "input": "ǅ",
+      "lines": [
+        "ǅ"
+      ],
+      "split_whitespace": [
+        "ǅ"
+      ],
+      "to_ascii_lowercase": "ǅ",
+      "to_lowercase": "ǆ",
+      "to_uppercase": "Ǆ",
+      "trim": "ǅ",
+      "trim_start": "ǅ",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 1,
+      "input": "İ",
+      "lines": [
+        "İ"
+      ],
+      "split_whitespace": [
+        "İ"
+      ],
+      "to_ascii_lowercase": "İ",
+      "to_lowercase": "i̇",
+      "to_uppercase": "İ",
+      "trim": "İ",
+      "trim_start": "İ",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 1,
+      "input": "ı",
+      "lines": [
+        "ı"
+      ],
+      "split_whitespace": [
+        "ı"
+      ],
+      "to_ascii_lowercase": "ı",
+      "to_lowercase": "ı",
+      "to_uppercase": "I",
+      "trim": "ı",
+      "trim_start": "ı",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 1,
+      "input": "ﬃ",
+      "lines": [
+        "ﬃ"
+      ],
+      "split_whitespace": [
+        "ﬃ"
+      ],
+      "to_ascii_lowercase": "ﬃ",
+      "to_lowercase": "ﬃ",
+      "to_uppercase": "FFI",
+      "trim": "ﬃ",
+      "trim_start": "ﬃ",
+      "utf8_len": 3
+    },
+    {
+      "chars_count": 2,
+      "input": "ΑΣ",
+      "lines": [
+        "ΑΣ"
+      ],
+      "split_whitespace": [
+        "ΑΣ"
+      ],
+      "to_ascii_lowercase": "ΑΣ",
+      "to_lowercase": "ας",
+      "to_uppercase": "ΑΣ",
+      "trim": "ΑΣ",
+      "trim_start": "ΑΣ",
+      "utf8_len": 4
+    },
+    {
+      "chars_count": 4,
+      "input": "ΑΣ Α",
+      "lines": [
+        "ΑΣ Α"
+      ],
+      "split_whitespace": [
+        "ΑΣ",
+        "Α"
+      ],
+      "to_ascii_lowercase": "ΑΣ Α",
+      "to_lowercase": "ας α",
+      "to_uppercase": "ΑΣ Α",
+      "trim": "ΑΣ Α",
+      "trim_start": "ΑΣ Α",
+      "utf8_len": 7
+    },
+    {
+      "chars_count": 1,
+      "input": "Σ",
+      "lines": [
+        "Σ"
+      ],
+      "split_whitespace": [
+        "Σ"
+      ],
+      "to_ascii_lowercase": "Σ",
+      "to_lowercase": "σ",
+      "to_uppercase": "Σ",
+      "trim": "Σ",
+      "trim_start": "Σ",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 3,
+      "input": "aΣb",
+      "lines": [
+        "aΣb"
+      ],
+      "split_whitespace": [
+        "aΣb"
+      ],
+      "to_ascii_lowercase": "aΣb",
+      "to_lowercase": "aσb",
+      "to_uppercase": "AΣB",
+      "trim": "aΣb",
+      "trim_start": "aΣb",
+      "utf8_len": 4
+    },
+    {
+      "chars_count": 2,
+      "input": "aΣ",
+      "lines": [
+        "aΣ"
+      ],
+      "split_whitespace": [
+        "aΣ"
+      ],
+      "to_ascii_lowercase": "aΣ",
+      "to_lowercase": "aς",
+      "to_uppercase": "AΣ",
+      "trim": "aΣ",
+      "trim_start": "aΣ",
+      "utf8_len": 3
+    },
+    {
+      "chars_count": 6,
+      "input": "straße",
+      "lines": [
+        "straße"
+      ],
+      "split_whitespace": [
+        "straße"
+      ],
+      "to_ascii_lowercase": "straße",
+      "to_lowercase": "straße",
+      "to_uppercase": "STRASSE",
+      "trim": "straße",
+      "trim_start": "straße",
+      "utf8_len": 7
+    },
+    {
+      "chars_count": 1,
+      "input": "Ǆ",
+      "lines": [
+        "Ǆ"
+      ],
+      "split_whitespace": [
+        "Ǆ"
+      ],
+      "to_ascii_lowercase": "Ǆ",
+      "to_lowercase": "ǆ",
+      "to_uppercase": "Ǆ",
+      "trim": "Ǆ",
+      "trim_start": "Ǆ",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 1,
+      "input": "ǈ",
+      "lines": [
+        "ǈ"
+      ],
+      "split_whitespace": [
+        "ǈ"
+      ],
+      "to_ascii_lowercase": "ǈ",
+      "to_lowercase": "ǉ",
+      "to_uppercase": "Ǉ",
+      "trim": "ǈ",
+      "trim_start": "ǈ",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 1,
+      "input": "ᾳ",
+      "lines": [
+        "ᾳ"
+      ],
+      "split_whitespace": [
+        "ᾳ"
+      ],
+      "to_ascii_lowercase": "ᾳ",
+      "to_lowercase": "ᾳ",
+      "to_uppercase": "ΑΙ",
+      "trim": "ᾳ",
+      "trim_start": "ᾳ",
+      "utf8_len": 3
+    },
+    {
+      "chars_count": 1,
+      "input": "ǰ",
+      "lines": [
+        "ǰ"
+      ],
+      "split_whitespace": [
+        "ǰ"
+      ],
+      "to_ascii_lowercase": "ǰ",
+      "to_lowercase": "ǰ",
+      "to_uppercase": "J̌",
+      "trim": "ǰ",
+      "trim_start": "ǰ",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 1,
+      "input": "𐐀",
+      "lines": [
+        "𐐀"
+      ],
+      "split_whitespace": [
+        "𐐀"
+      ],
+      "to_ascii_lowercase": "𐐀",
+      "to_lowercase": "𐐨",
+      "to_uppercase": "𐐀",
+      "trim": "𐐀",
+      "trim_start": "𐐀",
+      "utf8_len": 4
+    },
+    {
+      "chars_count": 1,
+      "input": "𞤀",
+      "lines": [
+        "𞤀"
+      ],
+      "split_whitespace": [
+        "𞤀"
+      ],
+      "to_ascii_lowercase": "𞤀",
+      "to_lowercase": "𞤢",
+      "to_uppercase": "𞤀",
+      "trim": "𞤀",
+      "trim_start": "𞤀",
+      "utf8_len": 4
+    },
+    {
+      "chars_count": 1,
+      "input": "ꭰ",
+      "lines": [
+        "ꭰ"
+      ],
+      "split_whitespace": [
+        "ꭰ"
+      ],
+      "to_ascii_lowercase": "ꭰ",
+      "to_lowercase": "ꭰ",
+      "to_uppercase": "Ꭰ",
+      "trim": "ꭰ",
+      "trim_start": "ꭰ",
+      "utf8_len": 3
+    },
+    {
+      "chars_count": 1,
+      "input": "Ꭰ",
+      "lines": [
+        "Ꭰ"
+      ],
+      "split_whitespace": [
+        "Ꭰ"
+      ],
+      "to_ascii_lowercase": "Ꭰ",
+      "to_lowercase": "ꭰ",
+      "to_uppercase": "Ꭰ",
+      "trim": "Ꭰ",
+      "trim_start": "Ꭰ",
+      "utf8_len": 3
+    },
+    {
+      "chars_count": 1,
+      "input": "Ω",
+      "lines": [
+        "Ω"
+      ],
+      "split_whitespace": [
+        "Ω"
+      ],
+      "to_ascii_lowercase": "Ω",
+      "to_lowercase": "ω",
+      "to_uppercase": "Ω",
+      "trim": "Ω",
+      "trim_start": "Ω",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 1,
+      "input": "K",
+      "lines": [
+        "K"
+      ],
+      "split_whitespace": [
+        "K"
+      ],
+      "to_ascii_lowercase": "k",
+      "to_lowercase": "k",
+      "to_uppercase": "K",
+      "trim": "K",
+      "trim_start": "K",
+      "utf8_len": 1
+    },
+    {
+      "chars_count": 1,
+      "input": "Å",
+      "lines": [
+        "Å"
+      ],
+      "split_whitespace": [
+        "Å"
+      ],
+      "to_ascii_lowercase": "Å",
+      "to_lowercase": "å",
+      "to_uppercase": "Å",
+      "trim": "Å",
+      "trim_start": "Å",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 7,
+      "input": "😀 smile",
+      "lines": [
+        "😀 smile"
+      ],
+      "split_whitespace": [
+        "😀",
+        "smile"
+      ],
+      "to_ascii_lowercase": "😀 smile",
+      "to_lowercase": "😀 smile",
+      "to_uppercase": "😀 SMILE",
+      "trim": "😀 smile",
+      "trim_start": "😀 smile",
+      "utf8_len": 10
+    },
+    {
+      "chars_count": 14,
+      "input": "MiXeD Case 123",
+      "lines": [
+        "MiXeD Case 123"
+      ],
+      "split_whitespace": [
+        "MiXeD",
+        "Case",
+        "123"
+      ],
+      "to_ascii_lowercase": "mixed case 123",
+      "to_lowercase": "mixed case 123",
+      "to_uppercase": "MIXED CASE 123",
+      "trim": "MiXeD Case 123",
+      "trim_start": "MiXeD Case 123",
+      "utf8_len": 14
+    },
+    {
+      "chars_count": 5,
+      "input": "\tx\ty\t",
+      "lines": [
+        "\tx\ty\t"
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": "\tx\ty\t",
+      "to_lowercase": "\tx\ty\t",
+      "to_uppercase": "\tX\tY\t",
+      "trim": "x\ty",
+      "trim_start": "x\ty\t",
+      "utf8_len": 5
+    },
+    {
+      "chars_count": 2,
+      "input": "\t\t",
+      "lines": [
+        "\t\t"
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "\t\t",
+      "to_lowercase": "\t\t",
+      "to_uppercase": "\t\t",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 5,
+      "input": "\nx\ny\n",
+      "lines": [
+        "",
+        "x",
+        "y"
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": "\nx\ny\n",
+      "to_lowercase": "\nx\ny\n",
+      "to_uppercase": "\nX\nY\n",
+      "trim": "x\ny",
+      "trim_start": "x\ny\n",
+      "utf8_len": 5
+    },
+    {
+      "chars_count": 2,
+      "input": "\n\n",
+      "lines": [
+        "",
+        ""
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "\n\n",
+      "to_lowercase": "\n\n",
+      "to_uppercase": "\n\n",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 5,
+      "input": "\u000bx\u000by\u000b",
+      "lines": [
+        "\u000bx\u000by\u000b"
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": "\u000bx\u000by\u000b",
+      "to_lowercase": "\u000bx\u000by\u000b",
+      "to_uppercase": "\u000bX\u000bY\u000b",
+      "trim": "x\u000by",
+      "trim_start": "x\u000by\u000b",
+      "utf8_len": 5
+    },
+    {
+      "chars_count": 2,
+      "input": "\u000b\u000b",
+      "lines": [
+        "\u000b\u000b"
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "\u000b\u000b",
+      "to_lowercase": "\u000b\u000b",
+      "to_uppercase": "\u000b\u000b",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 5,
+      "input": "\fx\fy\f",
+      "lines": [
+        "\fx\fy\f"
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": "\fx\fy\f",
+      "to_lowercase": "\fx\fy\f",
+      "to_uppercase": "\fX\fY\f",
+      "trim": "x\fy",
+      "trim_start": "x\fy\f",
+      "utf8_len": 5
+    },
+    {
+      "chars_count": 2,
+      "input": "\f\f",
+      "lines": [
+        "\f\f"
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "\f\f",
+      "to_lowercase": "\f\f",
+      "to_uppercase": "\f\f",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 5,
+      "input": "\rx\ry\r",
+      "lines": [
+        "\rx\ry\r"
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": "\rx\ry\r",
+      "to_lowercase": "\rx\ry\r",
+      "to_uppercase": "\rX\rY\r",
+      "trim": "x\ry",
+      "trim_start": "x\ry\r",
+      "utf8_len": 5
+    },
+    {
+      "chars_count": 2,
+      "input": "\r\r",
+      "lines": [
+        "\r\r"
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "\r\r",
+      "to_lowercase": "\r\r",
+      "to_uppercase": "\r\r",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 5,
+      "input": "\u001cx\u001cy\u001c",
+      "lines": [
+        "\u001cx\u001cy\u001c"
+      ],
+      "split_whitespace": [
+        "\u001cx\u001cy\u001c"
+      ],
+      "to_ascii_lowercase": "\u001cx\u001cy\u001c",
+      "to_lowercase": "\u001cx\u001cy\u001c",
+      "to_uppercase": "\u001cX\u001cY\u001c",
+      "trim": "\u001cx\u001cy\u001c",
+      "trim_start": "\u001cx\u001cy\u001c",
+      "utf8_len": 5
+    },
+    {
+      "chars_count": 2,
+      "input": "\u001c\u001c",
+      "lines": [
+        "\u001c\u001c"
+      ],
+      "split_whitespace": [
+        "\u001c\u001c"
+      ],
+      "to_ascii_lowercase": "\u001c\u001c",
+      "to_lowercase": "\u001c\u001c",
+      "to_uppercase": "\u001c\u001c",
+      "trim": "\u001c\u001c",
+      "trim_start": "\u001c\u001c",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 5,
+      "input": "\u001dx\u001dy\u001d",
+      "lines": [
+        "\u001dx\u001dy\u001d"
+      ],
+      "split_whitespace": [
+        "\u001dx\u001dy\u001d"
+      ],
+      "to_ascii_lowercase": "\u001dx\u001dy\u001d",
+      "to_lowercase": "\u001dx\u001dy\u001d",
+      "to_uppercase": "\u001dX\u001dY\u001d",
+      "trim": "\u001dx\u001dy\u001d",
+      "trim_start": "\u001dx\u001dy\u001d",
+      "utf8_len": 5
+    },
+    {
+      "chars_count": 2,
+      "input": "\u001d\u001d",
+      "lines": [
+        "\u001d\u001d"
+      ],
+      "split_whitespace": [
+        "\u001d\u001d"
+      ],
+      "to_ascii_lowercase": "\u001d\u001d",
+      "to_lowercase": "\u001d\u001d",
+      "to_uppercase": "\u001d\u001d",
+      "trim": "\u001d\u001d",
+      "trim_start": "\u001d\u001d",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 5,
+      "input": "\u001ex\u001ey\u001e",
+      "lines": [
+        "\u001ex\u001ey\u001e"
+      ],
+      "split_whitespace": [
+        "\u001ex\u001ey\u001e"
+      ],
+      "to_ascii_lowercase": "\u001ex\u001ey\u001e",
+      "to_lowercase": "\u001ex\u001ey\u001e",
+      "to_uppercase": "\u001eX\u001eY\u001e",
+      "trim": "\u001ex\u001ey\u001e",
+      "trim_start": "\u001ex\u001ey\u001e",
+      "utf8_len": 5
+    },
+    {
+      "chars_count": 2,
+      "input": "\u001e\u001e",
+      "lines": [
+        "\u001e\u001e"
+      ],
+      "split_whitespace": [
+        "\u001e\u001e"
+      ],
+      "to_ascii_lowercase": "\u001e\u001e",
+      "to_lowercase": "\u001e\u001e",
+      "to_uppercase": "\u001e\u001e",
+      "trim": "\u001e\u001e",
+      "trim_start": "\u001e\u001e",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 5,
+      "input": "\u001fx\u001fy\u001f",
+      "lines": [
+        "\u001fx\u001fy\u001f"
+      ],
+      "split_whitespace": [
+        "\u001fx\u001fy\u001f"
+      ],
+      "to_ascii_lowercase": "\u001fx\u001fy\u001f",
+      "to_lowercase": "\u001fx\u001fy\u001f",
+      "to_uppercase": "\u001fX\u001fY\u001f",
+      "trim": "\u001fx\u001fy\u001f",
+      "trim_start": "\u001fx\u001fy\u001f",
+      "utf8_len": 5
+    },
+    {
+      "chars_count": 2,
+      "input": "\u001f\u001f",
+      "lines": [
+        "\u001f\u001f"
+      ],
+      "split_whitespace": [
+        "\u001f\u001f"
+      ],
+      "to_ascii_lowercase": "\u001f\u001f",
+      "to_lowercase": "\u001f\u001f",
+      "to_uppercase": "\u001f\u001f",
+      "trim": "\u001f\u001f",
+      "trim_start": "\u001f\u001f",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 5
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 2
+    },
+    {
+      "chars_count": 5,
+      "input": "xy",
+      "lines": [
+        "xy"
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": "xy",
+      "to_lowercase": "xy",
+      "to_uppercase": "XY",
+      "trim": "xy",
+      "trim_start": "xy",
+      "utf8_len": 8
+    },
+    {
+      "chars_count": 2,
+      "input": "",
+      "lines": [
+        ""
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "",
+      "to_lowercase": "",
+      "to_uppercase": "",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 4
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 8
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 4
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": "᠎x᠎y᠎",
+      "lines": [
+        "᠎x᠎y᠎"
+      ],
+      "split_whitespace": [
+        "᠎x᠎y᠎"
+      ],
+      "to_ascii_lowercase": "᠎x᠎y᠎",
+      "to_lowercase": "᠎x᠎y᠎",
+      "to_uppercase": "᠎X᠎Y᠎",
+      "trim": "᠎x᠎y᠎",
+      "trim_start": "᠎x᠎y᠎",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "᠎᠎",
+      "lines": [
+        "᠎᠎"
+      ],
+      "split_whitespace": [
+        "᠎᠎"
+      ],
+      "to_ascii_lowercase": "᠎᠎",
+      "to_lowercase": "᠎᠎",
+      "to_uppercase": "᠎᠎",
+      "trim": "᠎᠎",
+      "trim_start": "᠎᠎",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": "​x​y​",
+      "lines": [
+        "​x​y​"
+      ],
+      "split_whitespace": [
+        "​x​y​"
+      ],
+      "to_ascii_lowercase": "​x​y​",
+      "to_lowercase": "​x​y​",
+      "to_uppercase": "​X​Y​",
+      "trim": "​x​y​",
+      "trim_start": "​x​y​",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "​​",
+      "lines": [
+        "​​"
+      ],
+      "split_whitespace": [
+        "​​"
+      ],
+      "to_ascii_lowercase": "​​",
+      "to_lowercase": "​​",
+      "to_uppercase": "​​",
+      "trim": "​​",
+      "trim_start": "​​",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": " x y ",
+      "lines": [
+        " x y "
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": " x y ",
+      "to_lowercase": " x y ",
+      "to_uppercase": " X Y ",
+      "trim": "x y",
+      "trim_start": "x y ",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "  ",
+      "lines": [
+        "  "
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "  ",
+      "to_lowercase": "  ",
+      "to_uppercase": "  ",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": "　x　y　",
+      "lines": [
+        "　x　y　"
+      ],
+      "split_whitespace": [
+        "x",
+        "y"
+      ],
+      "to_ascii_lowercase": "　x　y　",
+      "to_lowercase": "　x　y　",
+      "to_uppercase": "　X　Y　",
+      "trim": "x　y",
+      "trim_start": "x　y　",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "　　",
+      "lines": [
+        "　　"
+      ],
+      "split_whitespace": [],
+      "to_ascii_lowercase": "　　",
+      "to_lowercase": "　　",
+      "to_uppercase": "　　",
+      "trim": "",
+      "trim_start": "",
+      "utf8_len": 6
+    },
+    {
+      "chars_count": 5,
+      "input": "﻿x﻿y﻿",
+      "lines": [
+        "﻿x﻿y﻿"
+      ],
+      "split_whitespace": [
+        "﻿x﻿y﻿"
+      ],
+      "to_ascii_lowercase": "﻿x﻿y﻿",
+      "to_lowercase": "﻿x﻿y﻿",
+      "to_uppercase": "﻿X﻿Y﻿",
+      "trim": "﻿x﻿y﻿",
+      "trim_start": "﻿x﻿y﻿",
+      "utf8_len": 11
+    },
+    {
+      "chars_count": 2,
+      "input": "﻿﻿",
+      "lines": [
+        "﻿﻿"
+      ],
+      "split_whitespace": [
+        "﻿﻿"
+      ],
+      "to_ascii_lowercase": "﻿﻿",
+      "to_lowercase": "﻿﻿",
+      "to_uppercase": "﻿﻿",
+      "trim": "﻿﻿",
+      "trim_start": "﻿﻿",
+      "utf8_len": 6
+    }
+  ]
+}

@@ -1,0 +1,194 @@
+{
+  "values": [
+    {
+      "compact": "null",
+      "pretty": "null",
+      "sorted_compact": "null"
+    },
+    {
+      "compact": "true",
+      "pretty": "true",
+      "sorted_compact": "true"
+    },
+    {
+      "compact": "false",
+      "pretty": "false",
+      "sorted_compact": "false"
+    },
+    {
+      "compact": "0",
+      "pretty": "0",
+      "sorted_compact": "0"
+    },
+    {
+      "compact": "-1",
+      "pretty": "-1",
+      "sorted_compact": "-1"
+    },
+    {
+      "compact": "-9223372036854775808",
+      "pretty": "-9223372036854775808",
+      "sorted_compact": "-9223372036854775808"
+    },
+    {
+      "compact": "9223372036854775807",
+      "pretty": "9223372036854775807",
+      "sorted_compact": "9223372036854775807"
+    },
+    {
+      "compact": "18446744073709551615",
+      "pretty": "18446744073709551615",
+      "sorted_compact": "18446744073709551615"
+    },
+    {
+      "compact": "0.0",
+      "pretty": "0.0",
+      "sorted_compact": "0.0"
+    },
+    {
+      "compact": "-0.0",
+      "pretty": "-0.0",
+      "sorted_compact": "-0.0"
+    },
+    {
+      "compact": "1.0",
+      "pretty": "1.0",
+      "sorted_compact": "1.0"
+    },
+    {
+      "compact": "1.5",
+      "pretty": "1.5",
+      "sorted_compact": "1.5"
+    },
+    {
+      "compact": "0.1",
+      "pretty": "0.1",
+      "sorted_compact": "0.1"
+    },
+    {
+      "compact": "1e+21",
+      "pretty": "1e+21",
+      "sorted_compact": "1e+21"
+    },
+    {
+      "compact": "1e-7",
+      "pretty": "1e-7",
+      "sorted_compact": "1e-7"
+    },
+    {
+      "compact": "1000000000000000.0",
+      "pretty": "1000000000000000.0",
+      "sorted_compact": "1000000000000000.0"
+    },
+    {
+      "compact": "1e+16",
+      "pretty": "1e+16",
+      "sorted_compact": "1e+16"
+    },
+    {
+      "compact": "1e+17",
+      "pretty": "1e+17",
+      "sorted_compact": "1e+17"
+    },
+    {
+      "compact": "1.2345678901234568e+17",
+      "pretty": "1.2345678901234568e+17",
+      "sorted_compact": "1.2345678901234568e+17"
+    },
+    {
+      "compact": "5e-324",
+      "pretty": "5e-324",
+      "sorted_compact": "5e-324"
+    },
+    {
+      "compact": "1.7976931348623157e+308",
+      "pretty": "1.7976931348623157e+308",
+      "sorted_compact": "1.7976931348623157e+308"
+    },
+    {
+      "compact": "2.2250738585072014e-308",
+      "pretty": "2.2250738585072014e-308",
+      "sorted_compact": "2.2250738585072014e-308"
+    },
+    {
+      "compact": "0.3333333333333333",
+      "pretty": "0.3333333333333333",
+      "sorted_compact": "0.3333333333333333"
+    },
+    {
+      "compact": "100.0",
+      "pretty": "100.0",
+      "sorted_compact": "100.0"
+    },
+    {
+      "compact": "-0.000025",
+      "pretty": "-0.000025",
+      "sorted_compact": "-0.000025"
+    },
+    {
+      "compact": "1e-6",
+      "pretty": "1e-6",
+      "sorted_compact": "1e-6"
+    },
+    {
+      "compact": "0.00001",
+      "pretty": "0.00001",
+      "sorted_compact": "0.00001"
+    },
+    {
+      "compact": "\"\"",
+      "pretty": "\"\"",
+      "sorted_compact": "\"\""
+    },
+    {
+      "compact": "\"plain\"",
+      "pretty": "\"plain\"",
+      "sorted_compact": "\"plain\""
+    },
+    {
+      "compact": "\"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f\"",
+      "pretty": "\"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f\"",
+      "sorted_compact": "\"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f\""
+    },
+    {
+      "compact": "\"quote\\\"backslash\\\\slash/\"",
+      "pretty": "\"quote\\\"backslash\\\\slash/\"",
+      "sorted_compact": "\"quote\\\"backslash\\\\slash/\""
+    },
+    {
+      "compact": "\"  é😀\"",
+      "pretty": "\"  é😀\"",
+      "sorted_compact": "\"  é😀\""
+    },
+    {
+      "compact": "[]",
+      "pretty": "[]",
+      "sorted_compact": "[]"
+    },
+    {
+      "compact": "{}",
+      "pretty": "{}",
+      "sorted_compact": "{}"
+    },
+    {
+      "compact": "[1,[2,[]],{}]",
+      "pretty": "[\n  1,\n  [\n    2,\n    []\n  ],\n  {}\n]",
+      "sorted_compact": "[1,[2,[]],{}]"
+    },
+    {
+      "compact": "{\"B\":\"x\",\"_\":null,\"a\":{\"c\":{},\"d\":[]},\"b\":1,\"é\":1,\"\":3,\"𐀀\":2}",
+      "pretty": "{\n  \"B\": \"x\",\n  \"_\": null,\n  \"a\": {\n    \"c\": {},\n    \"d\": []\n  },\n  \"b\": 1,\n  \"é\": 1,\n  \"\": 3,\n  \"𐀀\": 2\n}",
+      "sorted_compact": "{\"B\":\"x\",\"_\":null,\"a\":{\"c\":{},\"d\":[]},\"b\":1,\"é\":1,\"\":3,\"𐀀\":2}"
+    },
+    {
+      "compact": "{\"coverage\":[\"/abs/path/coverage.lcov\"],\"diagnostics\":[],\"success\":true,\"tests\":[{\"duration_ms\":12,\"message\":null,\"name\":\"t1\",\"status\":\"passed\"}]}",
+      "pretty": "{\n  \"coverage\": [\n    \"/abs/path/coverage.lcov\"\n  ],\n  \"diagnostics\": [],\n  \"success\": true,\n  \"tests\": [\n    {\n      \"duration_ms\": 12,\n      \"message\": null,\n      \"name\": \"t1\",\n      \"status\": \"passed\"\n    }\n  ]\n}",
+      "sorted_compact": "{\"coverage\":[\"/abs/path/coverage.lcov\"],\"diagnostics\":[],\"success\":true,\"tests\":[{\"duration_ms\":12,\"message\":null,\"name\":\"t1\",\"status\":\"passed\"}]}"
+    },
+    {
+      "compact": "{\"protocol\":1,\"project\":\"mini\",\"package\":\"mini-rs-api\",\"phase\":\"unit\",\"root\":\"/workspace/root\",\"env\":{\"CHERRY_TEST_PHASE\":\"unit\",\"CHERRY_TEST_RUN_ID\":\"20261012-101500-0a1b2c\"},\"options\":{\"alpha\":[true,null],\"zeta\":1},\"coverage\":true,\"attachments\":[],\"message\":null}",
+      "pretty": "{\n  \"protocol\": 1,\n  \"project\": \"mini\",\n  \"package\": \"mini-rs-api\",\n  \"phase\": \"unit\",\n  \"root\": \"/workspace/root\",\n  \"env\": {\n    \"CHERRY_TEST_PHASE\": \"unit\",\n    \"CHERRY_TEST_RUN_ID\": \"20261012-101500-0a1b2c\"\n  },\n  \"options\": {\n    \"alpha\": [\n      true,\n      null\n    ],\n    \"zeta\": 1\n  },\n  \"coverage\": true,\n  \"attachments\": [],\n  \"message\": null\n}",
+      "sorted_compact": "{\"attachments\":[],\"coverage\":true,\"env\":{\"CHERRY_TEST_PHASE\":\"unit\",\"CHERRY_TEST_RUN_ID\":\"20261012-101500-0a1b2c\"},\"message\":null,\"options\":{\"alpha\":[true,null],\"zeta\":1},\"package\":\"mini-rs-api\",\"phase\":\"unit\",\"project\":\"mini\",\"protocol\":1,\"root\":\"/workspace/root\"}"
+    }
+  ]
+}
