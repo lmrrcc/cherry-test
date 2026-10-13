@@ -1,0 +1,13 @@
+[package]
+name = "cherry-test-parity-vectors"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[workspace]
+
+[dependencies]
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+cherry-test-common = { path = "../../../test/cherry-test-common" }
