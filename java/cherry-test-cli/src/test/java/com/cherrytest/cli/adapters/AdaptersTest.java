@@ -120,4 +120,42 @@ class AdaptersTest {
         response.tests().add(withAttachment);
         assertThatThrownBy(() -> Adapters.validate(request, response)).isInstanceOf(RuntimeException.class);
     }
+
+    @Nested
+    class cargo_target_dir {
+        private AdapterRequest request(ExecutionMode execution, String packageName, String phase) {
+            Path root = Path.of("/work/mini");
+            return new AdapterRequest(
+                    1,
+                    "mini",
+                    packageName,
+                    phase,
+                    root,
+                    root.resolve("mini-rs-api/Cargo.toml"),
+                    root,
+                    root.resolve("target/cherry-test/runs/20261014-000000-abcdef/reports/adapters/mini/" + packageName
+                            + "/" + phase),
+                    execution,
+                    true,
+                    false,
+                    List.of(),
+                    new TreeMap<>(),
+                    new TreeMap<>());
+        }
+
+        @Test
+        void is_shared_by_runs_packages_and_phases() {
+            assertThat(Builtins.cargoTargetDir(request(ExecutionMode.LOCAL, "mini-rs-api", "unit")))
+                    .isEqualTo(
+                            Builtins.cargoTargetDir(request(ExecutionMode.LOCAL, "mini-rs-api-okta", "integration")));
+        }
+
+        @Test
+        void keeps_host_and_container_builds_apart() {
+            assertThat(Builtins.cargoTargetDir(request(ExecutionMode.LOCAL, "mini-rs-api", "unit")))
+                    .isEqualTo(Path.of("/work/mini/target/cherry-test/cargo/local"));
+            assertThat(Builtins.cargoTargetDir(request(ExecutionMode.CONTAINER, "mini-rs-api", "unit")))
+                    .isEqualTo(Path.of("/work/mini/target/cherry-test/cargo/container"));
+        }
+    }
 }

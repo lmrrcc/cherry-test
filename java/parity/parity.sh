@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 record|replay|compare|pixels|replay-rust|compare-rust <app dir relative to the repository root> [filter]" >&2
+  echo "usage: $0 record|replay|compare|pixels|replay-rust|compare-rust <app dir, absolute or relative to the repository root> [filter]" >&2
   exit 2
 }
 
@@ -14,8 +14,11 @@ filter=${3:-}
 
 repository=$(cd "$(dirname "$0")/../.." && pwd)
 parity="$repository/java/parity"
-app="$repository/$app_relative"
-name=$(basename "$app_relative")
+case "$app_relative" in
+  /*) app=$app_relative ;;
+  *) app="$repository/$app_relative" ;;
+esac
+name=${PARITY_NAME:-$(basename "$app_relative")}
 work="$parity/target/work/$name${filter:+-$filter}"
 shims="$parity/target/shims/$name${filter:+-$filter}"
 cassette="$work/cassette"
@@ -26,12 +29,10 @@ java_binary=$(command -v java)
 tools="cargo node pnpm npx git docker mvn gradle cmake ctest llvm-profdata llvm-cov python3"
 host_tools="$parity/target/host-tools"
 extra_path=""
-case "$name" in
-  *-java)
-    tools="$tools sh"
-    extra_path="$host_tools:"
-    ;;
-esac
+if [ -f "$app/pom.xml" ]; then
+  tools="$tools sh"
+  extra_path="$host_tools:"
+fi
 runs="$app/target/cherry-test/runs"
 latest="$app/target/cherry-test/latest"
 

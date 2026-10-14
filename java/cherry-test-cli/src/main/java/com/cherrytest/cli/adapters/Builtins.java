@@ -105,7 +105,7 @@ public final class Builtins {
         }
         args.addAll(request.args());
         args.addAll(List.of("--format", "pretty", "--color", "never"));
-        mutable.env.put("CARGO_TARGET_DIR", request.output().resolve("target").toString());
+        mutable.env.put("CARGO_TARGET_DIR", cargoTargetDir(request).toString());
         boolean success = ProcessRunner.run(mutable.snapshot(), "cargo", args, "tests");
         String output = read(request.output().resolve("tests.stdout"));
         AdapterResponse result = new AdapterResponse(
@@ -117,6 +117,18 @@ public final class Builtins {
             result.diagnostics().add("cargo-llvm-cov unavailable; coverage was not measured");
         }
         return result;
+    }
+
+    public static Path cargoTargetDir(AdapterRequest request) {
+        String execution = switch (request.execution()) {
+            case LOCAL -> "local";
+            case CONTAINER -> "container";
+        };
+        return request.root()
+                .resolve("target")
+                .resolve("cherry-test")
+                .resolve("cargo")
+                .resolve(execution);
     }
 
     private static AdapterResponse node(MutableRequest mutable, boolean playwright) {

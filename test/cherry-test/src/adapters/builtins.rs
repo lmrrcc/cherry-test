@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
-use cherry_test_common::adapter::{AdapterRequest, AdapterResponse};
+use cherry_test_common::adapter::{AdapterRequest, AdapterResponse, ExecutionMode};
 
 use super::{formats, process};
 
@@ -70,7 +70,7 @@ fn cargo(request: &mut AdapterRequest) -> Result<AdapterResponse> {
     ]));
     request.env.insert(
         "CARGO_TARGET_DIR".into(),
-        request.output.join("target").to_string_lossy().into(),
+        cargo_target_dir(request).to_string_lossy().into(),
     );
     let success = process::run(request, "cargo", &args, "tests")?;
     let output = std::fs::read_to_string(request.output.join("tests.stdout"))?;
@@ -88,6 +88,19 @@ fn cargo(request: &mut AdapterRequest) -> Result<AdapterResponse> {
             .push("cargo-llvm-cov unavailable; coverage was not measured".into());
     }
     Ok(result)
+}
+
+pub fn cargo_target_dir(request: &AdapterRequest) -> PathBuf {
+    let execution = match request.execution {
+        ExecutionMode::Local => "local",
+        ExecutionMode::Container => "container",
+    };
+    request
+        .root
+        .join("target")
+        .join("cherry-test")
+        .join("cargo")
+        .join(execution)
 }
 
 fn node(request: &mut AdapterRequest, playwright: bool) -> Result<AdapterResponse> {
@@ -407,5 +420,57 @@ pub fn source_path(request: &AdapterRequest, path: &str) -> PathBuf {
         translated
     } else {
         request.cwd.join(translated)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn request(root: &Path, execution: ExecutionMode) -> AdapterRequest {
+        AdapterRequest {
+            protocol: 1,
+            project: "mini".into(),
+            package: "mini-rs-api".into(),
+            phase: "unit".into(),
+            root: root.into(),
+            manifest: root.join("mini-rs-api/Cargo.toml"),
+            cwd: root.into(),
+            output: root.join("target/cherry-test/runs/20261014-000000-abcdef/reports/adapters/mini/mini-rs-api/unit"),
+            execution,
+            coverage: true,
+            strict: false,
+            args: Vec::new(),
+            env: Default::default(),
+            options: Default::default(),
+        }
+    }
+
+    mod cargo_target_dir {
+        use super::*;
+
+        #[test]
+        fn is_shared_by_runs_packages_and_phases() {
+            let mut integration = request(Path::new("/work/mini"), ExecutionMode::Local);
+            integration.package = "mini-rs-api-okta".into();
+            integration.phase = "integration".into();
+            assert_eq!(
+                cargo_target_dir(&request(Path::new("/work/mini"), ExecutionMode::Local)),
+                cargo_target_dir(&integration)
+            );
+        }
+
+        #[test]
+        fn keeps_host_and_container_builds_apart() {
+            assert_eq!(
+                cargo_target_dir(&request(Path::new("/work/mini"), ExecutionMode::Local)),
+                Path::new("/work/mini/target/cherry-test/cargo/local")
+            );
+            assert_eq!(
+                cargo_target_dir(&request(Path::new("/work/mini"), ExecutionMode::Container)),
+                Path::new("/work/mini/target/cherry-test/cargo/container")
+            );
+        }
     }
 }
