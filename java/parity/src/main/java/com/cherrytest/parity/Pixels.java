@@ -15,6 +15,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -45,8 +46,14 @@ public final class Pixels {
         List<String> mismatches = new ArrayList<>();
         try (Playwright playwright = Playwright.create(
                         new Playwright.CreateOptions().setEnv(Map.of("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")));
-                Browser browser =
-                        playwright.chromium().launch(new BrowserType.LaunchOptions().setExecutablePath(chromium))) {
+                Browser browser = playwright
+                        .chromium()
+                        .launch(new BrowserType.LaunchOptions()
+                                .setExecutablePath(chromium)
+                                .setArgs(List.of(
+                                        "--disable-gpu",
+                                        "--force-color-profile=srgb",
+                                        "--disable-skia-runtime-opts")))) {
             for (String document : List.of("index.html", "phases.html")) {
                 for (State state : states(expected.resolve(document))) {
                     for (Viewport viewport : viewports) {
@@ -60,6 +67,7 @@ public final class Pixels {
                             if (!difference.isEmpty()) {
                                 mismatches.add(label + ": " + difference);
                             }
+                            OUT.println("COMPARED pixels (" + compared + ") " + label);
                         }
                     }
                 }
@@ -211,6 +219,9 @@ public final class Pixels {
     }
 
     static String difference(byte[] left, byte[] right, Path output, String label) throws IOException {
+        if (Arrays.equals(left, right)) {
+            return "";
+        }
         BufferedImage expected = ImageIO.read(new ByteArrayInputStream(left));
         BufferedImage actual = ImageIO.read(new ByteArrayInputStream(right));
         if (expected.getWidth() != actual.getWidth() || expected.getHeight() != actual.getHeight()) {

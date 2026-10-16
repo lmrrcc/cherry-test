@@ -184,7 +184,7 @@ case "$mode" in
   pixels)
     chromium=${CHERRY_PARITY_CHROMIUM:-$HOME/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell}
     rm -rf "$parity/target/parity-report/$name${filter:+-$filter}"
-    "$java_binary" -cp "$parity_jar:$(cat "$parity/target/pixels.classpath")" com.cherrytest.parity.Pixels \
+    "$java_binary" -Xmx512m -cp "$parity_jar:$(cat "$parity/target/pixels.classpath")" com.cherrytest.parity.Pixels \
       "$work/rust-run/reports" "$work/java-run/reports" "$parity/target/parity-report/$name${filter:+-$filter}" "$chromium"
     ;;
   compare-rust)
