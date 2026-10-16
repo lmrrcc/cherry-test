@@ -11,9 +11,45 @@ project and the same tool outputs.
 | Orchestration | every external tool call: tool, argv, working directory, environment, order | `Orchestration` |
 | Terminal | stdout, stderr and exit code of the CLI | `cmp` |
 | Run directory | every file, directory and symlink under `target/cherry-test/runs/<run-id>/` | `Compare` |
-| Pixels | `index.html` and `phases.html`, every interactive state, light and dark theme, 1440×900 and 390×844 | `Pixels` (Playwright, zero tolerance) |
+| Pixels | `index.html` and `phases.html`, selected interactive states and anchors, light and dark theme, 1440×900 and 390×844 | `Pixels` (Playwright, zero tolerance) |
 
-## Results
+## Validation on 2026-10-16
+
+The current CLIs were compared using frozen copies of the four local sample workspaces, including their
+working-tree changes. Both CLIs used the same copy and external tool outputs; these results do not claim
+that the sample workspaces were clean checkouts of their pinned submodule commits.
+
+| App / filter | Run | Tool calls | Terminal, orchestration and run directory | Final pixel gate |
+|---|---|---|---|---|
+| `shop` | `20261016-182202-f431a8` | 230 | identical, exit 1 | 92 of 92 screenshots identical |
+| `shop-java` | `20261016-181547-0105d8` | 637 | identical, exit 1 | 92 of 92 screenshots identical |
+| `mini`, project `mini` | `20261016-182000-654bd0` | 136 | identical, exit 0 | 92 of 92 screenshots identical |
+| `mini-java`, project `mini` | `20261016-182315-d18198` | 814 | identical, exit 0 | 52 of 52 screenshots identical |
+
+Both Shop runs report the deliberate `reports_a_price_mismatch` failure. The selected Mini integration
+tests passed against real Docker services: 7 Rust tests and 9 Java tests, with no skips.
+Across the four pairs, 971 report files match byte for byte, and all 1,817 recorded tool calls match the
+orchestration contract. Local evidence includes SHA-256 hashes for each report file.
+
+The first Shop pixel pass found 61 one-level RGB differences across 3 of 92 screenshots, confined to
+rounded control borders. The report files were identical. Recapturing the same files at both paths
+produced 40 identical comparisons with the original browser settings and another 40 with software
+rendering. The original screenshots and logs were retained locally. The final gate uses software
+rendering, a fixed sRGB color profile and disabled Skia runtime optimizations, without masks or tolerance.
+The browser was Google Chrome for Testing 156.0.8078.4 (headless shell build 1248), driven by Playwright 1.63.0
+on macOS ARM64 with device scale factor 1.
+
+The comparator skips image decoding only when the PNG bytes already match. Different bytes still receive
+the exact pixel comparison. Regression tests cover identical bytes, identical pixels with different
+bytes, and rejection of a single-channel difference of one RGB level. The pixel process has a 512 MiB
+heap limit and reports progress for each state.
+
+Validation also passed 273 Rust tests and 333 Java tests before the comparator update, then all 7 parity
+harness tests after adding its 3 regression tests. Regenerated compatibility vectors match the committed
+files, and `cargo audit` reports zero vulnerabilities after the QUIC and TLS dependency updates.
+These gates establish parity for the recorded inputs and sampled visual states, not for every possible input.
+
+## Historical results on 2026-10-13
 
 Recorded with the Rust CLI, replayed with the Java CLI, on the unmodified Rust edition of each app:
 
@@ -36,10 +72,15 @@ visual tests pass against the Rust edition's snapshot images, unchanged.
 
 The pixel gate captures each page in tiles 4000 px high. The tallest reports are far beyond what Chromium can capture
 in one screenshot (the mini index is 3.1 MB of HTML), and a single capture of a page about 95,000 px high
-rendered one dark-theme region differently between two captures of the same bytes. Tiles remove both problems:
+rendered one dark-theme region differently between two captures of the same bytes. Tiles bound capture dimensions:
 every tile of the Rust report is compared with the same tile of the Java report.
+The current gate additionally fixes the rendering configuration as described above.
 
 ## Normalisations
+
+Run recording, replay and comparison in the same shell environment. The environment gate also checks inherited
+variables such as `PATH`, terminal settings and tool invocation identifiers. Launching the stages through separate
+automation calls can change those inputs and must not be accepted as an identical execution.
 
 These are the only differences the gates tolerate. Each one is caused by the environment, not by the CLI.
 

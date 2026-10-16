@@ -1,7 +1,7 @@
 # Cherry Test — Java edition
 
 A second implementation of Cherry Test in **Java 25 LTS**, built alongside the Rust edition in `test/`. The Rust
-edition is the reference and is not modified: the Java edition must produce **byte-for-byte and pixel-for-pixel
+edition is the reference: the Java edition must produce **byte-for-byte and pixel-for-pixel
 identical reports** for the same project and the same tool outputs.
 
 ## Status
@@ -12,15 +12,18 @@ identical reports** for the same project and the same tool outputs.
 | `rustcompat` kit: Rust-exact number formatting, text semantics, string/path ordering, serde_json bytes | done, golden-tested |
 | `cherry-test-common`, `cherry-test-core` | done; every Rust test ported under its Rust name |
 | `cherry-test-junit` (`@CherryTest`, `TestEnv`, HTTP records) and `cherry-test-processor` | done |
-| `cherry-test-cli` (all 7 built-in adapters, external protocol v1, coverage, CRAP, HTML and terminal reports) | done; 221 Rust CLI tests ported |
+| `cherry-test-cli` (all 7 built-in adapters, external protocol v1, coverage, CRAP, HTML and terminal reports) | done; matching Rust test names retained |
 | Parity harness: record/replay, orchestration, byte and pixel gates | done |
-| Byte and pixel parity on `app/shop` | identical (209 tool calls, 92 screenshots) |
-| Byte and pixel parity on `app/mini` | identical (248 tool calls, 96 screenshots) |
-| `app/shop-java` (Spring Boot 4.1 API, Java adapter) under both CLIs | identical (274 tool calls, 92 screenshots) |
-| `app/mini-java` (wallet API, Okta mock, Java prices adapter, mock upstream) under both CLIs | project `mini` identical (224 tool calls, 52 screenshots) |
+| Byte and pixel parity on `app/shop` | see [current validation](PARITY.md#validation-on-2026-10-16) |
+| Byte and pixel parity on `app/mini` | see [current validation](PARITY.md#validation-on-2026-10-16) |
+| `app/shop-java` (Spring Boot 4.1 API, Java adapter) under both CLIs | see [current validation](PARITY.md#validation-on-2026-10-16) |
+| `app/mini-java` (wallet API, Okta mock, Java prices adapter, mock upstream) under both CLIs | see [current validation](PARITY.md#validation-on-2026-10-16) |
 | Distribution: shaded jar, `java/install.sh`, `cherry-test-java` launcher, `update`, Maven plugin | done |
 
-All 262 Rust test names have a Java twin with the same name; `PARITY.md` maps them and lists every result.
+Every Rust test name has a Java counterpart with the same name; `PARITY.md` maps them and lists the comparison
+results. The 2026-10-16 validation passed 333 Java tests and 273 Rust tests, followed by all 7 parity harness
+tests after adding 3 comparator regression tests. Regenerated compatibility vectors matched, and `cargo audit`
+reported zero vulnerabilities after updating the QUIC and TLS dependencies.
 
 ## Install and run
 
