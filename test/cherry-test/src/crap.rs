@@ -139,12 +139,19 @@ pub struct CrapProjectRoot {
     pub path: PathBuf,
 }
 
+#[derive(Debug, Clone)]
+pub struct CrapChange {
+    pub functions: Vec<CrapFunction>,
+    pub totals: CrapTotals,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct CrapReport {
     pub enabled: bool,
     pub functions: Vec<CrapFunction>,
     pub totals: CrapTotals,
     pub projects: Vec<CrapProjectTotals>,
+    pub changed: Option<CrapChange>,
 }
 
 pub fn crap_score(complexity: u32, coverage: f64) -> f64 {
@@ -198,6 +205,57 @@ pub fn crap_totals(functions: &[CrapFunction]) -> CrapTotals {
     }
 }
 
+pub fn change_slice(functions: &[CrapFunction], changed: &[String]) -> Option<CrapChange> {
+    if changed.is_empty() {
+        return None;
+    }
+    let matched = functions
+        .iter()
+        .filter(|function| crate::coverage::path_matches_changed(&function.path, changed))
+        .cloned()
+        .collect::<Vec<_>>();
+    Some(CrapChange {
+        totals: crap_totals(&matched),
+        functions: matched,
+    })
+}
+
+pub fn change_on_added_lines(
+    functions: &[CrapFunction],
+    files: &[(String, std::collections::BTreeSet<u32>)],
+) -> Option<CrapChange> {
+    if files.is_empty() {
+        return None;
+    }
+    let matched = functions
+        .iter()
+        .filter(|function| {
+            files.iter().any(|(path, lines)| {
+                crate::coverage::path_matches_changed(&function.path, std::slice::from_ref(path))
+                    && function_touches_lines(function, lines)
+            })
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    Some(CrapChange {
+        totals: crap_totals(&matched),
+        functions: matched,
+    })
+}
+
+fn function_touches_lines(
+    function: &CrapFunction,
+    lines: &std::collections::BTreeSet<u32>,
+) -> bool {
+    if lines.contains(&function.line) {
+        return true;
+    }
+    function
+        .source
+        .iter()
+        .any(|line| lines.contains(&line.number))
+}
+
 pub fn project_rollups(
     workspace: &Path,
     functions: &[CrapFunction],
@@ -243,6 +301,7 @@ pub fn score_report(
         totals: crap_totals(&functions),
         projects: project_rollups(workspace, &functions, projects),
         functions,
+        changed: None,
     }
 }
 
@@ -1195,6 +1254,51 @@ fn outer() {
         );
         assert!(tied.is_empty());
         assert!(project_rollups(workspace, &functions, &[]).is_empty());
+    }
+
+    #[test]
+    fn change_slice_keeps_functions_whose_file_is_in_the_diff() {
+        let functions = vec![
+            scored("shop-rs-api/src/domain/model.rs", 4.0, 2, 0.0),
+            scored("shop-ts-lib-cart/src/cart.ts", 2.0, 1, 0.0),
+        ];
+        assert!(change_slice(&functions, &[]).is_none());
+        let changed =
+            change_slice(&functions, &["shop-rs-api/src/domain/model.rs".to_string()]).unwrap();
+        assert_eq!(changed.functions.len(), 1);
+        assert_eq!(changed.functions[0].path, "shop-rs-api/src/domain/model.rs");
+        assert_eq!(changed.totals.functions, 1);
+        assert_eq!(changed.totals.worst_crap, 4.0);
+    }
+
+    #[test]
+    fn change_on_added_lines_keeps_functions_that_overlap_the_diff() {
+        let mut parse = scored("shop-rs-api/src/domain/model.rs", 4.0, 3, 0.0);
+        parse.name = "parse".into();
+        parse.line = 110;
+        parse.source = vec![CrapSourceLine {
+            number: 112,
+            text: "_ => Err(DomainError::InvalidDiscount),".into(),
+            measure: LineMeasure::Uncovered,
+        }];
+        let mut checkout = scored("shop-rs-api/src/domain/model.rs", 2.0, 2, 0.0);
+        checkout.name = "checkout".into();
+        checkout.line = 220;
+        checkout.source = vec![CrapSourceLine {
+            number: 221,
+            text: "self.ensure_open()?;".into(),
+            measure: LineMeasure::Covered,
+        }];
+        let mut lines = std::collections::BTreeSet::new();
+        lines.insert(112);
+        let changed = change_on_added_lines(
+            &[parse, checkout],
+            &[("shop-rs-api/src/domain/model.rs".into(), lines)],
+        )
+        .unwrap();
+        assert_eq!(changed.functions.len(), 1);
+        assert_eq!(changed.functions[0].name, "parse");
+        assert!(change_on_added_lines(&[], &[]).is_none());
     }
 
     fn scored(path: &str, score: f64, complexity: u32, load: f64) -> CrapFunction {

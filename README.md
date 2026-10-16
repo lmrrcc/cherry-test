@@ -1,14 +1,21 @@
 <div align="center">
 <pre>
-     ╱▓▓▓▓▓       ██████╗  ██╗  ██╗  ███████╗  ██████╗   ██████╗   ██╗   ██╗    ████████╗  ███████╗  ███████╗  ████████╗
-    ╱   ╲        ██╔════╝▒ ██║▒ ██║▒ ██╔════╝▒ ██╔══██╗  ██╔══██╗  ╚██╗ ██╔╝▒   ╚══██╔══╝▒ ██╔════╝▒ ██╔════╝▒ ╚══██╔══╝▒
-   ╱    ▄▀▀▀▄    ██║▒▒▒▒▒▒ ███████║▒ █████╗▒▒▒ ██████╔╝▒ ██████╔╝▒  ╚████╔╝▒▒    ▒▒██║▒▒▒▒ █████╗▒▒▒ ███████╗▒  ▒▒██║▒▒▒▒
-▄▀▀▀▄   ▌   ▐▒   ██║▒      ██╔══██║▒ ██╔══╝▒   ██╔══██╗▒ ██╔══██╗▒   ╚██╔╝▒▒       ██║▒    ██╔══╝▒   ╚════██║▒    ██║▒
-▌   ▐▒  ▀▄▄▄▀▒   ╚██████╗  ██║▒▒██║▒ ███████╗  ██║▒▒██║▒ ██║▒▒██║▒    ██║▒▒        ██║▒    ███████╗  ███████║▒    ██║▒
-▀▄▄▄▀▒   ▒▒▒▒▒    ╚═════╝▒ ╚═╝▒ ╚═╝▒ ╚══════╝▒ ╚═╝▒ ╚═╝▒ ╚═╝▒ ╚═╝▒    ╚═╝▒         ╚═╝▒    ╚══════╝▒ ╚══════╝▒    ╚═╝▒
- ▒▒▒▒▒             ▒▒▒▒▒▒▒  ▒▒▒  ▒▒▒  ▒▒▒▒▒▒▒▒  ▒▒▒  ▒▒▒  ▒▒▒  ▒▒▒     ▒▒▒          ▒▒▒     ▒▒▒▒▒▒▒▒  ▒▒▒▒▒▒▒▒     ▒▒▒
+     ╱▓▓▓▓▓       ██████╗  ██╗  ██╗  ███████╗  ██████╗   ██████╗   ██╗   ██╗  
+    ╱   ╲        ██╔════╝▒ ██║▒ ██║▒ ██╔════╝▒ ██╔══██╗  ██╔══██╗  ╚██╗ ██╔╝▒ 
+   ╱    ▄▀▀▀▄    ██║▒▒▒▒▒▒ ███████║▒ █████╗▒▒▒ ██████╔╝▒ ██████╔╝▒  ╚████╔╝▒▒ 
+▄▀▀▀▄   ▌   ▐▒   ██║▒      ██╔══██║▒ ██╔══╝▒   ██╔══██╗▒ ██╔══██╗▒   ╚██╔╝▒▒  
+▌   ▐▒  ▀▄▄▄▀▒   ╚██████╗  ██║▒▒██║▒ ███████╗  ██║▒▒██║▒ ██║▒▒██║▒    ██║▒▒   
+▀▄▄▄▀▒   ▒▒▒▒▒    ╚═════╝▒ ╚═╝▒ ╚═╝▒ ╚══════╝▒ ╚═╝▒ ╚═╝▒ ╚═╝▒ ╚═╝▒    ╚═╝▒    
+ ▒▒▒▒▒             ▒▒▒▒▒▒▒  ▒▒▒  ▒▒▒  ▒▒▒▒▒▒▒▒  ▒▒▒  ▒▒▒  ▒▒▒  ▒▒▒     ▒▒▒    
+                          ████████╗  ███████╗  ███████╗  ████████╗            
+                          ╚══██╔══╝▒ ██╔════╝▒ ██╔════╝▒ ╚══██╔══╝▒           
+                           ▒▒██║▒▒▒▒ █████╗▒▒▒ ███████╗▒  ▒▒██║▒▒▒▒           
+                             ██║▒    ██╔══╝▒   ╚════██║▒    ██║▒              
+                             ██║▒    ███████╗  ███████║▒    ██║▒              
+                             ╚═╝▒    ╚══════╝▒ ╚══════╝▒    ╚═╝▒              
+                              ▒▒▒     ▒▒▒▒▒▒▒▒  ▒▒▒▒▒▒▒▒     ▒▒▒              
 
-                 Multiple mono-repositories. Single test workflow.
+                       Multiple mono-repositories. Single test workflow.
 </pre>
 A unified test framework for monorepos and multi-repository workspaces.
 </div>
@@ -23,7 +30,7 @@ It currently supports Rust, Node.js, React and Vue frontends, and Kotlin, Java, 
 
 Use it locally while building a feature, or in CI/CD before merging into a development or production branch. It gives reviewers evidence to check code written by people and AI agents: what ran, what failed, what changed, and where tests leave gaps.
 
-The GitHub repository is [`lmrrcc/test`](https://github.com/lmrrcc/test). Run it with `cherry-test` or `cargo cherry-test`. Configure your workspace in `cherry-test.yaml`.
+The GitHub repository is [`lmrrcc/cherry-test`](https://github.com/lmrrcc/cherry-test). Run the Rust edition with `cherry-test` or `cargo cherry-test`, or the [Java 25 edition](java/README.md) with `cherry-test-java`. Both editions use `cherry-test.yaml`; their report compatibility checks are documented in [the parity results](java/PARITY.md).
 
 ![Cherry Test HTML report with test results, coverage, and code changes](docs/screenshot-report.png)
 
@@ -82,7 +89,7 @@ Adapters can run local tools or container toolchains. Add an external executable
 Install from this repository with Cargo:
 
 ```bash
-cargo install --git https://github.com/lmrrcc/test --branch main --locked --bins cherry-test
+cargo install --git https://github.com/lmrrcc/cherry-test --branch main --locked --bins cherry-test
 ```
 
 Make sure Cargo's binary directory, usually `~/.cargo/bin`, is on your `PATH`.
@@ -90,8 +97,8 @@ Make sure Cargo's binary directory, usually `~/.cargo/bin`, is on your `PATH`.
 Or build from a local checkout:
 
 ```bash
-git clone https://github.com/lmrrcc/test.git
-cd test
+git clone https://github.com/lmrrcc/cherry-test.git
+cd cherry-test
 cargo install --path test/cherry-test --locked --bins
 ```
 
@@ -123,7 +130,7 @@ Install your Node dependencies before running Cherry Test. For example, use `pnp
 Use the explicit repository URL:
 
 ```bash
-cherry-test update --repo https://github.com/lmrrcc/test --branch main
+cherry-test update --repo https://github.com/lmrrcc/cherry-test --branch main
 ```
 
 The updater and `install.sh` default to `lmrrcc/test`. Use `--repo`, or set `CHERRY_TEST_REPO`, to select a different checkout.
@@ -323,7 +330,7 @@ Add these test dependencies to the Rust package's `Cargo.toml` to use `TestEnv` 
 ```toml
 [dev-dependencies]
 anyhow = "1"
-cherry-test-core = { git = "https://github.com/lmrrcc/test", branch = "main" }
+cherry-test-core = { git = "https://github.com/lmrrcc/cherry-test", branch = "main" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 

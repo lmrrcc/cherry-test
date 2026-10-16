@@ -182,7 +182,11 @@ pub fn format_crap_lines(report: &crate::crap::CrapReport, color: bool) -> Vec<S
     if !report.enabled {
         return Vec::new();
     }
-    let mut lines = vec![crap_totals_line("crap: ", &report.totals)];
+    let mut lines = Vec::new();
+    if let Some(changed) = &report.changed {
+        lines.push(crap_totals_line("change: ", &changed.totals));
+    }
+    lines.push(crap_totals_line("crap: ", &report.totals));
     if report.functions.is_empty() {
         lines.push(crap_complexity_line("", &report.totals));
         return lines;
@@ -1140,6 +1144,7 @@ mod tests {
         let empty = format_crap_lines(
             &crate::crap::CrapReport {
                 enabled: true,
+                changed: None,
                 ..crate::crap::CrapReport::default()
             },
             false,
@@ -1178,6 +1183,7 @@ mod tests {
                     totals: crate::crap::crap_totals(&functions),
                 }],
                 functions,
+                changed: None,
             },
             false,
         );
@@ -1228,6 +1234,7 @@ mod tests {
                 totals,
                 projects: vec![],
                 functions,
+                changed: None,
             },
             false,
         );
@@ -1275,6 +1282,7 @@ mod tests {
             totals: crate::crap::crap_totals(&functions),
             projects: vec![],
             functions,
+            changed: None,
         };
         let lines = format_crap_lines(&report, false);
         assert_eq!(lines[1], format!("   12.2  fmt    model.rs:24  {snippet}"));
@@ -1283,6 +1291,58 @@ mod tests {
         let colored = format_crap_lines(&report, true);
         assert!(colored[1].contains("\u{1b}[33m 12.2\u{1b}[0m"));
         assert!(colored[1].contains(snippet));
+    }
+
+    #[test]
+    fn crap_change_line_precedes_the_workspace_totals() {
+        let changed_function = crate::crap::CrapFunction {
+            path: "shop-rs-api/src/domain/model.rs".into(),
+            name: "parse".into(),
+            line: 90,
+            complexity: 3,
+            covered_lines: 2,
+            measured_lines: 3,
+            coverage: 2.0 / 3.0,
+            score: 4.0,
+            crap_load: 0.0,
+            source: Vec::new(),
+        };
+        let other = crate::crap::CrapFunction {
+            path: "src/other.rs".into(),
+            name: "other".into(),
+            line: 1,
+            complexity: 10,
+            covered_lines: 0,
+            measured_lines: 1,
+            coverage: 0.0,
+            score: 110.0,
+            crap_load: crate::crap::crap_load(10, 0.0),
+            source: Vec::new(),
+        };
+        let changed_functions = vec![changed_function];
+        let functions = {
+            let mut all = changed_functions.clone();
+            all.push(other);
+            all
+        };
+        let lines = format_crap_lines(
+            &crate::crap::CrapReport {
+                enabled: true,
+                totals: crate::crap::crap_totals(&functions),
+                projects: vec![],
+                changed: Some(crate::crap::CrapChange {
+                    totals: crate::crap::crap_totals(&changed_functions),
+                    functions: changed_functions,
+                }),
+                functions,
+            },
+            false,
+        );
+        assert_eq!(
+            lines[0],
+            "change: 1 functions · worst 4.0 · 0 at or above 30 (0.0%) · crap load 0.0"
+        );
+        assert!(lines[1].starts_with("crap: 2 functions"));
     }
 
     #[test]

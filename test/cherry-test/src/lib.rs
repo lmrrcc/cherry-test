@@ -345,15 +345,22 @@ const BANNER_ACCENT: &str = "\u{1b}[38;2;255;155;146m";
 const BANNER_RESET: &str = "\u{1b}[0m";
 
 fn banner_text() -> &'static str {
-    r#"     ╱▓▓▓▓▓       ██████╗  ██╗  ██╗  ███████╗  ██████╗   ██████╗   ██╗   ██╗    ████████╗  ███████╗  ███████╗  ████████╗
-    ╱   ╲        ██╔════╝▒ ██║▒ ██║▒ ██╔════╝▒ ██╔══██╗  ██╔══██╗  ╚██╗ ██╔╝▒   ╚══██╔══╝▒ ██╔════╝▒ ██╔════╝▒ ╚══██╔══╝▒
-   ╱    ▄▀▀▀▄    ██║▒▒▒▒▒▒ ███████║▒ █████╗▒▒▒ ██████╔╝▒ ██████╔╝▒  ╚████╔╝▒▒    ▒▒██║▒▒▒▒ █████╗▒▒▒ ███████╗▒  ▒▒██║▒▒▒▒
-▄▀▀▀▄   ▌   ▐▒   ██║▒      ██╔══██║▒ ██╔══╝▒   ██╔══██╗▒ ██╔══██╗▒   ╚██╔╝▒▒       ██║▒    ██╔══╝▒   ╚════██║▒    ██║▒
-▌   ▐▒  ▀▄▄▄▀▒   ╚██████╗  ██║▒▒██║▒ ███████╗  ██║▒▒██║▒ ██║▒▒██║▒    ██║▒▒        ██║▒    ███████╗  ███████║▒    ██║▒
-▀▄▄▄▀▒   ▒▒▒▒▒    ╚═════╝▒ ╚═╝▒ ╚═╝▒ ╚══════╝▒ ╚═╝▒ ╚═╝▒ ╚═╝▒ ╚═╝▒    ╚═╝▒         ╚═╝▒    ╚══════╝▒ ╚══════╝▒    ╚═╝▒
- ▒▒▒▒▒             ▒▒▒▒▒▒▒  ▒▒▒  ▒▒▒  ▒▒▒▒▒▒▒▒  ▒▒▒  ▒▒▒  ▒▒▒  ▒▒▒     ▒▒▒          ▒▒▒     ▒▒▒▒▒▒▒▒  ▒▒▒▒▒▒▒▒     ▒▒▒
+    r#"     ╱▓▓▓▓▓       ██████╗  ██╗  ██╗  ███████╗  ██████╗   ██████╗   ██╗   ██╗  
+    ╱   ╲        ██╔════╝▒ ██║▒ ██║▒ ██╔════╝▒ ██╔══██╗  ██╔══██╗  ╚██╗ ██╔╝▒ 
+   ╱    ▄▀▀▀▄    ██║▒▒▒▒▒▒ ███████║▒ █████╗▒▒▒ ██████╔╝▒ ██████╔╝▒  ╚████╔╝▒▒ 
+▄▀▀▀▄   ▌   ▐▒   ██║▒      ██╔══██║▒ ██╔══╝▒   ██╔══██╗▒ ██╔══██╗▒   ╚██╔╝▒▒  
+▌   ▐▒  ▀▄▄▄▀▒   ╚██████╗  ██║▒▒██║▒ ███████╗  ██║▒▒██║▒ ██║▒▒██║▒    ██║▒▒   
+▀▄▄▄▀▒   ▒▒▒▒▒    ╚═════╝▒ ╚═╝▒ ╚═╝▒ ╚══════╝▒ ╚═╝▒ ╚═╝▒ ╚═╝▒ ╚═╝▒    ╚═╝▒    
+ ▒▒▒▒▒             ▒▒▒▒▒▒▒  ▒▒▒  ▒▒▒  ▒▒▒▒▒▒▒▒  ▒▒▒  ▒▒▒  ▒▒▒  ▒▒▒     ▒▒▒    
+                          ████████╗  ███████╗  ███████╗  ████████╗            
+                          ╚══██╔══╝▒ ██╔════╝▒ ██╔════╝▒ ╚══██╔══╝▒           
+                           ▒▒██║▒▒▒▒ █████╗▒▒▒ ███████╗▒  ▒▒██║▒▒▒▒           
+                             ██║▒    ██╔══╝▒   ╚════██║▒    ██║▒              
+                             ██║▒    ███████╗  ███████║▒    ██║▒              
+                             ╚═╝▒    ╚══════╝▒ ╚══════╝▒    ╚═╝▒              
+                              ▒▒▒     ▒▒▒▒▒▒▒▒  ▒▒▒▒▒▒▒▒     ▒▒▒              
 
-                 Multiple mono-repositories. Single test workflow."#
+                       Multiple mono-repositories. Single test workflow."#
 }
 
 fn render_banner(color: bool) -> String {
@@ -485,9 +492,17 @@ mod integration {
     #[test]
     fn banner_fits_a_terminal_line() {
         let lines: Vec<_> = banner_text().lines().collect();
-        assert_eq!(lines.len(), 9);
-        assert!(lines.iter().all(|line| line.chars().count() <= 124));
+        assert_eq!(lines.len(), 16);
+        assert!(lines[..14].iter().all(|line| line.chars().count() == 78));
+        assert!(lines[0].contains('╱'));
+        assert!(lines[0].contains('█'));
+        assert!(!lines[0].contains("████████╗"));
+        let cherry = lines[0].chars().position(|ch| ch == '█').unwrap();
+        let test_word = lines[7].chars().position(|ch| ch == '█').unwrap();
+        assert!(test_word > cherry);
+        assert!(lines[7].contains("████████╗"));
         assert!(banner_text().contains("Multiple mono-repositories. Single test workflow."));
+        assert!(include_str!("../../../README.md").contains(banner_text()));
         assert!(!render_banner(false).contains('\u{1b}'));
         let colored = render_banner(true);
         assert!(colored.contains("\u{1b}[38;2;226;59;50m"));

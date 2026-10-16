@@ -93,11 +93,13 @@ pub fn build_report_snapshot(
         exercised_projects_for_coverage(&integration_rows, config, &preflight.scopes_to_boot);
 
     let mut project_reports = Vec::new();
+    let mut diff_paths = Vec::new();
     for result in &outcome.results {
         let git_changed = changed_by_project
             .get(&result.project_id)
             .cloned()
             .unwrap_or_default();
+        diff_paths.extend(git_changed.iter().cloned());
         let project = projects
             .iter()
             .find(|p| p.id == result.project_id)
@@ -190,6 +192,9 @@ pub fn build_report_snapshot(
         &coverage_ignore,
     )?;
 
+    diff_paths.sort();
+    diff_paths.dedup();
+    let added_lines = super::diff_view::added_lines_by_file(&project_diff_sections);
     let packages_passed = outcome.results.iter().filter(|r| r.tests_passed).count();
     let packages_failed = outcome.results.len().saturating_sub(packages_passed);
     let tests_report = build_tests_report(&integration_rows, preflight, workspace_root);
@@ -215,6 +220,8 @@ pub fn build_report_snapshot(
             &coverage_ignore,
             report_crap,
             config,
+            &diff_paths,
+            &added_lines,
         )?,
         report_path: run_dir.report_html(),
     })
@@ -226,6 +233,8 @@ fn crap_report(
     coverage_ignore: &crate::coverage_ignore::CoverageIgnore,
     report_crap: bool,
     config: &TestItConfig,
+    changed: &[String],
+    added_lines: &[(String, std::collections::BTreeSet<u32>)],
 ) -> Result<CrapReport> {
     if !report_crap {
         return Ok(CrapReport::default());
@@ -233,11 +242,16 @@ fn crap_report(
     let files = coverage_ignore.filter_line_coverage(crate::coverage::parse_lcov_line_coverage(
         &run_dir.merged_lcov(),
     )?);
-    Ok(crate::crap::score_report(
+    let mut report = crate::crap::score_report(
         workspace_root,
         &files,
         &crap_project_roots(workspace_root, config),
-    ))
+    );
+    report.changed = crate::crap::change_on_added_lines(&report.functions, added_lines);
+    if report.changed.is_none() {
+        report.changed = crate::crap::change_slice(&report.functions, changed);
+    }
+    Ok(report)
 }
 
 fn crap_project_roots(

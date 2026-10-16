@@ -115,6 +115,56 @@ pub fn build_tests_report(
     }
 }
 
+pub fn tests_in_change(report: &TestsReport, changed: &[String]) -> TestsReport {
+    if changed.is_empty() {
+        return TestsReport::default();
+    }
+    let mut projects = Vec::new();
+    let mut tags = std::collections::BTreeSet::new();
+    for project in &report.projects {
+        let mut suites = Vec::new();
+        let mut project_cases = Vec::new();
+        for suite in &project.suites {
+            let cases = suite
+                .cases
+                .iter()
+                .filter(|case| {
+                    case.snippet_path.as_ref().is_some_and(|path| {
+                        crate::coverage::path_matches_changed(&path.to_string_lossy(), changed)
+                    })
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            if cases.is_empty() {
+                continue;
+            }
+            for case in &cases {
+                for tag in &case.tags {
+                    tags.insert(tag.clone());
+                }
+            }
+            project_cases.extend(cases.iter().cloned());
+            suites.push(SuiteTestView {
+                suite: suite.suite.clone(),
+                stats: compute_stats(&cases),
+                cases,
+            });
+        }
+        if suites.is_empty() {
+            continue;
+        }
+        projects.push(ProjectTestView {
+            project: project.project.clone(),
+            stats: compute_stats(&project_cases),
+            suites,
+        });
+    }
+    TestsReport {
+        projects,
+        all_tags: tags.into_iter().collect(),
+    }
+}
+
 pub fn format_timing_stats(stats: &TestTimingStats) -> String {
     let timing = if stats.run > 0 {
         format!(
@@ -269,6 +319,57 @@ pub fn tags_attr(tags: &[String]) -> String {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn tests_in_change_keep_cases_whose_source_file_is_in_the_diff() {
+        let report = TestsReport {
+            projects: vec![ProjectTestView {
+                project: "shop".into(),
+                stats: TestTimingStats::default(),
+                suites: vec![SuiteTestView {
+                    suite: "checkout".into(),
+                    stats: TestTimingStats::default(),
+                    cases: vec![
+                        case(
+                            "applies_the_mug_discount",
+                            "shop-rs-api/tests/integration.rs",
+                        ),
+                        case("lists_seeded_products", "shop-rs-api/tests/integration.rs"),
+                        case("formats_dollars", "shop-ts-lib-cart/src/cart.test.ts"),
+                    ],
+                }],
+            }],
+            all_tags: vec!["checkout".into()],
+        };
+        assert!(tests_in_change(&report, &[]).projects.is_empty());
+        let changed = tests_in_change(&report, &["shop-rs-api/tests/integration.rs".into()]);
+        assert_eq!(changed.projects.len(), 1);
+        assert_eq!(changed.projects[0].suites[0].cases.len(), 2);
+        assert_eq!(
+            changed.projects[0].suites[0].cases[0].test,
+            "applies_the_mug_discount"
+        );
+    }
+
+    fn case(name: &str, path: &str) -> TestCaseView {
+        TestCaseView {
+            project: "shop".into(),
+            suite: "checkout".into(),
+            test: name.into(),
+            full_name: name.into(),
+            scope: "shop_checkout".into(),
+            target: "shop.api".into(),
+            elapsed_ms: 1,
+            status_label: "ok".into(),
+            http: "201".into(),
+            reason: None,
+            method: "POST".into(),
+            url: "/v1/carts/1/checkout".into(),
+            tags: vec!["checkout".into()],
+            snippet: Vec::new(),
+            snippet_path: Some(PathBuf::from(path)),
+        }
+    }
 
     fn sample_row(status: &str, ms: u64) -> IntegrationRow {
         IntegrationRow {

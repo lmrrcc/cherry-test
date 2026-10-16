@@ -74,6 +74,30 @@ pub struct ProjectDiffSection {
     pub modules: Vec<ModuleDiffSection>,
 }
 
+pub fn added_lines_by_file(sections: &[ProjectDiffSection]) -> Vec<(String, BTreeSet<u32>)> {
+    let mut files = Vec::new();
+    for project in sections {
+        for module in &project.modules {
+            for file in &module.files {
+                let mut lines = BTreeSet::new();
+                for hunk in &file.hunks {
+                    for line in &hunk.lines {
+                        if line.tag == DiffTag::Add {
+                            if let Some(number) = line.new_no {
+                                lines.insert(number);
+                            }
+                        }
+                    }
+                }
+                if !lines.is_empty() {
+                    files.push((file.path.clone(), lines));
+                }
+            }
+        }
+    }
+    files
+}
+
 pub fn build_project_diff_sections(
     workspace_root: &Path,
     run_dir: &RunDir,

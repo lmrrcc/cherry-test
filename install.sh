@@ -3,7 +3,7 @@ set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 CARGO_INSTALL_ROOT="$(dirname "$INSTALL_DIR")"
-CHERRY_TEST_REPO="${CHERRY_TEST_REPO:-https://github.com/lmrrcc/test}"
+CHERRY_TEST_REPO="${CHERRY_TEST_REPO:-https://github.com/lmrrcc/cherry-test}"
 CHERRY_TEST_VERSION="${CHERRY_TEST_VERSION:-main}"
 CHERRY_TEST_PATH="${CHERRY_TEST_PATH:-test/cherry-test}"
 
@@ -19,7 +19,7 @@ Options:
   -h, --help          Show this help
 
 Environment:
-  CHERRY_TEST_REPO        Git URL or local checkout path (default: lmrrcc/test main)
+  CHERRY_TEST_REPO        Git URL or local checkout path (default: lmrrcc/cherry-test main)
   CHERRY_TEST_VERSION     Git branch when installing from a remote repo (default: main)
   CHERRY_TEST_PATH        Crate path for the cherry-test package in a local checkout (default: test/cherry-test)
   CHERRY_TEST_FORCE=1     Pass --force to cargo install
