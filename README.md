@@ -175,6 +175,17 @@ cargo cherry-test --root app/mini --no-open
 
 Start Docker before running the container tests. The sample has its own configuration and Cargo workspace, so use `--root app/mini` explicitly. Its report is written under `app/mini/target/cherry-test/` with the sample's default settings. Some sample scenarios need additional environment settings; review [the sample configuration](app/mini/cherry-test.yaml) first.
 
+### Try Shop
+
+[Shop](https://github.com/lmrrcc/shop) is a separate repository checked out at `app/shop`. It is one configuration root: a Rust API, a TypeScript cart library, a React storefront, and Postgres.
+
+```bash
+git submodule update --init app/shop
+cp app/shop/.env.example app/shop/.env
+pnpm --dir app/shop install
+cargo cherry-test --root app/shop --no-open
+```
+
 ## Monorepos and multiple repositories
 
 A **monorepo** keeps several packages or applications in one Git repository. A **multi-repository workspace** keeps separate Git checkouts together, often as submodules. Cherry Test groups packages into projects and can inspect Git changes inside those nested repositories.

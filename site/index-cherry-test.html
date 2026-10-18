@@ -69,8 +69,9 @@
     </a>
     <nav class="nav-links" aria-label="Main">
       <a href="#demo">Demo</a>
+      <a href="#change">Change request</a>
       <a href="docs.html">Docs</a>
-      <a data-project-href href="https://github.com/lmrrcc/test">GitHub</a>
+      <a data-project-href href="https://github.com/lmrrcc/cherry-test">GitHub</a>
     </nav>
     <div class="navbar-actions">
       <a class="button button-primary button-small" href="#get-started">Get started</a>
@@ -137,7 +138,7 @@
     <div class="container stack" style="--stack-gap: var(--space-5)">
       <div class="section-header" style="margin-bottom: 0">
         <h2 class="heading-1" id="demo-title">See Shop run in 13 seconds</h2>
-        <p class="lead">Shop is one configuration root, <code>app/shop</code>, with one <code>cherry-test.yaml</code> and one report. That root holds three components: <code>shop-rs-api</code> (Rust, Axum), <code>shop-ts-lib-cart</code> (TypeScript) and <code>shop-ts-web-react</code> (React). Postgres is the Compose database, and the <code>shop_checkout</code> scope starts that stack. Another repository is another <code>--root</code> and its own report.</p>
+        <p class="lead">Shop is a single configuration root, <code>app/shop</code>, with a single <code>cherry-test.yaml</code> and a single report. That root holds multiple different technologies: <code>shop-rs-api</code> (Rust, Axum), <code>shop-ts-lib-cart</code> (TypeScript) and <code>shop-ts-web-react</code> (React). Postgres is the Compose database, and the <code>shop_checkout</code> scope starts that stack. Another repository is another <code>--root</code> and its own report.</p>
         <p class="muted"><code>cherry-test --root app/shop --verbose</code> loads that file, runs Cargo, Vitest and Playwright where each package asks for them, and lists every suite and test at the end. This recording is about 13 seconds. The real run takes about two minutes, mostly while Docker builds the API. The sample report stays on its own button.</p>
       </div>
       <figure class="run-stage" id="run-stage" data-state="player">
@@ -151,6 +152,27 @@
         <span class="cluster" style="--cluster-gap: var(--space-2)">
           <button class="button button-primary" type="button" id="run-play">Play demo</button>
           <a class="button button-secondary" href="demo/report/index.html">Open sample report</a>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="change" aria-labelledby="change-title">
+    <div class="container stack" style="--stack-gap: var(--space-5)">
+      <div class="section-header" style="margin-bottom: 0">
+        <h2 class="heading-1" id="change-title">Review a single change request</h2>
+        <p class="lead">A change request is easier to review when the tests, the coverage, the complexity, and the CRAP scores sit next to the code it changes. Cherry Test runs the configured tests and places those results on the diff, including when the feature crosses components.</p>
+        <p>A frontend, an API, and a shared library can live in one monorepo or across several repositories. Each component can use its own language and test tool. One workspace run can include several projects, and each project is compared with its own base. A second repository is another <code>--root</code> and its own report.</p>
+        <p>The shop example keeps those components in a single configuration root, <code>app/shop</code>, and a single git repository. Branch <code>discount</code> adds a catalog discount across 19 files: the Rust API <code>shop-rs-api</code> (Cargo), the TypeScript cart <code>shop-ts-lib-cart</code> (Vitest), and the React shop <code>shop-ts-web-react</code> (Vitest and Playwright). A stone mug is seeded at 10 percent off. Two mugs list at 1800 cents and check out at 1620 cents each, 3240 cents together. Cherry Test compared that branch with <code>main</code> on <a href="https://github.com/lmrrcc/shop/pull/1">lmrrcc/shop#1</a>.</p>
+        <p>The run header is FAIL. <code>application::tests::catalog_service::reports_a_price_mismatch</code> still expects a listed price of 1500 cents, and that test&rsquo;s source file is in this diff. The new mug checkout passed.</p>
+        <p>In <a href="demo/change/change-request.html#changes">Changes</a>, a blue rail is a line a test reached and an amber rail is a line it missed. The same discount can be followed from the API into the other components. The rejection of a percent outside 0 through 100 is amber in <code>DiscountPercent::parse</code> and in <code>discountedUnitCents</code>. The TypeScript function <code>discountedUnitCents</code> has 71% coverage. The measured lines in the changed React files are fully covered.</p>
+        <p>The report keeps the full test list and the full CRAP list. <a href="demo/change/change-request.html#tests-change">Tests on this change</a> lists the 13 recorded tests whose source file is in the diff: 12 passed and 1 failed. <a href="demo/change/change-request.html#crap-change">On this change</a> scores the 24 functions whose lines overlap the added diff, across the API, the cart library, and the React shop. The workspace scores 167 functions. The worst score on the change is 14.7, below the threshold of 30, and none are at or above 30. The test failure is what fails the run.</p>
+      </div>
+      <div class="cluster" style="justify-content: space-between">
+        <span class="muted small">Run <code>20261009-115357-0b2948</code> of <code>cherry-test --root app/shop</code>.</span>
+        <span class="cluster" style="--cluster-gap: var(--space-2)">
+          <a class="button button-primary" href="demo/change/change-request.html">Open the change report</a>
+          <a class="button button-secondary" href="https://github.com/lmrrcc/shop/pull/1">View the pull request</a>
         </span>
       </div>
     </div>
@@ -240,7 +262,7 @@
         <a class="button button-primary" href="docs.html#install">Install Cherry Test</a>
         <a class="button button-secondary" href="docs.html#quick-start">Read the quick start</a>
       </div>
-      <p class="muted small"><span data-project="name">Cherry Test</span> is in early development. If something doesn’t work for your project, tell us about it on <a href="https://github.com/lmrrcc/test/issues">GitHub</a>.</p>
+      <p class="muted small"><span data-project="name">Cherry Test</span> is in early development. If something doesn’t work for your project, tell us about it on <a href="https://github.com/lmrrcc/cherry-test/issues">GitHub</a>.</p>
       </div>
     </div>
   </section>
@@ -251,9 +273,9 @@
     <a class="brand" href="index.html"><span data-project="name">Cherry Test</span></a>
     <nav class="cluster" aria-label="Footer">
       <a href="docs.html">Docs</a>
-      <a data-project-href href="https://github.com/lmrrcc/test">GitHub</a>
+      <a data-project-href href="https://github.com/lmrrcc/cherry-test">GitHub</a>
       <a href="changelog.html">Changelog</a>
-      <a href="https://github.com/lmrrcc/test/issues">Report an issue</a>
+      <a href="https://github.com/lmrrcc/cherry-test/issues">Report an issue</a>
     </nav>
   </div>
 </footer>

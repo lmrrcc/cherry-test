@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Change cover</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@500;600&family=Geist+Mono:wght@500&display=swap">
+<script>if (location.hash === "#dark") document.documentElement.setAttribute("data-theme", "dark");</script>
+<style>
+  :root {
+    --bg: #fbf8f4;
+    --board: #fffcfa;
+    --board-hi: #ffffff;
+    --side: #e5d4c6;
+    --tile: #f2ebe4;
+    --hot: #ffffff;
+    --ink: #5c5148;
+    --ink-strong: #2f2722;
+    --edge: rgba(98, 73, 48, 0.1);
+    --wire: #e10600;
+    --wire-deep: #a10c0c;
+    --shadow: rgba(72, 44, 24, 0.16);
+    --card: #fffcfa;
+    --meta: #3f352e;
+    --fail: #b42323;
+    --hit: #dbeafe;
+    --hit-ink: #1e3a5f;
+    --gap: #fef9c3;
+    --gap-ink: #713f12;
+    --rail-hit: #0550ae;
+    --rail-gap: #e59a1a;
+    --track: #efe4d8;
+    --bar: #1f9d55;
+  }
+  html[data-theme="dark"] {
+    --bg: #1f1915;
+    --board: #2c2520;
+    --board-hi: #3a312b;
+    --side: #120e0c;
+    --tile: #3a322c;
+    --hot: #51463e;
+    --ink: #e7ddd4;
+    --ink-strong: #f6efe8;
+    --edge: rgba(255, 244, 232, 0.08);
+    --shadow: rgba(0, 0, 0, 0.5);
+    --card: #2c2520;
+    --meta: #f0e6dc;
+    --fail: #ff9b92;
+    --hit: #1e3a5f;
+    --hit-ink: #dbeafe;
+    --gap: #422006;
+    --gap-ink: #fde68a;
+    --track: #3a322c;
+  }
+  html, body { margin: 0; }
+  body {
+    width: 1440px;
+    height: 810px;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: Geist, ui-sans-serif, system-ui, sans-serif;
+    color: var(--ink);
+  }
+  .stage { position: relative; width: 1440px; height: 810px; perspective: 2100px; perspective-origin: 48% 42%; }
+  .shadows, .overlay, .wires { position: absolute; inset: 0; }
+  .wires { width: 1440px; height: 810px; z-index: 3; }
+  .overlay { z-index: 5; }
+  .shadows { z-index: 0; }
+  .ground { position: absolute; height: 34px; border-radius: 50%; background: var(--shadow); filter: blur(14px); transform: translate(-50%, -30%); }
+  .scene {
+    position: absolute;
+    left: 700px;
+    top: 348px;
+    width: 0;
+    height: 0;
+    transform-style: preserve-3d;
+    transform: rotateX(54deg) rotateZ(-42deg) scale(0.86);
+    z-index: 1;
+  }
+  .slab { position: absolute; transform-style: preserve-3d; }
+  .extrude, .face { position: absolute; inset: 0; border-radius: 30px; }
+  .extrude { background: var(--side); }
+  .face {
+    background: linear-gradient(165deg, var(--board-hi), var(--board) 62%);
+    border: 1px solid var(--edge);
+    transform: translateZ(24px);
+    transform-style: preserve-3d;
+  }
+  .api { width: 440px; height: 320px; left: -640px; top: -40px; }
+  .web { width: 420px; height: 300px; left: -30px; top: -500px; }
+  .cart { width: 420px; height: 220px; left: -430px; top: 210px; }
+  .hub { width: 156px; height: 156px; left: 250px; top: 20px; transform: translateZ(28px); }
+  .hub .extrude, .hub .face { border-radius: 28px; }
+  .face { padding: 92px 16px 16px; display: flex; }
+  .hub .face { padding: 0; }
+  .tiles { flex: 1; display: grid; gap: 12px; }
+  .api .tiles, .web .tiles { grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 1fr; }
+  .cart .tiles { grid-template-columns: repeat(3, 1fr); }
+  .tile {
+    position: relative;
+    border-radius: 18px;
+    background: var(--tile);
+    border: 1px solid var(--edge);
+    transform: translateZ(6px);
+  }
+  .tile.hot {
+    background: var(--hot);
+    transform: translateZ(16px);
+  }
+  .tile.hot::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    border-top: 18px solid var(--wire);
+    border-left: 18px solid transparent;
+    border-top-right-radius: 16px;
+  }
+  .pin { position: absolute; width: 0; height: 0; }
+  .pin.center { left: 50%; top: 46%; }
+  .pin.title { left: 50%; top: 42px; }
+  .pin.port { left: 100%; top: 0; width: 10px; height: 10px; margin: -5px 0 0 -5px; }
+  .hub .pin.port { left: 50%; top: 50%; }
+  .card-face .pin.port { left: 0; top: 52%; }
+  .hub .pin.center { top: 50%; }
+  .float {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    color: var(--ink);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    transform: translate(-50%, -50%);
+  }
+  .float svg { width: 26px; height: 26px; }
+  .float.title { font-size: 16px; color: var(--ink-strong); }
+  .float.cherry svg { width: 58px; height: 58px; }
+  .pill {
+    position: absolute;
+    z-index: 6;
+    transform: translate(-50%, -100%);
+    border-radius: 999px;
+    background: var(--wire);
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    padding: 8px 16px;
+    box-shadow: 0 8px 0 var(--wire-deep), 0 16px 18px rgba(180, 10, 10, 0.18);
+  }
+  .card {
+    position: absolute;
+    z-index: 4;
+    width: 318px;
+    transform-style: preserve-3d;
+    transform: rotateX(14deg) rotateY(-16deg);
+  }
+  .card-extrude, .card-face { border-radius: 26px; }
+  .card-extrude { position: absolute; inset: 0; background: var(--side); }
+  .card-face {
+    position: relative;
+    background: var(--card);
+    border: 1px solid var(--edge);
+    transform: translateZ(18px);
+    padding: 18px 18px 16px;
+  }
+  .card h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink-strong); }
+  .rows { display: flex; flex-direction: column; gap: 8px; }
+  .row {
+    display: grid;
+    grid-template-columns: 36px 28px 1fr 8px;
+    gap: 8px;
+    align-items: center;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 8px;
+    font-family: "Geist Mono", ui-monospace, monospace;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .row.hit { background: var(--hit); color: var(--hit-ink); }
+  .row.gap { background: var(--gap); color: var(--gap-ink); }
+  .rail { width: 8px; height: 18px; border-radius: 2px; justify-self: end; }
+  .row.hit .rail { background: var(--rail-hit); }
+  .row.gap .rail { background: var(--rail-gap); }
+  .meta { margin: 10px 0 0; font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--meta); }
+  .meta .fail { color: var(--fail); }
+  .meter { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+  .meter span { font-size: 13px; font-weight: 600; color: var(--meta); }
+  .bar { flex: 1; height: 8px; border-radius: 999px; background: var(--track); overflow: hidden; }
+  .bar i { display: block; width: 92.9%; height: 100%; background: var(--bar); }
+  .wire { fill: none; stroke: var(--wire); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="shadows" id="shadows"></div>
+  <div class="scene">
+    <article class="slab api">
+      <div class="extrude"></div>
+      <div class="face">
+        <span class="pin title" data-title="shop-rs-api"></span>
+        <div class="tiles">
+          <div class="tile" data-icon="cargo" data-name="Cargo"><span class="pin center"></span></div>
+          <div class="tile" data-icon="rust" data-name="Rust"><span class="pin center"></span></div>
+          <div class="tile hot" data-icon="api" data-name="API"><span class="pin center"></span><span class="pin port" data-port="api"></span></div>
+          <div class="tile" data-icon="domain" data-name="domain"><span class="pin center"></span></div>
+          <div class="tile" data-icon="sql" data-name="SQL"><span class="pin center"></span></div>
+          <div class="tile" data-icon="axum" data-name="Axum"><span class="pin center"></span></div>
+        </div>
+      </div>
+    </article>
+    <article class="slab web">
+      <div class="extrude"></div>
+      <div class="face">
+        <span class="pin title" data-title="shop-ts-web-react"></span>
+        <div class="tiles">
+          <div class="tile" data-icon="tsx" data-name="TSX"><span class="pin center"></span></div>
+          <div class="tile" data-icon="client" data-name="shopApi"><span class="pin center"></span></div>
+          <div class="tile hot" data-icon="web" data-name="Web"><span class="pin center"></span><span class="pin port" data-port="web"></span></div>
+          <div class="tile" data-icon="vitest" data-name="Vitest"><span class="pin center"></span></div>
+          <div class="tile" data-icon="play" data-name="Playwright"><span class="pin center"></span></div>
+          <div class="tile" data-icon="tests" data-name="tests"><span class="pin center"></span></div>
+        </div>
+      </div>
+    </article>
+    <article class="slab cart">
+      <div class="extrude"></div>
+      <div class="face">
+        <span class="pin title" data-title="shop-ts-lib-cart"></span>
+        <div class="tiles">
+          <div class="tile" data-icon="vitest" data-name="Vitest"><span class="pin center"></span></div>
+          <div class="tile" data-icon="ts" data-name="TS"><span class="pin center"></span></div>
+          <div class="tile hot" data-icon="cart" data-name="Cart"><span class="pin center"></span><span class="pin port" data-port="cart"></span></div>
+        </div>
+      </div>
+    </article>
+    <div class="slab hub">
+      <div class="extrude"></div>
+      <div class="face">
+        <span class="pin center" data-cherry></span>
+        <span class="pin port" data-port="hub"></span>
+      </div>
+    </div>
+  </div>
+  <svg class="wires" id="wires" viewBox="0 0 1440 810" aria-hidden="true">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M 0 1 L 8 5 L 0 9 Z" fill="#e10600"></path>
+      </marker>
+    </defs>
+  </svg>
+  <div class="pill" id="pill">discount</div>
+  <aside class="card" id="card">
+    <div class="card-extrude"></div>
+    <div class="card-face">
+      <h2>Change report</h2>
+      <div class="rows">
+        <div class="row hit"><span>115</span><span>++</span><span>Ok(Self(value))</span><span class="rail"></span></div>
+        <div class="row gap"><span>116</span><span>++</span><span>InvalidDiscount</span><span class="rail"></span></div>
+      </div>
+      <p class="meta">13 tests · <span class="fail">1 fail</span></p>
+      <p class="meta">24 CRAP · worst 14.7</p>
+      <div class="meter"><span>diff 92.9%</span><div class="bar" aria-hidden="true"><i></i></div></div>
+      <span class="pin port" data-port="card"></span>
+    </div>
+  </aside>
+  <div class="overlay" id="overlay"></div>
+</div>
+<script>
+(function () {
+  var icons = {
+    api: '<path d="M9 7.5c-2.2 1.3-3.4 2.8-3.4 4.5s1.2 3.2 3.4 4.5M15 7.5c2.2 1.3 3.4 2.8 3.4 4.5s-1.2 3.2-3.4 4.5"/>',
+    cargo: '<circle cx="12" cy="12" r="3"/><path d="M12 3.2v2.1M12 18.7V21M3.2 12h2.1M18.7 12H21M5.8 5.8l1.5 1.5M16.7 16.7l1.5 1.5M18.2 5.8l-1.5 1.5M7.3 16.7 5.8 18.2"/>',
+    rust: '<path d="m8 8-3.5 4L8 16M16 8l3.5 4-3.5 4M13 6l-2 12"/>',
+    domain: '<path d="M12 3 5 7.2v9.6L12 21l7-4.2V7.2L12 3Z"/>',
+    sql: '<ellipse cx="12" cy="7" rx="7" ry="3"/><path d="M5 7v5c0 1.7 3.1 3 7 3s7-1.3 7-3V7M5 12v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"/>',
+    axum: '<rect x="4" y="4" width="16" height="6" rx="1.6"/><rect x="4" y="14" width="16" height="6" rx="1.6"/><path d="M8 7h.01M8 17h.01"/>',
+    web: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/>',
+    tsx: '<path d="m8 8-3.5 4L8 16M16 8l3.5 4-3.5 4"/>',
+    client: '<rect x="8" y="8" width="8" height="8" rx="1.4"/><path d="M12 8V4M10 4h4"/>',
+    vitest: '<path d="M6 6 12 19 18 6"/>',
+    play: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.2v5.6l5-2.8z"/>',
+    tests: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12.2 2.4 2.4L16.2 9"/>',
+    cart: '<path d="M6.5 8h11l-1 11h-9l-1-11Z"/><path d="M9 8V7a3 3 0 0 1 6 0v1"/>',
+    ts: '<path d="m8 8-3.5 4L8 16M16 8l3.5 4-3.5 4"/>'
+  };
+  var cherry = '<svg viewBox="0 0 112 112" aria-hidden="true"><g fill="none" stroke="#624930" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round"><path d="M29 60 C35 40 58 30 66 11"/><path d="M81 51 C83 35 74 19 66 11"/></g><path d="M66 12 C73 0 88 1 95 5 C89 16 77 20 66 12Z" fill="#624930"/><path d="M29 59 C17 55 4 66 4 80 C4 94 15 105 29 105 C43 105 54 94 54 80 C54 66 42 55 29 59Z" fill="#B40A0A"/><path d="M81 50 C68 47 57 57 57 71 C57 86 68 97 81 97 C95 97 106 86 106 71 C106 57 94 47 81 50Z" fill="#B40A0A"/></svg>';
+  var overlay = document.getElementById("overlay");
+  var shadows = document.getElementById("shadows");
+  var wires = document.getElementById("wires");
+  function point(el) {
+    var r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  function glyph(name) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + icons[name] + "</svg>";
+  }
+  function place(className, html, x, y, shift) {
+    var el = document.createElement("div");
+    el.className = className;
+    el.style.left = x + "px";
+    el.style.top = y + "px";
+    if (shift) el.style.transform = shift;
+    el.innerHTML = html;
+    overlay.appendChild(el);
+  }
+  function rim(from, to, radius) {
+    var dx = to.x - from.x;
+    var dy = to.y - from.y;
+    var len = Math.hypot(dx, dy) || 1;
+    return { x: to.x - (dx / len) * radius, y: to.y - (dy / len) * radius };
+  }
+  function quad(a, b, c) {
+    return "M " + a.x.toFixed(1) + " " + a.y.toFixed(1) + " Q " + c.x.toFixed(1) + " " + c.y.toFixed(1) + ", " + b.x.toFixed(1) + " " + b.y.toFixed(1);
+  }
+  function addPath(d, arrow) {
+    var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    path.setAttribute("class", "wire");
+    if (arrow) path.setAttribute("marker-end", "url(#arrow)");
+    wires.appendChild(path);
+  }
+  function draw() {
+    overlay.innerHTML = "";
+    shadows.innerHTML = "";
+    wires.querySelectorAll("path").forEach(function (node) { if (node.parentNode === wires) node.remove(); });
+    document.querySelectorAll(".tile").forEach(function (tile) {
+      var at = point(tile.querySelector(".pin.center"));
+      place("float", glyph(tile.dataset.icon) + "<span>" + tile.dataset.name + "</span>", at.x, at.y);
+    });
+    var titleSpot = {
+      "shop-rs-api": [0.22, 0.14, "translate(-50%, -50%)"],
+      "shop-ts-web-react": [0.2, 0.02, "translate(-20%, -110%)"],
+      "shop-ts-lib-cart": [0.62, 0.07, "translate(-50%, -80%)"]
+    };
+    document.querySelectorAll("[data-title]").forEach(function (pin) {
+      var rect = pin.closest(".slab").getBoundingClientRect();
+      var spot = titleSpot[pin.dataset.title];
+      place("float title", pin.dataset.title, rect.left + rect.width * spot[0], rect.top + rect.height * spot[1], spot[2]);
+    });
+    var cherryAt = point(document.querySelector("[data-cherry]"));
+    place("float cherry", cherry, cherryAt.x, cherryAt.y);
+    document.querySelectorAll(".slab").forEach(function (slab) {
+      var rect = slab.getBoundingClientRect();
+      var shadow = document.createElement("div");
+      shadow.className = "ground";
+      shadow.style.width = (rect.width * 0.7) + "px";
+      shadow.style.left = (rect.left + rect.width / 2) + "px";
+      shadow.style.top = (rect.bottom - 8) + "px";
+      shadows.appendChild(shadow);
+    });
+    var hub = point(document.querySelector('[data-port="hub"]'));
+    var hubBox = document.querySelector(".hub").getBoundingClientRect();
+    var card = document.getElementById("card");
+    card.style.left = Math.min(hubBox.right + 22, 1104) + "px";
+    card.style.top = (hubBox.top + hubBox.height / 2 - 118) + "px";
+    var api = point(document.querySelector('[data-port="api"]'));
+    var apiSlab = document.querySelector(".api").getBoundingClientRect();
+    var webSlab = document.querySelector(".web").getBoundingClientRect();
+    var pill = document.getElementById("pill");
+    pill.style.left = (apiSlab.left + 78) + "px";
+    pill.style.top = (apiSlab.top - 28) + "px";
+    var hubReach = Math.min(hubBox.width, hubBox.height) * 0.46;
+    var web = point(document.querySelector('[data-port="web"]'));
+    var cart = point(document.querySelector('[data-port="cart"]'));
+    var cardPort = point(document.querySelector('[data-port="card"]'));
+    var pillBox = pill.getBoundingClientRect();
+    var pillFrom = { x: pillBox.left + pillBox.width * 0.7, y: pillBox.bottom - 1 };
+    var apiEnd = rim(api, hub, hubReach);
+    var webEnd = rim(web, hub, hubReach);
+    var cartEnd = rim(cart, hub, hubReach);
+    var cardStart = rim(cardPort, hub, Math.min(hubBox.width, hubBox.height) * 0.3);
+    addPath(quad(pillFrom, api, { x: (pillFrom.x + api.x) / 2, y: apiSlab.top - 28 }), false);
+    addPath(quad(api, apiEnd, { x: (api.x + apiEnd.x) / 2, y: webSlab.bottom + 28 }), false);
+    addPath(quad(web, webEnd, { x: (web.x + webEnd.x) / 2, y: webSlab.top - 34 }), false);
+    addPath(quad(cart, cartEnd, { x: (cart.x + cartEnd.x) / 2, y: Math.min(cart.y, cartEnd.y) - 30 }), false);
+    addPath(quad(cardStart, cardPort, { x: (cardStart.x + cardPort.x) / 2, y: (cardStart.y + cardPort.y) / 2 }), true);
+  }
+  function start() { requestAnimationFrame(function () { requestAnimationFrame(draw); }); }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(start);
+  window.addEventListener("load", start);
+})();
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@ Usage:
   site/scripts/generate-releases.sh [--repository OWNER/NAME] [--output FILE]
 
 Options:
-  --repository OWNER/NAME   GitHub repository holding release assets (default: lmrrcc/test)
+  --repository OWNER/NAME   GitHub repository holding release assets (default: lmrrcc/cherry-test)
   --output FILE             Output file (default: site/data/releases.js)
   -h, --help                Show this help
 
@@ -17,7 +17,7 @@ Requires git, jq, and an authenticated gh CLI. Fails when the release API is unr
 USAGE
 }
 
-repository="${SITE_REPOSITORY:-lmrrcc/test}"
+repository="${SITE_REPOSITORY:-lmrrcc/cherry-test}"
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 output="$script_directory/../data/releases.js"
 

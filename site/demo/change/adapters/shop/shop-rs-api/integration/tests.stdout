@@ -1,0 +1,28 @@
+warning: unused import: `DiscountPercent`
+  --> shop-rs-api/src/infrastructure/web.rs:14:41
+   |
+14 |     Cart, CartId, CartLine, CartStatus, DiscountPercent, DomainError, Order, OrderLine, Product,
+   |                                         ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shop-rs-api` (lib) generated 1 warning (run `cargo fix --lib -p shop-rs-api` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.22s
+     Running tests/integration.rs (target/debug/deps/integration-bed5a23d62e684e4)
+
+running 12 tests
+test shop_project_cart_suite_adds_line_to_cart_test ... ok
+test shop_project_cart_suite_rejects_quantity_beyond_stock_test ... ok
+test shop_project_cart_suite_rejects_zero_quantity_test ... ok
+test shop_project_cart_suite_unknown_cart_not_found_test ... ok
+test shop_project_catalog_suite_lists_seeded_products_test ... ok
+test shop_project_catalog_suite_rejects_invalid_sku_test ... ok
+test shop_project_catalog_suite_serves_openapi_test ... ok
+test shop_project_catalog_suite_unknown_sku_not_found_test ... ok
+test shop_project_checkout_suite_applies_the_mug_discount_test ... ok
+test shop_project_checkout_suite_places_order_and_decrements_stock_test ... ok
+test shop_project_checkout_suite_rejects_empty_cart_test ... ok
+test shop_project_checkout_suite_rejects_second_checkout_test ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+

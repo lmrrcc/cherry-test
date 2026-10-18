@@ -73,6 +73,8 @@ These rules apply to every change without exception.
 
 Sample project: `app/mini/` is a submodule to [lmrrcc/mini](https://github.com/lmrrcc/mini) (branch `mini`; `git diff main..mini` there). Cherry Test stays on `main` only.
 
+Shop: `app/shop/` is a submodule to [lmrrcc/shop](https://github.com/lmrrcc/shop) (branch `main`). Run it with `cargo cherry-test --root app/shop --no-open`. Shop changes belong in that repository.
+
 Config discovery: walk up from cwd for `cherry-test.yaml`; if none at the Cargo workspace root, scan immediate child dirs (e.g. `my-project/cherry-test.yaml`). Config fallbacks: `cherry-test.yml`, `cherry-test.toml`.
 
 ## Essential commands

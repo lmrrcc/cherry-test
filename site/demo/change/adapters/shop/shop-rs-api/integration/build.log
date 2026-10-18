@@ -1,0 +1,10 @@
+warning: unused import: `DiscountPercent`
+  --> shop-rs-api/src/infrastructure/web.rs:14:41
+   |
+14 |     Cart, CartId, CartLine, CartStatus, DiscountPercent, DomainError, Order, OrderLine, Product,
+   |                                         ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shop-rs-api` (lib) generated 1 warning (run `cargo fix --lib -p shop-rs-api` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.25s

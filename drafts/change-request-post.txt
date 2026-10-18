@@ -1,0 +1,19 @@
+DRAFT — LinkedIn post
+Attach this image: site/articles/assets/cover.jpg
+The lines drawn on the cover are an illustration, not the shop source.
+
+Single change request, multiple technologies.
+
+When I review a change request, I want to understand whether the feature has been tested properly across all the components it touches. I also want to see whether the change has introduced code that is becoming too complex or difficult to test.
+
+This gets harder when the feature involves several repositories or monorepos, different technologies and separate test tools. The information is there, but collecting it and connecting it to the change takes time.
+
+This is one of the reasons I am building Cherry Test. It runs the configured tests and brings together their results, coverage, code complexity and CRAP scores. The change view puts this information next to the code being reviewed.
+
+For this example, I added a 10% discount to a mug in the demo shop. Its original price is 1800 cents. With the discount, each mug costs 1620 cents, so two mugs should cost 3240.
+
+The implementation touches 19 files across a Rust API, a TypeScript cart library and a React frontend. The demo keeps these components in one repository. I ran Cherry Test on the discount branch and compared it with main.
+
+Report: https://cherry-test.com/demo/change/change-request.html
+Article: https://cherry-test.com/articles/change-request.html
+Pull request: https://github.com/lmrrcc/shop/pull/1

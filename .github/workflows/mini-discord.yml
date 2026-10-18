@@ -1,0 +1,38 @@
+name: Mini-Discord
+on:
+  push:
+    paths: ["mini/mini-discord/**", ".github/workflows/mini-discord.yml"]
+  pull_request:
+    paths: ["mini/mini-discord/**", ".github/workflows/mini-discord.yml"]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: "25"
+          cache: maven
+      - name: Package the existing Cherry Test Java CLI
+        working-directory: java
+        run: ./mvnw -B -ntp -pl cherry-test-cli -am -DskipTests package
+      - name: Prepare dependencies and package the simulator
+        run: docker build --target offline-tests -t mini-discord-tests mini/mini-discord
+      - name: Unit, HTTP, Gateway and all membership workflows without external networking
+        run: docker run --rm --network none -v "$PWD/mini/mini-discord/target/offline-evidence:/evidence" -e CHERRY_TEST_REPORT_DIR=/evidence mini-discord-tests verify
+      - name: Isolated service and consumer containers
+        run: sh mini/mini-discord/scripts/container-smoke.sh
+      - name: Cherry Test HTML report without external networking
+        run: sh mini/mini-discord/scripts/cherry-test-docker.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mini-discord-evidence
+          path: |
+            mini/mini-discord/target/offline-evidence
+            mini/mini-discord/target/container-evidence
+            mini/mini-discord/target/cherry-test/runs/*/reports
+            mini/mini-discord/target/cherry-test/runs/*/coverage

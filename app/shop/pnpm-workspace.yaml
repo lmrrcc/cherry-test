@@ -1,5 +1,0 @@
-packages:
-  - shop-ts-lib-cart
-  - shop-ts-web-react
-allowBuilds:
-  esbuild: true

@@ -1,0 +1,49 @@
+services:
+  mini-discord:
+    build:
+      context: .
+      target: runtime
+      args: [MINI_DISCORD_BUILD_IMAGE]
+    environment:
+      MINI_DISCORD_TEST_API: "true"
+      MINI_DISCORD_TEST_SECRET: ${MINI_DISCORD_TEST_SECRET:?Set a dedicated test control secret of at least 32 characters}
+      MINI_DISCORD_FIXTURE: /app/fixtures/jug-lugano-discord.yaml
+    ports:
+      - "127.0.0.1::8080"
+      - "127.0.0.1::8081"
+    networks: [discord-test, discord-host]
+    user: "0:0"
+    entrypoint: [sh, /app/container-entrypoint.sh]
+    healthcheck:
+      test: [CMD, su, -p, -s, /bin/sh, mini-discord, -c, "exec java -jar /app/mini-discord.jar health"]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, SETUID, SETGID]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 10s
+  consumer:
+    profiles: [consumer]
+    build:
+      context: .
+      target: offline-tests
+      args: [MINI_DISCORD_BUILD_IMAGE]
+    command: [-Pcontainer, verify]
+    environment:
+      MINI_DISCORD_CONTAINER_URL: http://mini-discord:8080
+      DISCORD_API_BASE_URL: http://mini-discord:8080/api/v10
+      DISCORD_OAUTH_BASE_URL: http://mini-discord:8080/oauth2
+      DISCORD_GATEWAY_URL: ws://mini-discord:8081
+      MINI_DISCORD_TEST_SECRET: ${MINI_DISCORD_TEST_SECRET:?Set a dedicated test control secret}
+      CHERRY_TEST_REPORT_DIR: /evidence
+    depends_on:
+      mini-discord:
+        condition: service_healthy
+    networks: [discord-test]
+    volumes:
+      - ./target/container-evidence:/evidence
+networks:
+  discord-test:
+    internal: true
+  discord-host:
+    enable_ipv6: false

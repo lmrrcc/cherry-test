@@ -6,3 +6,6 @@
 
 /demo/report/*
   Cache-Control: public, max-age=0, must-revalidate
+
+/demo/change/*
+  Cache-Control: public, max-age=0, must-revalidate

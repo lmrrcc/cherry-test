@@ -1,0 +1,21 @@
+defaults:
+  coverage: true
+  html_report: true
+  open_report: false
+  runs_base: target/cherry-test/runs
+  scope: none
+  diff_base: main
+
+projects:
+  mini_discord:
+    path: .
+    packages:
+      mini-discord:
+        adapter: maven
+        manifest: pom.xml
+        kinds: [unit, integration]
+        unit:
+          args: [-o, -Dmini.discord.isolated=true]
+        integration:
+          scope: none
+          args: [-o, -Dmini.discord.isolated=true]
