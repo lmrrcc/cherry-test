@@ -4,7 +4,7 @@ use std::process::Command;
 use anyhow::{bail, Context, Result};
 use clap::Args;
 
-pub const DEFAULT_REPO: &str = "https://github.com/lmrrcc/test";
+pub const DEFAULT_REPO: &str = "https://github.com/lmrrcc/cherry-test";
 pub const DEFAULT_BRANCH: &str = "main";
 pub const DEFAULT_CRATE_PATH: &str = "test/cherry-test";
 pub const DEFAULT_PACKAGE: &str = "cherry-test";

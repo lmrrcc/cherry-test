@@ -1,0 +1,24 @@
+fixture: standard
+screening: false
+roles: [MEMBER, STUDENT, PROFESSIONAL, SPEAKER, MENTOR, MODERATOR, STAFF, ADMIN]
+channels:
+  - {name: benvenuto, type: 0, access: public}
+  - {name: regolamento, type: 0, access: public}
+  - {name: annunci, type: 5, access: MEMBER}
+  - {name: presentazioni, type: 0, access: MEMBER}
+  - {name: java-jvm, type: 0, access: MEMBER}
+  - {name: java-ee, type: 0, access: MEMBER}
+  - {name: spring, type: 0, access: MEMBER}
+  - {name: java-ai, type: 0, access: MEMBER}
+  - {name: eventi-talk, type: 0, access: MEMBER}
+  - {name: studenti-mentoring, type: 0, access: MEMBER}
+  - {name: staff, type: 0, access: STAFF}
+  - {name: opportunita-lavoro, type: 0, access: MEMBER}
+  - {name: off-topic, type: 0, access: MEMBER}
+  - name: Java Questions
+    type: 15
+    access: MEMBER
+    tags: [Spring, Jakarta EE, Hibernate, JVM, AI, Testing]
+  - {name: Meetup Online, type: 2, access: MEMBER}
+  - {name: Mentoring, type: 2, access: MEMBER}
+events: [Java Meetup, Spring Boot Workshop, Jakarta EE Technical Session, AI with Java, Student Mentoring]

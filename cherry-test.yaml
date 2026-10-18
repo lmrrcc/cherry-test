@@ -23,3 +23,16 @@ projects:
       cherry-test-macros:
         kinds: [unit]
         manifest: test/cherry-test-macros/Cargo.toml
+
+  mini_discord:
+    path: mini/mini-discord
+    packages:
+      mini-discord:
+        adapter: maven
+        manifest: mini/mini-discord/pom.xml
+        kinds: [unit, integration]
+        unit:
+          args: [-o, -Dmini.discord.isolated=true]
+        integration:
+          scope: none
+          args: [-o, -Dmini.discord.isolated=true]

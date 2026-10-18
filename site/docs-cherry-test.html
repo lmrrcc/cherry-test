@@ -74,6 +74,7 @@
         <a href="#config">Configuration</a>
         <a href="#integration">Integration tests</a>
         <a href="#coverage">Coverage</a>
+        <a href="#change-request">Change request</a>
         <a href="#ci">CI review</a>
         <a href="#mutation">Mutation testing</a>
         <a href="#crap">CRAP</a>
@@ -247,7 +248,7 @@
       <div class="section-header">
         <span class="eyebrow">Architecture</span>
         <h2 class="heading-1">Shop is one root. Each other repository is another run.</h2>
-        <p class="lead">A multi-repository workspace is several checkouts side by side. Cherry Test reads one <code>cherry-test.yaml</code> per run and writes one report for that root. Shop, at <code>app/shop</code> in this repository, is that root: a Rust API, a TypeScript cart library, a React storefront, and Postgres.</p>
+        <p class="lead">A multi-repository workspace is several checkouts side by side. Cherry Test reads one <code>cherry-test.yaml</code> per run and writes one report for that root. Shop is the separate <a href="https://github.com/lmrrcc/shop">lmrrcc/shop</a> repository, checked out at <code>app/shop</code>. That root holds a Rust API, a TypeScript cart library, a React storefront, and Postgres.</p>
       </div>
       <div class="arch" aria-label="Shop configuration root next to a separate repository">
         <div class="arch-root">
@@ -305,7 +306,7 @@
     ├── vite.config.ts
     └── src/Shop.tsx</pre>
         <div class="stack">
-          <p>Shop is a directory in this repository, with one Cargo workspace and one pnpm workspace. It is the shape of a configuration root you keep next to other repositories.</p>
+          <p>Shop is its own Git repository, with one Cargo workspace and one pnpm workspace. It is the shape of a configuration root you keep next to other repositories.</p>
           <p class="muted small">Rust packages in one run have to be reachable from that root's Cargo workspace. Setting <code>manifest</code> helps discovery. It does not point the Rust runner at a different workspace. Give each independent Rust workspace its own <code>cherry-test.yaml</code> and invoke it with <code>--root</code>.</p>
           <div class="terminal">
             <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">two roots, two reports</span></div>
@@ -504,10 +505,12 @@
               <tr><td>Tests</td><td>Pass, fail, and skip, plus timing, filters, and failure reasons.</td></tr>
               <tr><td>Test details</td><td>HTTP records and source snippets when the runner captured them.</td></tr>
               <tr><td>Changes</td><td>Project and file diffs, line numbers, and coverage markers.</td></tr>
+              <tr><td>On this change</td><td>Recorded tests whose source file is in the diff, and CRAP for functions whose lines overlap the added diff. The full lists stay in the report.</td></tr>
             </tbody>
           </table>
         </div>
         <p class="muted small">Markers distinguish covered lines, uncovered lines, and lines with no coverage data. A covered line still needs an assertion that checks the behavior. Set <code>diff_base</code> to the branch or commit under review, and fetch it first. <code>empty</code>, <code>empty-tree</code>, and <code>root</code> compare the tracked tree with an empty Git tree. Discovery includes commits since the base, staged changes, unstaged changes, and untracked files.</p>
+        <p class="muted small" id="change-request">Shop branch <code>discount</code> is one change request across <code>shop-ts-lib-cart</code>, <code>shop-rs-api</code>, and <code>shop-ts-web-react</code>. <a href="demo/change/change-request.html">This run</a> compares the branch with <code>main</code>. <a href="demo/change/change-request.html#changes">Changes</a> marks reached lines in blue and missed lines in amber. <a href="demo/change/change-request.html#tests-change">Tests on this change</a> lists 13 recorded tests whose source file is in the diff. <a href="demo/change/change-request.html#crap-change">On this change</a> scores 24 functions whose lines overlap the added diff, and the workspace scores 167. The header is FAIL because <code>reports_a_price_mismatch</code> still expects 1500 cents. The pull request is <a href="https://github.com/lmrrcc/shop/pull/1">lmrrcc/shop#1</a>.</p>
         <div class="terminal">
           <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">diff base and coverage ignore</span></div>
 <pre><span class="key">defaults</span>:

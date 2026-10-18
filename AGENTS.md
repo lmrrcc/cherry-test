@@ -59,6 +59,8 @@ cargo build -p cherry-test                         # CLI builds
 
 The bundled sample is the **`app/mini/` submodule** ([lmrrcc/mini](https://github.com/lmrrcc/mini), branch `mini`). Run `git submodule update --init app/mini`, then `cargo cherry-test mini --no-open`. Sample-only diffs: `git diff main..mini` inside that repo. Cherry Test has no `mini` branch.
 
+Shop is the **`app/shop/` submodule** ([lmrrcc/shop](https://github.com/lmrrcc/shop), branch `main`). Run `git submodule update --init app/shop`, then `cargo cherry-test --root app/shop --no-open`. Shop changes belong in that repository, not in Cherry Test.
+
 ### Where to change what
 
 | Path | Change when… |

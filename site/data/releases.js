@@ -1,5 +1,5 @@
 window.SITE_RELEASES = {
-  "repository": "lmrrcc/test",
+  "repository": "lmrrcc/cherry-test",
   "generatedAt": "2026-10-08T09:53:51Z",
   "versions": [
     {

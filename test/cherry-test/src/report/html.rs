@@ -126,10 +126,36 @@ fn render_report(snapshot: &ReportSnapshot, jumps: &JumpIndex) -> String {
     )
 }
 
+fn render_crap_change(change: &crate::crap::CrapChange) -> String {
+    let totals = &change.totals;
+    let mut html = String::from("<section id=\"crap-change\"><h3>On this change</h3>");
+    html.push_str(&format!(
+        "<p>{} functions · worst {:.1} · {} at or above {:.0} ({:.1}%) · crap load {:.1}</p>",
+        totals.functions,
+        totals.worst_crap,
+        totals.crappy_functions,
+        crate::crap::CRAP_THRESHOLD,
+        totals.crappy_percent,
+        totals.crap_load
+    ));
+    if !change.functions.is_empty() {
+        html.push_str("<div class=\"crap-list\"><div class=\"crap-row crap-head\"><span>Score</span><span>Complexity</span><span>Coverage</span><span>Crap load</span><span>Function</span><span>Location</span></div>");
+        for function in &change.functions {
+            html.push_str(&crap_function_html(function));
+        }
+        html.push_str("</div>");
+    }
+    html.push_str("</section>");
+    html
+}
+
 fn render_crap_section(snapshot: &ReportSnapshot) -> String {
     let totals = &snapshot.crap.totals;
     let mut html = String::from("<section id=\"crap\"><h2>CRAP</h2>");
     html.push_str("<p class=\"muted\">Cyclomatic complexity and the fraction of measured lines in each function. CRAP = complexity^2 * (1 - coverage)^3 + complexity. This is line coverage, not basis-path coverage. The aggregate LCOV percentage is not a CRAP score.</p>");
+    if let Some(changed) = &snapshot.crap.changed {
+        html.push_str(&render_crap_change(changed));
+    }
     html.push_str(&format!(
         "<p>{} functions · worst {:.1} · {} at or above {:.0} ({:.1}%) · crap load {:.1}</p>",
         totals.functions,
@@ -439,7 +465,41 @@ fn render_tests_section(snapshot: &ReportSnapshot, jumps: &JumpIndex) -> String 
         }
     }
     html.push_str("</div></section>");
+    html.push_str(&render_changed_tests_section(snapshot, jumps));
     html
+}
+
+fn render_changed_tests_section(snapshot: &ReportSnapshot, jumps: &JumpIndex) -> String {
+    let changed =
+        super::test_view::tests_in_change(&snapshot.tests_report, &changed_paths(snapshot));
+    if changed.projects.is_empty() {
+        return String::new();
+    }
+    let mut html = String::from("<section id=\"tests-change\"><h2>Tests on this change</h2>");
+    html.push_str("<p class=\"muted\">Recorded tests whose source file is in the diff.</p>");
+    for project in &changed.projects {
+        for suite in &project.suites {
+            for (order, case) in suite.cases.iter().enumerate() {
+                html.push_str(&render_test_case(case, order, true, jumps));
+            }
+        }
+    }
+    html.push_str("</section>");
+    html
+}
+
+fn changed_paths(snapshot: &ReportSnapshot) -> Vec<String> {
+    let mut paths = Vec::new();
+    for project in &snapshot.project_diff_sections {
+        for module in &project.modules {
+            for file in &module.files {
+                if file.adds > 0 || file.dels > 0 || file.unparsed_diff {
+                    paths.push(file.path.clone());
+                }
+            }
+        }
+    }
+    paths
 }
 
 fn test_case_scope_target_html(case: &crate::report::TestCaseView) -> String {
@@ -1960,6 +2020,7 @@ mod tests {
             }],
             totals,
             functions,
+            changed: None,
         }));
         assert!(html.contains("id=\"crap\""));
         assert!(html.contains("line coverage, not basis-path coverage"));
@@ -2015,6 +2076,7 @@ mod tests {
                 projects: Vec::new(),
                 totals,
                 functions,
+                changed: None,
             }))
         }
 
@@ -2022,6 +2084,43 @@ mod tests {
             (0..count)
                 .map(|index| scored(&format!("f{index}"), 1.0))
                 .collect()
+        }
+
+        #[test]
+        fn shows_the_changed_functions_before_the_workspace_list() {
+            let changed_function = scored("parse", 4.0);
+            let other = crate::crap::CrapFunction {
+                path: "src/other.rs".into(),
+                name: "other".into(),
+                line: 1,
+                complexity: 1,
+                covered_lines: 1,
+                measured_lines: 1,
+                coverage: 1.0,
+                score: 1.0,
+                crap_load: 0.0,
+                source: Vec::new(),
+            };
+            let functions = vec![changed_function.clone(), other];
+            let totals = crate::crap::crap_totals(&functions);
+            let changed_functions = vec![changed_function];
+            let html = render_html(&snapshot_with_crap(crate::crap::CrapReport {
+                enabled: true,
+                projects: Vec::new(),
+                totals,
+                functions,
+                changed: Some(crate::crap::CrapChange {
+                    totals: crate::crap::crap_totals(&changed_functions),
+                    functions: changed_functions,
+                }),
+            }));
+            let change = html.find("<section id=\"crap-change\">").unwrap();
+            let end = change + html[change..].find("</section>").unwrap();
+            let block = &html[change..end];
+            assert!(block.contains("On this change"));
+            assert!(block.contains(">parse<"));
+            assert!(!block.contains(">other<"));
+            assert!(html[end..].contains(">other<"));
         }
 
         #[test]

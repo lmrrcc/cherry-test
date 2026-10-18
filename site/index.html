@@ -141,8 +141,9 @@
     </a>
     <nav class="nav-links" aria-label="Main">
       <a href="#demo">Demo</a>
+      <a href="#change">Change request</a>
       <a href="#docs">Docs</a>
-      <a data-project-href href="https://github.com/lmrrcc/test">GitHub</a>
+      <a data-project-href href="https://github.com/lmrrcc/cherry-test">GitHub</a>
     </nav>
     <div class="navbar-actions">
       <a class="button button-primary button-small" href="#get-started">Get started</a>
@@ -158,8 +159,8 @@
     <div class="container">
       <div class="hero-copy">
       <h1 class="display hero-title"><span class="hero-line">Mono multiple-repositories.</span> <span class="hero-line">Multiple mono-repositories.</span> <span class="hero-line accent-text">Single test workflow.</span></h1>
-      <p class="lead">One feature can touch your frontend, APIs and shared libraries across a monorepo, a multi-repository project or several monorepos. Each component has its own languages, test tools and services. You need to test them together.</p>
-      <p class="lead">Cherry Test coordinates the tests in your configured workspace and brings their results and coverage into one report. Keep your existing test tools. Spend less time running commands and collecting results.</p>
+      <p class="lead">A single feature can touch your frontend, APIs and shared libraries across a monorepo, a multi-repository project or several monorepos. Each component has its own languages, test tools and services. You need to test them together.</p>
+      <p class="lead">Cherry Test coordinates the tests in your configured workspace and brings their results and coverage into a single report. Keep your existing test tools. Spend less time running commands and collecting results.</p>
       <p class="muted">Run locally or in CI.</p>
       <div class="cluster">
         <a class="button button-primary" href="#get-started">Get started</a>
@@ -198,7 +199,7 @@
     <div class="container stack" style="--stack-gap: var(--space-5)">
       <div class="section-header" style="margin-bottom: 0">
         <h2 class="heading-1" id="demo-title">See Shop run in 13 seconds</h2>
-        <p class="lead">Shop is one configuration root, <code>app/shop</code>, with one <code>cherry-test.yaml</code> and one report. That root holds three components: <code>shop-rs-api</code> (Rust, Axum), <code>shop-ts-lib-cart</code> (TypeScript) and <code>shop-ts-web-react</code> (React). Postgres is the Compose database, and the <code>shop_checkout</code> scope starts that stack. Another repository is another <code>--root</code> and its own report.</p>
+        <p class="lead">Shop is a single configuration root, <code>app/shop</code>, with a single <code>cherry-test.yaml</code> and a single report. That root holds multiple different technologies: <code>shop-rs-api</code> (Rust, Axum), <code>shop-ts-lib-cart</code> (TypeScript) and <code>shop-ts-web-react</code> (React). Postgres is the Compose database, and the <code>shop_checkout</code> scope starts that stack. Another repository is another <code>--root</code> and its own report.</p>
         <p class="muted"><code>cherry-test --root app/shop --verbose</code> loads that file, runs Cargo, Vitest and Playwright where each package asks for them, and lists every suite and test at the end. This recording is about 13 seconds. The real run takes about two minutes, mostly while Docker builds the API. The sample report stays on its own button.</p>
       </div>
       <figure class="run-stage" id="run-stage" data-state="player">
@@ -212,6 +213,60 @@
         <span class="cluster" style="--cluster-gap: var(--space-2)">
           <button class="button button-primary" type="button" id="run-play">Play demo</button>
           <a class="button button-secondary" href="demo/report/index.html">Open sample report</a>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="change" aria-labelledby="change-title">
+    <div class="container stack" style="--stack-gap: var(--space-5)">
+      <div class="section-header" style="margin-bottom: 0">
+        <h2 class="heading-1" id="change-title">Review a single change request</h2>
+        <p class="lead">A change request is easier to review when the tests, the coverage, the complexity, and the CRAP scores sit next to the code it changes. Cherry Test runs the configured tests and places those results on the diff, including when the feature crosses components.</p>
+        <p>A frontend, an API, and a shared library can live in one monorepo or across several repositories. Each component can use its own language and test tool. One workspace run can include several projects, and each project is compared with its own base. A second repository is another <code>--root</code> and its own report.</p>
+        <p>The shop example keeps those components in a single configuration root, <code>app/shop</code>, and a single git repository. Branch <code>discount</code> adds a catalog discount across 19 files: the Rust API <code>shop-rs-api</code> (Cargo), the TypeScript cart <code>shop-ts-lib-cart</code> (Vitest), and the React shop <code>shop-ts-web-react</code> (Vitest and Playwright). A stone mug is seeded at 10 percent off. Two mugs list at 1800 cents and check out at 1620 cents each, 3240 cents together. Cherry Test compared that branch with <code>main</code> on <a href="https://github.com/lmrrcc/shop/pull/1">lmrrcc/shop#1</a>.</p>
+        <p>The run header is FAIL. <code>application::tests::catalog_service::reports_a_price_mismatch</code> still expects a listed price of 1500 cents, and that test&rsquo;s source file is in this diff. The new mug checkout passed.</p>
+        <p>In <a href="demo/change/change-request.html#changes">Changes</a>, a blue rail is a line a test reached and an amber rail is a line it missed. The same discount can be followed from the API into the other components. The rejection of a percent outside 0 through 100 is amber in <code>DiscountPercent::parse</code> and in <code>discountedUnitCents</code>. The TypeScript function <code>discountedUnitCents</code> has 71% coverage. The measured lines in the changed React files are fully covered.</p>
+        <p>The report keeps the full test list and the full CRAP list. <a href="demo/change/change-request.html#tests-change">Tests on this change</a> lists the 13 recorded tests whose source file is in the diff: 12 passed and 1 failed. <a href="demo/change/change-request.html#crap-change">On this change</a> scores the 24 functions whose lines overlap the added diff, across the API, the cart library, and the React shop. The workspace scores 167 functions. The worst score on the change is 14.7, below the threshold of 30, and none are at or above 30. The test failure is what fails the run. The <a href="articles/change-request.html">article</a> walks the diff row, the thirteen tests, and the twenty-four CRAP functions.</p>
+      </div>
+      <div class="report-rows">
+        <article class="report-row">
+          <div class="report-row-text">
+            <h3 class="heading-2">Read the diff row</h3>
+            <p><code>++</code> is a line the branch added. The left rail is the test outcome. The right rail is coverage: blue when a test reached the line, amber when it did not. In <code>DiscountPercent::parse</code>, the arm that accepts a percent is blue. The arm that rejects anything outside 0 through 100 is amber.</p>
+          </div>
+          <figure class="report-shot">
+            <img class="report-shot-light" src="articles/assets/diff-light.png" alt="Diff of DiscountPercent::parse. Added lines 113 to 115 and 118 to 121 are blue. Line 116, the InvalidDiscount rejection, is amber." width="1080" height="290" loading="lazy" decoding="async">
+            <img class="report-shot-dark" src="articles/assets/diff-dark.png" alt="" width="1080" height="290" loading="lazy" decoding="async">
+          </figure>
+        </article>
+        <article class="report-row">
+          <div class="report-row-text">
+            <h3 class="heading-2">Tests on this change</h3>
+            <p>These are the recorded tests whose source file is in the diff, not every test that ran. Thirteen qualify. Twelve passed, including the new mug checkout at 1620 cents each. <code>reports_a_price_mismatch</code> failed: the listed price was 1800 cents and the test still expected 1500.</p>
+          </div>
+          <figure class="report-shot">
+            <img class="report-shot-light" src="articles/assets/tests-light.png" alt="Tests on this change: twelve passing shop tests and a failing reports_a_price_mismatch." width="1080" height="720" loading="lazy" decoding="async">
+            <img class="report-shot-dark" src="articles/assets/tests-dark.png" alt="" width="1080" height="720" loading="lazy" decoding="async">
+          </figure>
+        </article>
+        <article class="report-row">
+          <div class="report-row-text">
+            <h3 class="heading-2">CRAP on the added lines</h3>
+            <p>On this change scores functions whose lines overlap an added line. Twenty-four functions, across the API, the cart library, and the React shop. The worst score is 14.7. None are at or above the threshold of 30. The test failure is what fails the run.</p>
+          </div>
+          <figure class="report-shot">
+            <img class="report-shot-light" src="articles/assets/crap-light.png" alt="On this change: 24 functions, worst CRAP 14.7, none at or above 30." width="1080" height="1280" loading="lazy" decoding="async">
+            <img class="report-shot-dark" src="articles/assets/crap-dark.png" alt="" width="1080" height="1280" loading="lazy" decoding="async">
+          </figure>
+        </article>
+      </div>
+      <div class="cluster" style="justify-content: space-between">
+        <span class="muted small">Run <code>20261009-115357-0b2948</code> of <code>cherry-test --root app/shop</code>.</span>
+        <span class="cluster" style="--cluster-gap: var(--space-2)">
+          <a class="button button-primary" href="articles/change-request.html">Read the article</a>
+          <a class="button button-secondary" href="demo/change/change-request.html">Open the change report</a>
+          <a class="button button-secondary" href="https://github.com/lmrrcc/shop/pull/1">View the pull request</a>
         </span>
       </div>
     </div>
@@ -279,7 +334,7 @@
           <a class="button button-primary" href="#install">Install Cherry Test</a>
           <a class="button button-secondary" href="#quick-start">Read the quick start</a>
         </div>
-        <p class="muted small">Cherry Test is in early development. If something doesn’t work for your project, tell us about it on <a href="https://github.com/lmrrcc/test/issues">GitHub</a>.</p>
+        <p class="muted small">Cherry Test is in early development. If something doesn’t work for your project, tell us about it on <a href="https://github.com/lmrrcc/cherry-test/issues">GitHub</a>.</p>
       </div>
       <ol class="setup-steps">
         <li>
@@ -328,6 +383,7 @@
         <a href="#config">Configuration</a>
         <a href="#integration">Integration tests</a>
         <a href="#coverage">Coverage</a>
+        <a href="#change">Change request</a>
         <a href="#ci">CI review</a>
         <a href="#mutation">Mutation testing</a>
         <a href="#crap">CRAP</a>
@@ -358,7 +414,7 @@
           </tbody>
         </table>
       </div>
-      <p class="muted small">Adapters run local tools or container toolchains. An external executable adapter can add a language without rebuilding Cherry Test. See the <a href="https://github.com/lmrrcc/test/blob/main/docs/adapters.md">adapter guide</a> and the <a href="https://github.com/lmrrcc/mini/blob/mini/polyglot/README.md">six-backend price sample</a>.</p>
+      <p class="muted small">Adapters run local tools or container toolchains. An external executable adapter can add a language without rebuilding Cherry Test. See the <a href="https://github.com/lmrrcc/cherry-test/blob/main/docs/adapters.md">adapter guide</a> and the <a href="https://github.com/lmrrcc/mini/blob/mini/polyglot/README.md">six-backend price sample</a>.</p>
     </div>
   </section>
 
@@ -407,7 +463,7 @@
               <span data-copy-label>Copy</span>
             </button>
           </div>
-          <pre id="install-cargo"><span class="prompt">$ </span>cargo install --git https://github.com/lmrrcc/test --branch main --locked --bins cherry-test</pre>
+          <pre id="install-cargo"><span class="prompt">$ </span>cargo install --git https://github.com/lmrrcc/cherry-test --branch main --locked --bins cherry-test</pre>
         </div>
         <div class="terminal">
           <div class="terminal-bar">
@@ -418,8 +474,8 @@
               <span data-copy-label>Copy</span>
             </button>
           </div>
-<pre id="install-local"><span class="prompt">$ </span>git clone https://github.com/lmrrcc/test.git
-<span class="prompt">$ </span>cd test
+<pre id="install-local"><span class="prompt">$ </span>git clone https://github.com/lmrrcc/cherry-test.git
+<span class="prompt">$ </span>cd cherry-test
 <span class="prompt">$ </span>cargo install --path test/cherry-test --locked --bins
 <span class="prompt">$ </span>cargo cherry-test</pre>
         </div>
@@ -456,11 +512,11 @@
       <div class="doc-block" id="update">
         <div class="section-header">
           <h3 class="heading-2">Update</h3>
-          <p class="lead">The updater and <code>install.sh</code> default to <code>lmrrcc/test</code>. <code>--repo</code> or <code>CHERRY_TEST_REPO</code> selects another checkout.</p>
+          <p class="lead">The updater and <code>install.sh</code> default to <code>lmrrcc/cherry-test</code>. <code>--repo</code> or <code>CHERRY_TEST_REPO</code> selects another checkout.</p>
         </div>
         <div class="terminal">
           <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">update</span></div>
-          <pre><span class="prompt">$ </span><span data-project="binary">cherry-test</span> update --repo https://github.com/lmrrcc/test --branch main</pre>
+          <pre><span class="prompt">$ </span><span data-project="binary">cherry-test</span> update --repo https://github.com/lmrrcc/cherry-test --branch main</pre>
         </div>
       </div>
 
@@ -500,7 +556,7 @@
       <div class="section-header">
         <span class="eyebrow">Architecture</span>
         <h2 class="heading-1">Shop is one root. Each other repository is another run.</h2>
-        <p class="lead">A multi-repository workspace is several checkouts side by side. Cherry Test reads one <code>cherry-test.yaml</code> per run and writes one report for that root. Shop, at <code>app/shop</code> in this repository, is that root: a Rust API, a TypeScript cart library, a React storefront, and Postgres.</p>
+        <p class="lead">A multi-repository workspace is several checkouts side by side. Cherry Test reads one <code>cherry-test.yaml</code> per run and writes one report for that root. Shop is the separate <a href="https://github.com/lmrrcc/shop">lmrrcc/shop</a> repository, checked out at <code>app/shop</code>. That root holds a Rust API, a TypeScript cart library, a React storefront, and Postgres.</p>
       </div>
       <div class="arch" aria-label="Shop configuration root next to a separate repository">
         <div class="arch-root">
@@ -558,7 +614,7 @@
     ├── vite.config.ts
     └── src/Shop.tsx</pre>
         <div class="stack">
-          <p>Shop is a directory in this repository, with one Cargo workspace and one pnpm workspace. It is the shape of a configuration root you keep next to other repositories.</p>
+          <p>Shop is its own Git repository, with one Cargo workspace and one pnpm workspace. It is the shape of a configuration root you keep next to other repositories.</p>
           <p class="muted small">Rust packages in one run have to be reachable from that root's Cargo workspace. Setting <code>manifest</code> helps discovery. It does not point the Rust runner at a different workspace. Give each independent Rust workspace its own <code>cherry-test.yaml</code> and invoke it with <code>--root</code>.</p>
           <div class="terminal">
             <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">two roots, two reports</span></div>
@@ -708,7 +764,7 @@
           <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">Cargo.toml · dev-dependencies</span></div>
 <pre>[<span class="key">dev-dependencies</span>]
 <span class="key">anyhow</span> = <span class="string">"1"</span>
-<span class="key">cherry-test-core</span> = { <span class="key">git</span> = <span class="string">"https://github.com/lmrrcc/test"</span>, <span class="key">branch</span> = <span class="string">"main"</span> }
+<span class="key">cherry-test-core</span> = { <span class="key">git</span> = <span class="string">"https://github.com/lmrrcc/cherry-test"</span>, <span class="key">branch</span> = <span class="string">"main"</span> }
 <span class="key">tokio</span> = { <span class="key">version</span> = <span class="string">"1"</span>, <span class="key">features</span> = [<span class="string">"macros"</span>, <span class="string">"rt-multi-thread"</span>] }</pre>
         </div>
         <p>The checkout test opens a cart, adds three units of <code>NB-DOT-A5</code>, posts checkout, and checks the order total and the stock decrease. Names follow <code>{project}_project_{suite}_suite_{test}_test</code>. The macro requires an async function, one <code>env: TestEnv</code> argument, and no declared return type. <code>?</code> is allowed in the body. Ordinary <code>cargo test</code> sees these tests as ignored. Cherry Test selects them in the integration phase. The React storefront covers the same API again with functional tests and visual snapshots: the catalog, cart lines, checkout, and the rejection cases.</p>
@@ -757,10 +813,12 @@
               <tr><td>Tests</td><td>Pass, fail, and skip, plus timing, filters, and failure reasons.</td></tr>
               <tr><td>Test details</td><td>HTTP records and source snippets when the runner captured them.</td></tr>
               <tr><td>Changes</td><td>Project and file diffs, line numbers, and coverage markers.</td></tr>
+              <tr><td>On this change</td><td>Recorded tests whose source file is in the diff, and CRAP for functions whose lines overlap the added diff. The full lists stay in the report.</td></tr>
             </tbody>
           </table>
         </div>
         <p class="muted small">Markers distinguish covered lines, uncovered lines, and lines with no coverage data. A covered line still needs an assertion that checks the behavior. Set <code>diff_base</code> to the branch or commit under review, and fetch it first. <code>empty</code>, <code>empty-tree</code>, and <code>root</code> compare the tracked tree with an empty Git tree. Discovery includes commits since the base, staged changes, unstaged changes, and untracked files.</p>
+        <p class="muted small">The <a href="#change">Shop discount change request</a> places tests, coverage, and CRAP next to one branch that touches the cart library, the API, and the React shop. This example is one repository. A second repository is another <code>--root</code> and its own report. Open <a href="demo/change/change-request.html">the change report</a>.</p>
         <div class="terminal">
           <div class="terminal-bar"><span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span><span class="terminal-title">diff base and coverage ignore</span></div>
 <pre><span class="key">defaults</span>:
@@ -960,7 +1018,7 @@
       <div class="doc-block" id="development">
         <div class="section-header">
           <h3 class="heading-2">Development</h3>
-          <p class="lead">Four crates implement the runner. <code>app/mini</code> is a second sample, in its own Git submodule and Cargo workspace. Read <a href="https://github.com/lmrrcc/test/blob/main/AGENTS.md">AGENTS.md</a> before changing the code. A wrong success or a missing coverage file can hide defects in every project that uses the runner.</p>
+          <p class="lead">Four crates implement the runner. <code>app/mini</code> is a second sample, in its own Git submodule and Cargo workspace. Read <a href="https://github.com/lmrrcc/cherry-test/blob/main/AGENTS.md">AGENTS.md</a> before changing the code. A wrong success or a missing coverage file can hide defects in every project that uses the runner.</p>
         </div>
         <div class="table-wrap">
           <table class="table">
@@ -971,8 +1029,8 @@
     <a class="brand" href="index.html" aria-label="Cherry Test home"><img class="brand-logo brand-logo-light" src="assets/cherry-logo.svg" alt="Cherry Test" width="140" height="29"><img class="brand-logo brand-logo-dark" src="assets/cherry-logo-dark.svg" alt="Cherry Test" width="140" height="29"></a>
     <nav class="cluster" aria-label="Footer">
       <a href="#docs">Docs</a>
-      <a data-project-href href="https://github.com/lmrrcc/test">GitHub</a>
-      <a href="https://github.com/lmrrcc/test/issues">Report an issue</a>
+      <a data-project-href href="https://github.com/lmrrcc/cherry-test">GitHub</a>
+      <a href="https://github.com/lmrrcc/cherry-test/issues">Report an issue</a>
     </nav>
   </div>
 </footer>

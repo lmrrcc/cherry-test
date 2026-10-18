@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#FBF8F4">
+<title>Single change request, multiple technologies — Cherry Test</title>
+<meta name="description" content="A change request can cross a Rust API, a TypeScript cart and a React shop. Cherry Test puts the tests, coverage and CRAP scores next to the code being reviewed.">
+<meta property="og:title" content="Single change request, multiple technologies">
+<meta property="og:description" content="The discount branch in the demo shop, reviewed across the API, the cart and the frontend.">
+<meta property="og:image" content="https://cherry-test.com/articles/assets/cover.jpg">
+<link rel="icon" href="../assets/cherry-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../design-system/tokens.css">
+<link rel="stylesheet" href="../design-system/components.css">
+<link rel="stylesheet" href="../design-system/themes/cherry.css">
+<link rel="stylesheet" href="../design-system/themes/cherry-site.css">
+<script>document.documentElement.setAttribute("data-brand", "cherry");</script>
+<style>
+  .article { max-width: 72ch; }
+  .article p, .article li { color: var(--text-secondary); }
+  .article h2 { margin-top: var(--space-7); }
+  .cover { width: min(1040px, calc(100vw - 48px)); margin: 0; margin-left: calc(50% - min(520px, 50vw - 24px)); border: 1px solid var(--border-default); border-radius: var(--radius-4); overflow: hidden; background: var(--surface-raised); box-shadow: var(--shadow-2); }
+  .cover img { display: block; width: 100%; height: auto; }
+  body { overflow-x: clip; }
+  .report-shot { margin: var(--space-4) 0; border: 1px solid var(--border-default); border-radius: var(--radius-4); overflow: hidden; background: var(--surface-raised); box-shadow: var(--shadow-2); }
+  .report-shot img { display: block; width: 100%; height: auto; }
+  .report-shot-dark { display: none !important; }
+  :root[data-theme="dark"] .report-shot-light { display: none !important; }
+  :root[data-theme="dark"] .report-shot-dark { display: block !important; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .report-shot-light { display: none !important; }
+    :root:not([data-theme="light"]) .report-shot-dark { display: block !important; }
+  }
+  .snippet { margin: var(--space-4) 0; }
+</style>
+</head>
+<body>
+<a class="visually-hidden" href="#top">Skip to content</a>
+<header class="navbar">
+  <div class="container navbar-inner">
+    <a class="brand" href="../index.html" aria-label="Cherry Test home">
+      <img class="brand-logo brand-logo-light" src="../assets/cherry-logo.svg" alt="Cherry Test" width="170" height="35">
+      <img class="brand-logo brand-logo-dark" src="../assets/cherry-logo-dark.svg" alt="Cherry Test" width="170" height="35">
+    </a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="../index.html#change">Change request</a>
+      <a href="../index.html#docs">Docs</a>
+      <a href="https://github.com/lmrrcc/cherry-test">GitHub</a>
+    </nav>
+    <div class="navbar-actions">
+      <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle colour theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+<main id="top">
+  <article class="section">
+    <div class="container stack article" style="--stack-gap: var(--space-4)">
+      <p class="eyebrow">Change request</p>
+      <h1 class="heading-1">Single change request, multiple technologies</h1>
+      <p class="lead">When I review a change request, I want to understand whether the feature has been tested properly across all the components it touches. I also want to see whether the change has introduced code that is becoming too complex or difficult to test.</p>
+      <p>This gets harder when the feature involves several repositories or monorepos, different technologies and separate test tools. The information is there, but collecting it and connecting it to the change takes time.</p>
+      <p>This is one of the reasons I am building Cherry Test. It runs the configured tests and brings together their results, coverage, code complexity and CRAP scores. The change view puts this information next to the code being reviewed, across the components involved.</p>
+      <figure class="cover">
+        <img src="assets/cover.jpg" alt="Cherry Test cover. A magnifying glass over change notes for Rust, TypeScript and React, titled Single change request, multiple technologies." width="1672" height="941">
+      </figure>
+
+      <h2 class="heading-2">A small feature can touch several parts of the application</h2>
+      <p>Suppose we need to add a product discount to an online shop.</p>
+      <p>The API needs to return the discount and validate its value. The cart library needs to calculate the discounted price. The frontend needs to display it, and the checkout needs to save the correct total.</p>
+      <p>In a larger application, these components may belong to different teams and live in different repositories. They can also use different languages and testing tools. But from the customer&rsquo;s point of view, they are all part of the same feature.</p>
+      <p>For this example, I added a 10% discount to a mug in the demo shop. Its original price is 1800 cents. With the discount, each mug costs 1620 cents, so two mugs should cost 3240.</p>
+      <p>The implementation touches 19 files across a Rust API, a TypeScript cart library and a React frontend. The demo keeps these components in one repository, which makes the example easier to explore.</p>
+      <p>I ran Cherry Test on the <code>discount</code> branch and compared it with <code>main</code>.</p>
+
+      <h2 class="heading-2">Reviewing the change across components</h2>
+      <p>The report shows the code that changed, with the test result and the coverage for each line.</p>
+      <p>A useful example is the new <code>DiscountPercent::parse</code> function in the Rust API. It accepts a valid discount percentage and returns an error for an invalid one.</p>
+      <p>In the diff, the line that accepts the percentage is blue: a test reached it. The line that returns <code>InvalidDiscount</code> is amber: no test reached it.</p>
+      <p>This gives me something concrete to investigate. The valid discount path was exercised, but the rejection path still needs a test.</p>
+      <figure class="report-shot">
+        <img class="report-shot-light" src="assets/diff-light.png" alt="Diff of DiscountPercent::parse. Added lines that accept the percentage are blue. The InvalidDiscount rejection is amber." width="1080" height="290">
+        <img class="report-shot-dark" src="assets/diff-dark.png" alt="" width="1080" height="290">
+        <figcaption class="muted small">The added discount validation. The rejection line is amber.</figcaption>
+      </figure>
+      <p>The report puts this information directly beside the code changes. Added lines have a <code>++</code> mark, removed lines have <code>--</code>, and the old and new line numbers are shown together.</p>
+      <p>The rail on the left shows the recorded test outcome for the line. The rail on the right shows coverage: blue for reached lines, amber for missed lines.</p>
+      <p>I can follow the same change into the other components. The TypeScript function <code>discountedUnitCents</code> has 71% coverage. The measured lines in the changed React files are fully covered. These numbers help me decide where to look more closely; I still need to read what the tests actually check.</p>
+
+      <h2 class="heading-2">The checkout passed, but the run failed</h2>
+      <p>The test <code>applies_the_mug_discount</code> passed. It checks the behaviour this change is supposed to introduce: 1620 cents per mug and 3240 cents for two.</p>
+      <p>There is also a failing Rust test, <code>reports_a_price_mismatch</code>. It expects a listed price of 1500 cents, while the actual price is 1800. This is the failure behind the report&rsquo;s FAIL status, and it needs to be investigated during the review.</p>
+      <p>Both appear in <strong>Tests on this change</strong>, which contains 13 tests: 12 passed and a single test failed.</p>
+      <figure class="report-shot">
+        <img class="report-shot-light" src="assets/tests-light.png" alt="Tests on this change: the passing mug discount checkout and the failing reports_a_price_mismatch assertion." width="1080" height="720">
+        <img class="report-shot-dark" src="assets/tests-dark.png" alt="" width="1080" height="720">
+        <figcaption class="muted small">The passing discount checkout and the failing price assertion.</figcaption>
+      </figure>
+      <p>This section selects recorded tests whose source files are in the diff. It does not list every test that executed changed code. That distinction matters when reading the report: it helps me review the tests included in the change, while coverage shows which lines were reached.</p>
+
+      <h2 class="heading-2">Deciding where to look more closely</h2>
+      <p>The report also combines complexity and coverage through the CRAP score. I use this as another indication of where a function may need attention.</p>
+      <p>The <strong>On this change</strong> section includes functions that overlap added lines. There are 24 in this example, across Rust, TypeScript and React. The highest score is 14.7, below the report&rsquo;s high-score threshold of 30.</p>
+      <figure class="report-shot">
+        <img class="report-shot-light" src="assets/crap-light.png" alt="On this change: 24 functions, worst CRAP 14.7, none at or above 30." width="1080" height="1280">
+        <img class="report-shot-dark" src="assets/crap-dark.png" alt="" width="1080" height="1280">
+        <figcaption class="muted small">Complexity and coverage for functions touched by the change.</figcaption>
+      </figure>
+      <p>The score does not fail the run. Here, the failing price assertion is what makes the run fail.</p>
+      <p>What I find useful is having these details together while reviewing the change request. I can follow the discount through the API, cart and shop, inspect the checkout test, see the failure and find the uncovered validation path.</p>
+      <p>This is what I am working towards with Cherry Test: making it easier to understand how a complete feature was tested across the components it touches.</p>
+      <p>You can explore the example in <a href="https://github.com/lmrrcc/shop/pull/1">the pull request</a> and find the project at <a href="https://cherry-test.com/">cherry-test.com</a>.</p>
+      <div class="cluster">
+        <a class="button button-primary" href="../demo/change/change-request.html">Open the change report</a>
+        <a class="button button-secondary" href="https://github.com/lmrrcc/shop/pull/1">View the pull request</a>
+      </div>
+    </div>
+  </article>
+</main>
+<script>
+(function () {
+  var key = "site-theme";
+  function read() { try { return localStorage.getItem(key); } catch (error) { return null; } }
+  function write(theme) { try { localStorage.setItem(key, theme); } catch (error) { return; } }
+  var stored = read();
+  if (stored === "light" || stored === "dark") document.documentElement.setAttribute("data-theme", stored);
+  document.querySelectorAll("[data-theme-toggle]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var current = document.documentElement.getAttribute("data-theme");
+      if (current !== "light" && current !== "dark") {
+        current = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      var next = current === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      write(next);
+    });
+  });
+})();
+</script>
+</body>
+</html>

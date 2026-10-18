@@ -1,0 +1,27 @@
+defaults:
+  coverage: false
+  html_report: true
+  open_report: false
+  runs_base: ../../target/cherry-test-container/runs
+  scope: mini_discord_container
+
+projects:
+  mini_discord:
+    path: ../..
+    compose: ../../docker-compose.test.yml
+    packages:
+      mini-discord:
+        adapter: maven
+        manifest: ../../pom.xml
+        kinds: [integration]
+        integration:
+          scope: mini_discord_container
+          args: [-o, -Pcontainer]
+    services:
+      discord:
+        service: mini-discord
+        port: 8080
+        health: /health
+scopes:
+  mini_discord_container:
+    projects: [mini_discord]

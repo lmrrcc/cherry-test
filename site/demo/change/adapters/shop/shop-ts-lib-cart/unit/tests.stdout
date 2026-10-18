@@ -1,0 +1,19 @@
+
+ RUN  v2.1.9 ~/shop/shop-ts-lib-cart
+      Coverage enabled with v8
+
+ ✓ src/cart.test.ts (12 tests) 9ms
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  13:54:45
+   Duration  209ms (transform 20ms, setup 0ms, collect 17ms, tests 9ms, environment 0ms, prepare 38ms)
+
+JSON report written to ~/shop/target/cherry-test/runs/20261009-115357-0b2948/reports/adapters/shop/shop-ts-lib-cart/unit/results.json
+ % Coverage report from v8
+----------|---------|----------|---------|---------|-------------------
+File      | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+----------|---------|----------|---------|---------|-------------------
+All files |   89.36 |    93.33 |    87.5 |   89.36 |                   
+ cart.ts  |   89.36 |    93.33 |    87.5 |   89.36 | 25-27,44-45       
+----------|---------|----------|---------|---------|-------------------

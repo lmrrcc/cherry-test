@@ -1,0 +1,4 @@
+2026-10-09T11:55:07.950121Z  INFO shop_rs_api: shop-rs-api listening address=127.0.0.1:51480
+2026-10-09T11:55:08.467529Z  INFO shop_rs_api::infrastructure::web: order placed order_id=1 cart_id=7727c5e4-650d-487c-b697-670bff35b294 total_cents=3240
+2026-10-09T11:55:08.476756Z  INFO shop_rs_api::infrastructure::web: order placed order_id=2 cart_id=b6a3c6f6-1baa-4bba-bb26-32e26aafb36e total_cents=4200
+2026-10-09T11:55:08.490879Z  INFO shop_rs_api::infrastructure::web: order placed order_id=3 cart_id=24c3a76e-778f-4ce7-9051-433ee92a50e5 total_cents=2900
