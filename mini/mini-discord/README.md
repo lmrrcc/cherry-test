@@ -171,9 +171,9 @@ Natural limit rules accept `route`, `bucket`, `limit`, `windowSeconds`, `global`
 
 `GET /api/v10/gateway` and `/gateway/bot` discover the WebSocket listener. The simulator supports v10 JSON, Hello, Identify, Ready, guild initialization, Heartbeat/ACK, monotonically increasing session sequence numbers and close/error behavior. Specify intents explicitly. `GUILDS` is bit 0; `GUILD_MEMBERS` is bit 1 and must also be enabled on the synthetic application. Unauthorized privileged intents close with 4014; unsupported intents close with 4013. Member enumeration also requires application-level member-intent authorization.
 
-Live delivery covers `GUILD_MEMBER_ADD/REMOVE/UPDATE`, `GUILD_ROLE_CREATE/UPDATE/DELETE`, `CHANNEL_CREATE/UPDATE/DELETE` and `GUILD_CREATE/UPDATE`. Events are filtered by installation, intents and channel visibility. All additional generated domain events remain available through the private recorder. `MESSAGE_CONTENT` is neither requested nor required.
+Live delivery covers `GUILD_MEMBER_ADD/REMOVE/UPDATE`, `GUILD_ROLE_CREATE/UPDATE/DELETE`, `CHANNEL_CREATE/UPDATE/DELETE`, `GUILD_CREATE/UPDATE` and metadata for `MESSAGE_CREATE/UPDATE/DELETE` with `GUILD_MESSAGES` (bit 9). Message content, embeds and attachments are omitted from Gateway delivery. Events are filtered by installation, intents and channel visibility. All additional generated domain events remain available through the private recorder. `MESSAGE_CONTENT` is neither requested nor required.
 
-This is not a complete Gateway implementation: compression, ETF, multi-shard operation, session resume/replay, fragmented client frames, presence, voice, message intents and member-chunk requests are unsupported. Resume closes with 4007. A stalled heartbeat closes the connection; a full subscriber queue closes with 4008 rather than silently losing events. The private recorder is not presented as public Gateway delivery.
+This is not a complete Gateway implementation: compression, ETF, multi-shard operation, session resume/replay, fragmented client frames, presence, voice, direct-message intents and member-chunk requests are unsupported. Resume closes with 4007. A stalled heartbeat closes the connection; a full subscriber queue closes with 4008 rather than silently losing events. The private recorder is not presented as public Gateway delivery.
 
 ## Public compatibility matrix
 
@@ -189,11 +189,13 @@ All paths below are relative to `/api/v10`, except authorization. The correspond
 | Invites | Channel create/list, guild list, public get, authorized delete | Expiration, use limits, temporary membership; acceptance is private |
 | Moderation | Kick, ban/list/get/unban, timeout/remove timeout, audit log | Auto Moderation rule CRUD and validation; no Discord spam classifier or automatic rule execution |
 | Scheduled events | List/create/get/update/delete, status transitions, interested-user enumeration | External, voice and Stage targets; no recurring schedules or event images |
-| Messages | Create/get/history/edit/delete text and embeds | Bot authorship and visibility enforced; no attachment/media storage |
-| Threads/forums | Create/get/update/delete, thread messages, basic membership and forum posts/tags | No archived-thread discovery, advanced tag editing or full client behavior |
+| Messages | Create/get/history/edit/delete, nonce/enforce_nonce, paginated pins and pin/unpin with PIN_MESSAGES | Five-minute nonce window; bounded multipart records metadata and hashes, without media hosting |
+| Threads/forums | Create/get/update/delete, thread messages, basic membership and forum posts/tags; active and public archived discovery | No private archived discovery, advanced tag editing or full client behavior |
 | Gateway | Discovery and the membership/guild/role/channel subset above | Explicit subset, not complete Discord Gateway compatibility |
 
 The supported route families are:
+
+The JUG portal extension accepts at most two multipart files of 256 KiB each on message creation. It checks file parts against `payload_json`, records filename, size, content type and SHA-256, and rejects fabricated attachment metadata sent as JSON. No binary download/CDN service is simulated. Current pin routes are `GET /channels/{id}/messages/pins` and `PUT/DELETE /channels/{id}/messages/pins/{message}`. Thread discovery uses `GET /guilds/{id}/threads/active` and `GET /channels/{id}/threads/archived/public`, with timestamp pagination. The JUG Cherry package `discord-portal-http-browser` exercises these extensions against the real local listener; the existing Mini unit and integration regressions remain separate evidence.
 
 | Path, relative to `/api/v10` | Methods |
 | --- | --- |

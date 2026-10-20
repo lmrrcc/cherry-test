@@ -3,7 +3,9 @@ package mini.discord;
 import static mini.discord.Json.*;
 import static mini.discord.PermissionEngine.*;
 
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -89,6 +91,46 @@ final class ChannelApi {
         Application app = state.installed(auth, guild);
         requireChannel(state, channel, app.bot, VIEW);
         if (path.length >= 3) {
+            if (path.length == 5
+                    && path[2].equals("threads")
+                    && path[3].equals("archived")
+                    && path[4].equals("public")
+                    && method.equals("GET")) {
+                requireChannel(state, channel, app.bot, HISTORY);
+                int limit = integer(query, "limit", 50, 1, 100);
+                String before = query.path("before").asString("");
+                Instant boundary;
+                try {
+                    boundary = before.isBlank() ? Instant.MAX : Instant.parse(before);
+                } catch (java.time.format.DateTimeParseException invalid) {
+                    throw ApiError.invalid("before");
+                }
+                var archived = state.channels.values().stream()
+                        .filter(c -> c.path("parent_id")
+                                        .asString()
+                                        .equals(channel.path("id").asString())
+                                && Set.of(10, 11).contains(c.path("type").asInt())
+                                && c.path("thread_metadata").path("archived").asBoolean())
+                        .filter(c -> Instant.parse(c.path("thread_metadata")
+                                        .path("archive_timestamp")
+                                        .asString())
+                                .isBefore(boundary))
+                        .sorted(Comparator.comparing((ObjectNode c) -> c.path("thread_metadata")
+                                        .path("archive_timestamp")
+                                        .asString())
+                                .reversed())
+                        .toList();
+                return Reply.ok(obj(
+                        "threads",
+                        arr(archived.stream()
+                                .limit(limit)
+                                .map(ChannelApi::publicJson)
+                                .toList()),
+                        "members",
+                        arr(List.of()),
+                        "has_more",
+                        archived.size() > limit));
+            }
             if (path[2].equals("permissions") && path.length == 4)
                 return overwrite(method, path[3], input, channel, guild, app, reason);
             if (path[2].equals("invites") && path.length == 3)

@@ -39,6 +39,40 @@ final class Messages {
         int type = channel.path("type").asInt();
         if (!Set.of(0, 2, 5, 10, 11, 12, 13).contains(type)) throw ApiError.invalid("channel type");
         String cid = channel.path("id").asString();
+        if (path.length >= 4 && path[3].equals("pins")) {
+            if (path.length == 4 && method.equals("GET")) {
+                requireChannel(state, channel, app.bot, HISTORY);
+                int limit = integer(query, "limit", 50, 1, 50);
+                String before = str(query, "before", "9999-12-31T23:59:59Z");
+                var pins = state.messages.getOrDefault(cid, List.of()).stream()
+                        .filter(m -> m.path("pinned").asBoolean())
+                        .filter(m -> m.path("pinned_at").asString().compareTo(before) < 0)
+                        .sorted((a, b) -> b.path("pinned_at")
+                                .asString()
+                                .compareTo(a.path("pinned_at").asString()))
+                        .toList();
+                return Reply.ok(obj(
+                        "items",
+                        pins.stream()
+                                .limit(limit)
+                                .map(m -> obj("pinned_at", m.path("pinned_at"), "message", m))
+                                .toList(),
+                        "has_more",
+                        pins.size() > limit));
+            }
+            if (path.length == 5 && Set.of("PUT", "DELETE").contains(method)) {
+                requireChannel(state, channel, app.bot, java.math.BigInteger.ONE.shiftLeft(51));
+                var pinned = message(cid, path[4]);
+                pinned.put("pinned", method.equals("PUT"));
+                if (method.equals("PUT"))
+                    pinned.put("pinned_at", state.clock.instant().toString());
+                else pinned.remove("pinned_at");
+                state.audit(guild, app, method.equals("PUT") ? 74 : 75, path[4], reason, arr(List.of()));
+                state.emit("CHANNEL_PINS_UPDATE", obj("guild_id", guild.id(), "channel_id", cid));
+                return Reply.empty();
+            }
+            throw ApiError.unsupported();
+        }
         if (path.length == 3 && method.equals("GET")) {
             requireChannel(state, channel, app.bot, HISTORY);
             int limit = integer(query, "limit", 50, 1, 100);
@@ -59,6 +93,18 @@ final class Messages {
             if (channel.path("thread_metadata").path("archived").asBoolean())
                 throw new ApiError(403, 50083, "Thread is archived");
             validateMessage(input, false);
+            if (input.path("enforce_nonce").asBoolean() && input.hasNonNull("nonce")) {
+                var previous = state.messages.getOrDefault(cid, List.of()).stream()
+                        .filter(m -> m.path("author").path("id").asString().equals(app.bot))
+                        .filter(m -> m.path("nonce")
+                                .asString()
+                                .equals(input.path("nonce").asString()))
+                        .filter(m -> java.time.Instant.parse(m.path("timestamp").asString())
+                                .plusSeconds(300)
+                                .isAfter(state.clock.instant()))
+                        .findFirst();
+                if (previous.isPresent()) return Reply.ok(previous.get());
+            }
             ObjectNode message = newMessage(input, cid, app);
             state.messages.computeIfAbsent(cid, key -> new ArrayList<>()).add(message);
             state.emit("MESSAGE_CREATE", message);
@@ -104,7 +150,12 @@ final class Messages {
     }
 
     private static void validateMessage(JsonNode input, boolean patch) {
-        fields(input, "content", "embeds", "allowed_mentions", "tts");
+        fields(input, "content", "embeds", "allowed_mentions", "tts", "nonce", "enforce_nonce", "attachments");
+        if (input.has("nonce")
+                && ((!input.path("nonce").isString() && !input.path("nonce").isIntegralNumber())
+                        || input.path("nonce").asString().length() > 25)) throw ApiError.invalid("nonce");
+        bool(input, "enforce_nonce", false);
+        if (patch && (input.has("nonce") || input.has("enforce_nonce"))) throw ApiError.invalid("nonce");
         if (input.has("content")
                 && (!input.path("content").isString()
                         || input.path("content").asString().length() > 2000)) throw ApiError.invalid("content");
@@ -153,6 +204,8 @@ final class Messages {
                 state.id(),
                 "channel_id",
                 cid,
+                "nonce",
+                input.has("nonce") ? input.path("nonce") : null,
                 "author",
                 state.publicUser(app.bot),
                 "content",
@@ -170,7 +223,7 @@ final class Messages {
                 "mention_roles",
                 List.of(),
                 "attachments",
-                List.of(),
+                input.has("attachments") ? input.path("attachments") : List.of(),
                 "embeds",
                 input.has("embeds") ? input.path("embeds") : List.of(),
                 "pinned",

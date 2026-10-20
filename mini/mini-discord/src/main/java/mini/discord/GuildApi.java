@@ -73,6 +73,25 @@ final class GuildApi {
                 case "members" -> members(method, path, input, query, guild, app, reason);
                 case "roles" -> roles(method, path, input, guild, app, reason);
                 case "channels" -> channels.guildChannels(method, path, input, guild, app, reason);
+                case "threads" -> {
+                    if (!method.equals("GET") || path.length != 4 || !path[3].equals("active"))
+                        throw ApiError.unsupported();
+                    var visible = new ArrayList<ObjectNode>();
+                    for (var channel : state.channels.values()) {
+                        if (!guild.id().equals(channel.path("guild_id").asString())
+                                || !ChannelApi.isThread(channel)
+                                || channel.path("thread_metadata")
+                                        .path("archived")
+                                        .asBoolean()) continue;
+                        try {
+                            requireChannel(state, channel, app.bot, VIEW);
+                            visible.add(channel);
+                        } catch (ApiError denied) {
+                            if (denied.status != 403) throw denied;
+                        }
+                    }
+                    yield Reply.ok(obj("threads", visible, "members", List.of()));
+                }
                 case "bans" -> bans(method, path, input, query, guild, app, reason);
                 case "invites" -> {
                     if (!method.equals("GET") || path.length != 3) throw ApiError.unsupported();

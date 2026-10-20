@@ -228,7 +228,15 @@ public final class MiniDiscordServer implements AutoCloseable {
                 if (body.length > 0) {
                     if (contentType.equals("application/x-www-form-urlencoded"))
                         input = form(new String(body, StandardCharsets.UTF_8));
-                    else if (contentType.equals("application/json")) input = MAPPER.readTree(body);
+                    else if (contentType.equals("application/json")) {
+                        input = MAPPER.readTree(body);
+                        if (path.endsWith("/messages")
+                                && input.has("attachments")
+                                && !input.path("attachments").isEmpty())
+                            throw ApiError.invalid("attachments require multipart files");
+                    } else if (contentType.equals("multipart/form-data")
+                            && path.matches("/api/v10/channels/[0-9]+/messages"))
+                        input = Multipart.parse(header(exchange, "Content-Type"), body);
                     else throw new ApiError(415, 0, "Unsupported Media Type");
                 }
                 String authorization = header(exchange, "Authorization");

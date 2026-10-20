@@ -125,6 +125,20 @@ final class Gateway implements AutoCloseable {
             if (app == null) return;
             String type = event.path("t").asString();
             JsonNode data = event.path("d");
+            boolean message =
+                    type.equals("MESSAGE_CREATE") || type.equals("MESSAGE_UPDATE") || type.equals("MESSAGE_DELETE");
+            if (message) {
+                var channel = owner.state.channels.get(data.path("channel_id").asString());
+                if (channel == null || (intents & 512) == 0) return;
+                if (!PermissionEngine.has(
+                        PermissionEngine.channel(owner.state, channel, app.bot), PermissionEngine.VIEW)) return;
+                var metadata = ((tools.jackson.databind.node.ObjectNode) data).deepCopy();
+                metadata.put("guild_id", channel.path("guild_id").asString());
+                metadata.put("content", "");
+                metadata.set("embeds", arr(List.of()));
+                metadata.set("attachments", arr(List.of()));
+                data = metadata;
+            }
             String gid = type.equals("GUILD_CREATE") || type.equals("GUILD_UPDATE")
                     ? data.path("id").asString()
                     : data.path("guild_id").asString();
@@ -136,7 +150,7 @@ final class Gateway implements AutoCloseable {
                     || type.equals("GUILD_CREATE")
                     || type.equals("GUILD_UPDATE");
             if (member && ((intents & 2) == 0 || !app.membersIntent)) return;
-            if (!member && (!standard || (intents & 1) == 0)) return;
+            if (!member && !message && (!standard || (intents & 1) == 0)) return;
             if (type.startsWith("CHANNEL_")
                     && !PermissionEngine.has(
                             PermissionEngine.channel(owner.state, data, app.bot), PermissionEngine.VIEW)) return;
@@ -232,7 +246,7 @@ final class Gateway implements AutoCloseable {
                             continue;
                         }
                         intents = identify.path("intents").asInt();
-                        if (intents < 0 || (intents & ~3) != 0) {
+                        if (intents < 0 || (intents & ~515) != 0) {
                             closeCode = 4013;
                             continue;
                         }
