@@ -8,6 +8,7 @@ use once_cell::sync::Lazy;
 
 use crate::config::{ServiceConfig, WorkspaceConfig};
 use crate::scope::{is_none, resolve_projects, service_filter};
+use crate::sidecar;
 
 pub const COMPOSE_PROJECT: &str = "cherry-test";
 
@@ -29,16 +30,29 @@ pub struct ServiceEndpoint {
 
 pub type ServiceRegistry = HashMap<(String, String), ServiceEndpoint>;
 
-/// The scopes one owner has started and the Compose files they used, in start order.
+/// The scopes one owner has started, the Compose files they used, in start order, and the image
+/// service containers it started.
 #[derive(Debug, Clone, Default)]
 pub struct ScopeState {
     booted: BTreeSet<String>,
+    published: BTreeSet<String>,
     compose_files: Vec<PathBuf>,
+    containers: Vec<String>,
 }
 
 impl ScopeState {
     pub fn is_booted(&self, scope: &str) -> bool {
         self.booted.contains(scope)
+    }
+
+    /// Whether the scope's image services run with published ports for this owner.
+    pub fn is_published(&self, scope: &str) -> bool {
+        self.published.contains(scope)
+    }
+
+    /// Image service containers this owner started and has not removed yet.
+    pub fn containers(&self) -> &[String] {
+        &self.containers
     }
 
     pub fn compose_files(&self) -> &[PathBuf] {
@@ -55,7 +69,9 @@ impl ScopeState {
 
     fn clear(&mut self) {
         self.booted.clear();
+        self.published.clear();
         self.compose_files.clear();
+        self.containers.clear();
     }
 }
 
@@ -73,7 +89,7 @@ pub fn process_environment() -> Environment {
         .collect()
 }
 
-fn command_in(program: &str, env: &Environment) -> Command {
+pub(crate) fn command_in(program: &str, env: &Environment) -> Command {
     let mut command = Command::new(program);
     command.env_clear().envs(env);
     command
@@ -148,9 +164,30 @@ pub fn boot_scope(scope: &str) -> Result<ServiceRegistry> {
 
 /// Boots `scope` once for the owner of `state`; Docker runs in `env` and nothing global changes.
 ///
-/// Each `docker compose port` call sees the variables of the services resolved before it, as the
-/// process-wide [`boot_scope`] always did.
+/// Compose services start with `docker compose up`; image services start with their ports
+/// published on `127.0.0.1`. Each `docker compose port` call sees the variables of the services
+/// resolved before it, as the process-wide [`boot_scope`] always did. A scope the runner lists in
+/// `CHERRY_TEST_SCOPE_PROVISIONED` is read from `env` without starting anything.
 pub fn boot_scope_in(scope: &str, state: &mut ScopeState, env: &Environment) -> Result<ScopeBoot> {
+    boot_in(scope, state, env, true)
+}
+
+/// Like [`boot_scope_in`] for a job that runs the scope's image services in its own network:
+/// only the Compose services start.
+pub fn boot_compose_in(
+    scope: &str,
+    state: &mut ScopeState,
+    env: &Environment,
+) -> Result<ScopeBoot> {
+    boot_in(scope, state, env, false)
+}
+
+fn boot_in(
+    scope: &str,
+    state: &mut ScopeState,
+    env: &Environment,
+    images: bool,
+) -> Result<ScopeBoot> {
     if is_none(scope) {
         return Ok(ScopeBoot {
             registry: load_registry_from(env, None)?,
@@ -158,7 +195,8 @@ pub fn boot_scope_in(scope: &str, state: &mut ScopeState, env: &Environment) -> 
         });
     }
 
-    if skip_docker(env) || state.is_booted(scope) {
+    let done = state.is_booted(scope) && (!images || state.is_published(scope));
+    if skip_docker(env) || sidecar::provisioned(env, scope) || done {
         return Ok(ScopeBoot {
             registry: load_registry_from(env, Some(scope))?,
             exports: Vec::new(),
@@ -174,79 +212,147 @@ pub fn boot_scope_in(scope: &str, state: &mut ScopeState, env: &Environment) -> 
     let root = workspace_root_in(env)?;
     let config = WorkspaceConfig::load(&root)?;
     let project_names = resolve_projects(&config, scope)?;
-    let compose_files = config.compose_files_for_projects(&project_names)?;
-    let compose_project = compose_project_in(env);
-
-    let mut cmd = command_in("docker", env);
-    cmd.arg("compose").arg("-p").arg(&compose_project);
-    for file in &compose_files {
-        cmd.arg("-f").arg(file);
-    }
-    cmd.args(["up", "-d", "--build", "--wait"]);
-    let mut selected = Vec::new();
-    for project_name in &project_names {
-        if let Some(project) = config.projects.get(project_name) {
-            for (name, service) in &project.services {
-                if service_filter(&config, scope, project_name, name) {
-                    selected.push(service.service.clone());
-                }
-            }
-        }
-    }
-    cmd.args(selected);
-    cmd.current_dir(&root);
-
-    state.remember_files(&compose_files);
-    let status = cmd.status().context("docker compose up")?;
-    if !status.success() {
-        bail!("docker compose up failed for scope `{scope}`");
-    }
+    let image_services = sidecar::image_services(&config, &[scope.to_string()])?;
 
     let mut registry = HashMap::new();
     let mut exports = Vec::new();
     let mut env_snapshot = serde_json::Map::new();
     let mut port_env = env.clone();
+    let mut compose_ran = false;
 
-    for project_name in &project_names {
-        let Some(project) = config.projects.get(project_name) else {
-            continue;
-        };
-        for (service_name, service) in &project.services {
-            if !service_filter(&config, scope, project_name, service_name) {
-                continue;
+    if !state.is_booted(scope) {
+        let mut selected = Vec::new();
+        for project_name in &project_names {
+            if let Some(project) = config.projects.get(project_name) {
+                for (name, service) in &project.services {
+                    if !service.is_image() && service_filter(&config, scope, project_name, name) {
+                        selected.push(service.service.clone());
+                    }
+                }
             }
-            let endpoint = resolve_endpoint(
+        }
+        if !selected.is_empty() || image_services.is_empty() {
+            let compose_files = config.compose_files_for_projects(&project_names)?;
+            let compose_project = compose_project_in(env);
+
+            let mut cmd = command_in("docker", env);
+            cmd.arg("compose").arg("-p").arg(&compose_project);
+            for file in &compose_files {
+                cmd.arg("-f").arg(file);
+            }
+            cmd.args(["up", "-d", "--build", "--wait"]);
+            cmd.args(selected);
+            cmd.current_dir(&root);
+
+            state.remember_files(&compose_files);
+            let status = cmd.status().context("docker compose up")?;
+            if !status.success() {
+                bail!("docker compose up failed for scope `{scope}`");
+            }
+
+            for project_name in &project_names {
+                let Some(project) = config.projects.get(project_name) else {
+                    continue;
+                };
+                for (service_name, service) in &project.services {
+                    if service.is_image()
+                        || !service_filter(&config, scope, project_name, service_name)
+                    {
+                        continue;
+                    }
+                    let endpoint = resolve_endpoint(
+                        &root,
+                        &compose_files,
+                        &compose_project,
+                        &port_env,
+                        project_name,
+                        service_name,
+                        service,
+                    )?;
+                    for (key, value) in service_env(&endpoint) {
+                        port_env.insert(key.clone(), value.clone());
+                        exports.push((key, value));
+                    }
+                    snapshot_endpoint(&mut env_snapshot, &endpoint);
+                    registry.insert((project_name.clone(), service_name.clone()), endpoint);
+                }
+            }
+            state.remember_files(&compose_files);
+            compose_ran = true;
+        }
+        state.booted.insert(scope.to_string());
+    }
+
+    let mut images_ran = false;
+    if images && !state.is_published(scope) {
+        let labels = sidecar::Labels {
+            run: env
+                .get("CHERRY_TEST_RUN_ID")
+                .cloned()
+                .unwrap_or_else(|| compose_project_in(env)),
+            job: format!("scope/{scope}"),
+            owner_pid: env
+                .get(cherry_test_common::container::OWNER_PID_ENV)
+                .and_then(|pid| pid.parse().ok())
+                .unwrap_or_else(std::process::id),
+        };
+        let logs = services_log_dir(&root, env);
+        for (project_name, service_name, service) in &image_services {
+            let resolved = sidecar::resolve_service(
                 &root,
-                &compose_files,
-                &compose_project,
-                &port_env,
                 project_name,
                 service_name,
                 service,
-            )?;
+                cherry_test_common::container::sanitize_name(&format!(
+                    "ct-{}-{project_name}-{service_name}",
+                    compose_project_in(env)
+                )),
+                cherry_test_common::container::PullPolicy::Never,
+            );
+            let endpoint = sidecar::start_published(env, &resolved, &labels, &logs)?;
+            state.containers.push(resolved.name.clone());
             for (key, value) in service_env(&endpoint) {
                 port_env.insert(key.clone(), value.clone());
                 exports.push((key, value));
             }
-            env_snapshot.insert(
-                format!("{}.{}", project_name, service_name),
-                serde_json::json!({
-                    "kind": endpoint.kind,
-                    "url": endpoint.url,
-                    "host": endpoint.host,
-                    "port": endpoint.port,
-                }),
-            );
+            snapshot_endpoint(&mut env_snapshot, &endpoint);
             registry.insert((project_name.clone(), service_name.clone()), endpoint);
+            images_ran = true;
         }
+        state.published.insert(scope.to_string());
     }
 
-    write_env_json(&root, env, &env_snapshot)?;
-
-    state.booted.insert(scope.to_string());
-    state.remember_files(&compose_files);
+    if compose_ran || images_ran {
+        write_env_json(&root, env, &env_snapshot)?;
+    }
+    if !compose_ran {
+        registry = load_registry_from(&port_env, Some(scope))?;
+    }
 
     Ok(ScopeBoot { registry, exports })
+}
+
+fn snapshot_endpoint(
+    snapshot: &mut serde_json::Map<String, serde_json::Value>,
+    endpoint: &ServiceEndpoint,
+) {
+    snapshot.insert(
+        format!("{}.{}", endpoint.project, endpoint.service),
+        serde_json::json!({
+            "kind": endpoint.kind,
+            "url": endpoint.url,
+            "host": endpoint.host,
+            "port": endpoint.port,
+        }),
+    );
+}
+
+/// Where the logs of an image service that failed to start are saved: `services/` in the run directory.
+fn services_log_dir(root: &Path, env: &Environment) -> PathBuf {
+    match env.get("CHERRY_TEST_RUN_DIR") {
+        Some(run_dir) => PathBuf::from(run_dir).join("services"),
+        None => root.join("target/cherry-test/services"),
+    }
 }
 
 pub fn teardown_workspace() -> Result<()> {
@@ -262,15 +368,19 @@ pub fn teardown_scopes() -> Result<()> {
     teardown_scopes_in(&mut state, &env)
 }
 
-/// Stops every scope recorded in `state` with one `docker compose down -v` started in `env`.
+/// Stops every scope recorded in `state`: removes its image service containers, then runs one
+/// `docker compose down -v` started in `env`.
 pub fn teardown_scopes_in(state: &mut ScopeState, env: &Environment) -> Result<()> {
     if skip_docker(env) {
         state.clear();
         return Ok(());
     }
 
+    let containers = std::mem::take(&mut state.containers);
+    let removed = sidecar::remove(env, &containers);
     if state.compose_files.is_empty() {
-        return Ok(());
+        state.clear();
+        return removed;
     }
 
     let root = workspace_root_in(env)?;
@@ -287,7 +397,7 @@ pub fn teardown_scopes_in(state: &mut ScopeState, env: &Environment) -> Result<(
     }
 
     state.clear();
-    Ok(())
+    removed
 }
 
 fn resolve_endpoint(
@@ -476,6 +586,47 @@ mod tests {
             ]
         );
         assert_eq!(service_env(&endpoint(None)).len(), 2);
+    }
+
+    #[test]
+    fn provisioned_scope_reads_endpoints_without_docker() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path().join("cherry-test.yaml"),
+            "projects:\n  shop:\n    services:\n      db:\n        image: postgres:16-alpine\n        port: 5432\n        kind: postgres\nscopes:\n  checkout:\n    projects: [shop]\n  audit:\n    projects: [shop]\n",
+        )
+        .unwrap();
+        let mut env = Environment::new();
+        env.insert(
+            "CHERRY_TEST_WORKSPACE_ROOT".into(),
+            root.path().to_string_lossy().into(),
+        );
+        env.insert(
+            "PATH".into(),
+            root.path().join("no-docker").to_string_lossy().into(),
+        );
+        env.insert(
+            crate::sidecar::SCOPE_PROVISIONED_ENV.into(),
+            "checkout".into(),
+        );
+        env.insert("CHERRY_TEST_SHOP_DB_HOST".into(), "127.0.0.1".into());
+        env.insert("CHERRY_TEST_SHOP_DB_PORT".into(), "5432".into());
+        let mut state = ScopeState::default();
+        let boot = boot_scope_in("checkout", &mut state, &env).unwrap();
+        let db = &boot.registry[&("shop".to_string(), "db".to_string())];
+        assert_eq!(
+            (db.host.as_str(), db.port, db.kind.as_str()),
+            ("127.0.0.1", 5432, "postgres")
+        );
+        assert_eq!(db.url, None);
+        assert!(boot.exports.is_empty());
+        assert!(!state.is_booted("checkout"));
+        let error = boot_scope_in("audit", &mut state, &env).unwrap_err();
+        assert!(
+            error.to_string().starts_with("docker is not available"),
+            "{error}"
+        );
+        teardown_scopes_in(&mut state, &env).unwrap();
     }
 
     #[test]

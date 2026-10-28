@@ -6,7 +6,8 @@ use std::sync::mpsc;
 use anyhow::Result;
 use cherry_test_common::adapter::ExecutionMode;
 use cherry_test_core::{
-    boot_scope_in, teardown_scopes_in, Environment, Jobs, ParallelConfig, ScopeState,
+    boot_compose_in, boot_scope_in, teardown_scopes_in, Environment, Jobs, ParallelConfig,
+    ScopeState,
 };
 
 use crate::adapters::process::cancelled;
@@ -181,6 +182,8 @@ pub struct RunState {
     service_env: Environment,
     auth_env: Environment,
     phase_booted: BTreeSet<String>,
+    /// Scopes whose Compose services this phase started for jobs that run their image services themselves.
+    phase_compose: BTreeSet<String>,
     auth_ready: bool,
 }
 
@@ -192,12 +195,14 @@ impl RunState {
             service_env: Environment::new(),
             auth_env: Environment::new(),
             phase_booted: BTreeSet::new(),
+            phase_compose: BTreeSet::new(),
             auth_ready: false,
         }
     }
 
     fn start_phase(&mut self) {
         self.phase_booted.clear();
+        self.phase_compose.clear();
         self.auth_ready = false;
     }
 }
@@ -430,16 +435,32 @@ fn setup_job(
     layers: &EnvLayers<'_>,
     opts: &RunOptions<'_>,
 ) -> std::result::Result<(), String> {
+    let own_network = job
+        .request
+        .container
+        .as_ref()
+        .is_some_and(|spec| spec.sidecars.is_some());
     let mut setup = || -> Result<()> {
         for scope in &job.scopes {
-            if !state.phase_booted.contains(scope) {
+            if state.phase_booted.contains(scope) {
+                continue;
+            }
+            if own_network {
+                if !state.phase_compose.contains(scope) {
+                    let env = layers.phase_env(state, &job.key.phase);
+                    let boot = boot_compose_in(scope, &mut state.scopes, &env)?;
+                    state.service_env.extend(boot.exports);
+                    state.phase_compose.insert(scope.clone());
+                }
+            } else {
                 let env = layers.phase_env(state, &job.key.phase);
                 let boot = boot_scope_in(scope, &mut state.scopes, &env)?;
                 state.service_env.extend(boot.exports);
                 state.phase_booted.insert(scope.clone());
             }
         }
-        if job.key.phase == "integration" && !state.auth_ready && !state.phase_booted.is_empty() {
+        let booted = !state.phase_booted.is_empty() || !state.phase_compose.is_empty();
+        if job.key.phase == "integration" && !state.auth_ready && booted {
             let env = layers.phase_env(state, &job.key.phase);
             let exports = crate::auth_preflight::run_auth_preflight(
                 opts.workspace_root,

@@ -121,6 +121,7 @@ pub fn execute_job(
         "CHERRY_TEST_REPORT_DIR".into(),
         report_dir.to_string_lossy().into_owned(),
     );
+    extend_with_provisioned(&mut env, job);
     let env = &env;
     request.env = crate::run_env::request_env(env);
     if !opts.quiet {
@@ -129,8 +130,7 @@ pub fn execute_job(
     }
     let setup = setup.and_then(|()| job.container_error.clone().map_or(Ok(()), Err));
     let result = match setup {
-        Ok(()) => adapters::invoke(adapter, opts.config.adapters.get(adapter), &request, env)
-            .map_err(|error| format!("{error:#}")),
+        Ok(()) => invoke_with_sidecars(adapter, &request, env, opts),
         Err(message) => Err(message),
     };
     let mut response = match result {
@@ -174,6 +174,87 @@ pub fn execute_job(
         lcov: lcov_file,
         elapsed: started.elapsed(),
     })
+}
+
+/// Adds what the runner provides for the job's scopes: `CHERRY_TEST_SCOPE_PROVISIONED`, and the
+/// `127.0.0.1` endpoints of the image services in the job's own network.
+pub fn extend_with_provisioned(env: &mut Environment, job: &Job) {
+    if !job.provisioned.is_empty() {
+        env.insert(
+            cherry_test_core::sidecar::SCOPE_PROVISIONED_ENV.into(),
+            job.provisioned.join(","),
+        );
+    }
+    let sidecars = job
+        .request
+        .container
+        .as_ref()
+        .and_then(|spec| spec.sidecars.as_ref());
+    for service in sidecars
+        .iter()
+        .flat_map(|sidecars| sidecars.services.iter())
+    {
+        env.extend(cherry_test_core::sidecar::sidecar_env(service));
+    }
+}
+
+/// Invokes the adapter; a job with image services gets its private network first and loses it afterwards,
+/// also when the adapter fails, times out or the run is cancelled.
+///
+/// A service that does not start or become healthy fails the job before the adapter starts.
+fn invoke_with_sidecars(
+    adapter: &str,
+    request: &AdapterRequest,
+    env: &Environment,
+    opts: &RunOptions<'_>,
+) -> std::result::Result<AdapterResponse, String> {
+    let invoke = || {
+        adapters::invoke(adapter, opts.config.adapters.get(adapter), request, env)
+            .map_err(|error| format!("{error:#}"))
+    };
+    let Some((spec, sidecars)) = request
+        .container
+        .as_ref()
+        .and_then(|spec| spec.sidecars.as_ref().map(|sidecars| (spec, sidecars)))
+    else {
+        return invoke();
+    };
+    let labels = cherry_test_core::sidecar::Labels {
+        run: spec.run.clone(),
+        job: spec.job.clone(),
+        owner_pid: adapters::container::owner_pid(),
+    };
+    std::fs::create_dir_all(&request.output)
+        .map_err(|error| format!("create {}: {error}", request.output.display()))?;
+    cherry_test_core::sidecar::start_job_network(
+        env,
+        sidecars,
+        &spec.image,
+        spec.pull,
+        spec.network,
+        &labels,
+        &request.output,
+        &adapters::process::cancelled,
+    )
+    .map_err(|error| format!("image services of {} did not start: {error:#}", spec.job))?;
+    let result = invoke();
+    match cherry_test_core::sidecar::stop_job_network(env, sidecars, &request.output) {
+        Ok(()) => result,
+        Err(error) => {
+            let message = format!(
+                "could not remove the image services of {}: {error:#}",
+                spec.job
+            );
+            match result {
+                Ok(mut response) => {
+                    response.success = false;
+                    response.diagnostics.push(message);
+                    Ok(response)
+                }
+                Err(failure) => Err(format!("{failure}; {message}")),
+            }
+        }
+    }
 }
 
 /// The job's own `CHERRY_TEST_REPORT_DIR`: `report/` in its adapter output, writable in hardened containers.

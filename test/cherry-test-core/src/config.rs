@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 pub use cherry_test_common::adapter::{AdapterConfig, ExecutionMode};
 pub use cherry_test_common::container::ContainerConfig;
+use cherry_test_common::container::{PullPolicy, Timeout};
 
 const CONFIG_CANDIDATES: &[&str] = &["cherry-test.yaml", "cherry-test.yml", "cherry-test.toml"];
 
@@ -277,14 +278,94 @@ pub struct ExternalRunner {
     pub cwd: Option<PathBuf>,
 }
 
+/// `projects.<id>.services.<name>`: a Compose service (`service`) or a service Cherry Test starts from `image`.
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct ServiceConfig {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub service: String,
     pub port: u16,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub health: Option<String>,
+    pub health: Option<ServiceHealth>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull: Option<PullPolicy>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tmpfs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mounts: Vec<ServiceMount>,
+}
+
+impl ServiceConfig {
+    /// Whether Cherry Test starts this service from an image instead of Docker Compose.
+    pub fn is_image(&self) -> bool {
+        self.image.is_some()
+    }
+}
+
+/// A service's `health`: an HTTP path such as `/health` for a Compose service, or how an image service shows it is ready.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum ServiceHealth {
+    Path(String),
+    Probe(HealthProbe),
+}
+
+impl<'de> Deserialize<'de> for ServiceHealth {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        struct HealthVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for HealthVisitor {
+            type Value = ServiceHealth;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("an HTTP path or a map with `exec`, `tcp` and `timeout`")
+            }
+
+            fn visit_str<E: serde::de::Error>(
+                self,
+                value: &str,
+            ) -> std::result::Result<Self::Value, E> {
+                Ok(ServiceHealth::Path(value.to_string()))
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                map: A,
+            ) -> std::result::Result<Self::Value, A::Error> {
+                HealthProbe::deserialize(serde::de::value::MapAccessDeserializer::new(map))
+                    .map(ServiceHealth::Probe)
+            }
+        }
+
+        deserializer.deserialize_any(HealthVisitor)
+    }
+}
+
+/// `health` of an image service: run `exec` in the service container until it succeeds, or wait for a socket on the port.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct HealthProbe {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exec: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tcp: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<Timeout>,
+}
+
+/// A read-only bind mount into an image service: `source` relative to the configuration root, `target` absolute.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ServiceMount {
+    pub source: String,
+    pub target: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
@@ -496,6 +577,7 @@ impl TestItConfig {
         let raw = parse_raw_config(&path, &contents)?;
         let mut projects = raw.projects;
         merge_legacy_packages(&mut projects, raw.packages, workspace_root);
+        validate_services(&projects)?;
 
         for (id, project) in projects.iter_mut() {
             if project.path.is_none() {
@@ -625,6 +707,14 @@ impl TestItConfig {
             .and_then(|p| p.packages.get(package_name))
             .map(|p| p.runtime)
             .unwrap_or_default()
+    }
+
+    /// Whether any project declares a service Cherry Test starts from an image.
+    pub fn image_services_configured(&self) -> bool {
+        self.projects
+            .values()
+            .flat_map(|project| project.services.values())
+            .any(ServiceConfig::is_image)
     }
 
     pub fn compose_files_for_projects(&self, project_names: &[String]) -> Result<Vec<PathBuf>> {
@@ -767,6 +857,86 @@ fn find_project_for_package(
     None
 }
 
+/// Checks every service: a Compose `service` or an `image`, and image settings only on image services.
+///
+/// Projects and services are checked in name order, so the first error is the same on every run.
+fn validate_services(projects: &BTreeMap<String, ProjectConfig>) -> Result<()> {
+    for (id, project) in projects {
+        let services: BTreeMap<&String, &ServiceConfig> = project.services.iter().collect();
+        for (name, service) in services {
+            validate_service(&format!("projects.{id}.services.{name}"), service)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_service(path: &str, service: &ServiceConfig) -> Result<()> {
+    let Some(image) = &service.image else {
+        if service.service.is_empty() {
+            bail!("{path}: missing field `service`");
+        }
+        let image_only = [
+            ("pull", service.pull.is_some()),
+            ("env", !service.env.is_empty()),
+            ("tmpfs", !service.tmpfs.is_empty()),
+            ("mounts", !service.mounts.is_empty()),
+            (
+                "health",
+                matches!(service.health, Some(ServiceHealth::Probe(_))),
+            ),
+        ];
+        if let Some((field, _)) = image_only.iter().find(|(_, set)| *set) {
+            bail!("{path}.{field}: applies only to a service with `image`");
+        }
+        return Ok(());
+    };
+    if !service.service.is_empty() {
+        bail!("{path}: set `service` for a Compose service or `image`, not both");
+    }
+    if image.is_empty() || image.starts_with('-') || image.chars().any(char::is_whitespace) {
+        bail!("{path}.image: invalid image `{image}`");
+    }
+    for name in service.env.keys() {
+        if !crate::sidecar::is_env_name(name) {
+            bail!("{path}.env: `{name}` is not a variable name");
+        }
+    }
+    for tmpfs in &service.tmpfs {
+        if !tmpfs.starts_with('/') || tmpfs.chars().any(char::is_whitespace) {
+            bail!("{path}.tmpfs: `{tmpfs}` is not an absolute container path");
+        }
+    }
+    for mount in &service.mounts {
+        if mount.source.is_empty() || mount.source.contains(':') {
+            bail!("{path}.mounts: invalid source `{}`", mount.source);
+        }
+        if !mount.target.starts_with('/')
+            || mount.target.contains(':')
+            || mount.target.chars().any(char::is_whitespace)
+        {
+            bail!(
+                "{path}.mounts: target `{}` is not an absolute container path",
+                mount.target
+            );
+        }
+    }
+    match &service.health {
+        Some(ServiceHealth::Path(_)) => {
+            bail!("{path}.health: an image service takes {{exec: [...]}} or {{tcp: true}}")
+        }
+        Some(ServiceHealth::Probe(probe)) => match (&probe.exec, probe.tcp) {
+            (Some(command), None) if command.is_empty() => {
+                bail!("{path}.health.exec: needs a command")
+            }
+            (Some(_), Some(_)) => bail!("{path}.health: set `exec` or `tcp`, not both"),
+            (None, Some(false)) => bail!("{path}.health: set `exec` or `tcp: true`"),
+            _ => {}
+        },
+        None => {}
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -894,6 +1064,164 @@ groups:
             },
         );
         assert_eq!(cfg.diff_base_for_project("mini"), "develop");
+    }
+
+    mod services {
+        use super::*;
+
+        fn load(yaml: &str) -> Result<TestItConfig> {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("cherry-test.yaml"), yaml).unwrap();
+            TestItConfig::load(dir.path())
+        }
+
+        fn error(yaml: &str) -> String {
+            format!("{:#}", load(yaml).unwrap_err())
+        }
+
+        #[test]
+        fn parses_image_services_and_their_health() {
+            let config = load(
+                r#"
+projects:
+  shop:
+    compose: docker-compose.test.yml
+    services:
+      api:
+        service: shop-api
+        port: 3000
+        health: /health
+      db:
+        image: postgres:16-alpine
+        port: 5432
+        kind: postgres
+        pull: missing
+        env: {POSTGRES_PASSWORD: test}
+        tmpfs: [/var/lib/postgresql/data]
+        mounts:
+          - {source: fixtures/sql, target: /docker-entrypoint-initdb.d}
+        health:
+          exec: [pg_isready, -h, 127.0.0.1]
+          timeout: 90s
+      mock:
+        image: wiremock/wiremock:3.9.1
+        port: 8080
+        health: {tcp: true}
+scopes:
+  checkout:
+    projects: [shop]
+    services: {shop: [api, db]}
+"#,
+            )
+            .unwrap();
+            let shop = &config.projects["shop"];
+            let api = &shop.services["api"];
+            assert!(!api.is_image());
+            assert_eq!(api.health, Some(ServiceHealth::Path("/health".into())));
+            let db = &shop.services["db"];
+            assert!(db.is_image());
+            assert_eq!(db.image.as_deref(), Some("postgres:16-alpine"));
+            assert_eq!(db.pull, Some(PullPolicy::Missing));
+            assert_eq!(db.env["POSTGRES_PASSWORD"], "test");
+            assert_eq!(db.tmpfs, ["/var/lib/postgresql/data"]);
+            assert_eq!(
+                db.mounts,
+                [ServiceMount {
+                    source: "fixtures/sql".into(),
+                    target: "/docker-entrypoint-initdb.d".into()
+                }]
+            );
+            assert_eq!(
+                db.health,
+                Some(ServiceHealth::Probe(HealthProbe {
+                    exec: Some(vec!["pg_isready".into(), "-h".into(), "127.0.0.1".into()]),
+                    tcp: None,
+                    timeout: Some(Timeout(90)),
+                }))
+            );
+            assert_eq!(
+                shop.services["mock"].health,
+                Some(ServiceHealth::Probe(HealthProbe {
+                    tcp: Some(true),
+                    ..Default::default()
+                }))
+            );
+            assert!(config.image_services_configured());
+            let yaml = serde_yaml::to_string(api).unwrap();
+            assert_eq!(yaml, "service: shop-api\nport: 3000\nhealth: /health\n");
+        }
+
+        #[test]
+        fn rejects_unknown_image_service_fields() {
+            for (yaml, field) in [
+                ("health: {exec: [true], retries: 3}", "retries"),
+                (
+                    "mounts: [{source: a, target: /a, read_only: false}]",
+                    "read_only",
+                ),
+            ] {
+                let message = error(&format!(
+                    "projects:\n  shop:\n    services:\n      db:\n        image: postgres\n        port: 5432\n        {yaml}\n"
+                ));
+                assert!(
+                    message.contains(&format!("unknown field `{field}`")),
+                    "{message}"
+                );
+            }
+        }
+
+        #[test]
+        fn a_service_is_compose_or_image() {
+            let service = |body: &str| {
+                error(&format!(
+                    "projects:\n  shop:\n    services:\n      db:\n        port: 5432\n{body}"
+                ))
+            };
+            assert_eq!(
+                service(""),
+                "projects.shop.services.db: missing field `service`"
+            );
+            assert_eq!(
+                service("        service: db\n        image: postgres\n"),
+                "projects.shop.services.db: set `service` for a Compose service or `image`, not both"
+            );
+            assert_eq!(
+                service("        service: db\n        env: {A: b}\n"),
+                "projects.shop.services.db.env: applies only to a service with `image`"
+            );
+            assert_eq!(
+                service("        image: --privileged\n"),
+                "projects.shop.services.db.image: invalid image `--privileged`"
+            );
+            assert_eq!(
+                service("        image: postgres\n        health: /health\n"),
+                "projects.shop.services.db.health: an image service takes {exec: [...]} or {tcp: true}"
+            );
+            assert_eq!(
+                service("        image: postgres\n        health: {exec: []}\n"),
+                "projects.shop.services.db.health.exec: needs a command"
+            );
+            assert_eq!(
+                service("        image: postgres\n        health: {exec: [x], tcp: true}\n"),
+                "projects.shop.services.db.health: set `exec` or `tcp`, not both"
+            );
+            assert_eq!(
+                service("        image: postgres\n        health: {tcp: false}\n"),
+                "projects.shop.services.db.health: set `exec` or `tcp: true`"
+            );
+            assert_eq!(
+                service("        image: postgres\n        tmpfs: [data]\n"),
+                "projects.shop.services.db.tmpfs: `data` is not an absolute container path"
+            );
+            assert_eq!(
+                service("        image: postgres\n        env: {A-B: x}\n"),
+                "projects.shop.services.db.env: `A-B` is not a variable name"
+            );
+            assert_eq!(
+                service("        image: postgres\n        mounts: [{source: a, target: data}]\n"),
+                "projects.shop.services.db.mounts: target `data` is not an absolute container path"
+            );
+        }
     }
 
     mod container {

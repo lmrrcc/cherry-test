@@ -285,7 +285,8 @@ fn run_tests_at_root(
     };
 
     let preflight = plan.preflight.clone();
-    let containers = plan.config.container_settings_in_use();
+    let containers =
+        plan.config.container_settings_in_use() || plan.config.image_services_configured();
     if containers {
         adapters::container::start_run(&run_dir.id, cli.quiet);
     }

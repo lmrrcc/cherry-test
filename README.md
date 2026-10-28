@@ -365,7 +365,7 @@ projects:
           timeout: 45m
 ```
 
-Without the block, container execution behaves as before. Each container gets a name and labels for its run, job, and owning process. Cherry Test kills a container that exceeds its timeout or belongs to a cancelled run, removes the run's containers when the run ends, and removes containers left by runs that died. See [Container settings](docs/adapters.md#container-settings) for every field, its default, and how the paths are mounted.
+Without the block, container execution behaves as before. Each container gets a name and labels for its run, job, and owning process. Cherry Test kills a container that exceeds its timeout or belongs to a cancelled run, removes the run's containers when the run ends, and removes containers left by runs that died. Jobs whose scopes use [services from images](#services-from-images) get a private network with their own copy of each service. See [Container settings](docs/adapters.md#container-settings) for every field, its default, and how the paths are mounted.
 
 ### Discovery
 
@@ -429,6 +429,45 @@ The macro requires an async function with one `env: TestEnv` argument and no dec
 The project segment must identify a configured project. These tests are marked ignored for ordinary Cargo runs; Cherry Test selects them during its integration phase.
 
 Java tests declare their scope the same way with `@CherryTest(scope = "...")` from `cherry-test-junit`, on a method named by the same contract and taking a `TestEnv`. For a Maven package, Cherry Test reads `src/test/java` of its module, keeps the classes and methods its integration phase selects (`-Dit.test`, otherwise the Failsafe default includes), and boots their scopes before the phase, as it does for `#[cherry_test]`. Without Docker, the scoped Java tests are excluded from Failsafe and recorded as skipped. A scope set on the phase in `cherry-test.yaml` still applies to any adapter.
+
+### Services from images
+
+A service can also come from an image instead of a Compose file. Give it `image` in place of `service`; a scope selects it like any other service of its projects:
+
+```yaml
+projects:
+  shop:
+    path: .
+    services:
+      db:
+        image: postgres:16-alpine
+        port: 5432
+        kind: postgres
+        pull: never                       # never (default) | missing | always
+        env: {POSTGRES_PASSWORD: test}
+        tmpfs: [/var/lib/postgresql/data]
+        mounts:
+          - {source: fixtures/sql, target: /docker-entrypoint-initdb.d}   # read-only
+        health:
+          exec: [pg_isready, -h, 127.0.0.1, -p, "5432"]                  # or tcp: true
+          timeout: 60s
+    packages:
+      orders-api:
+        kinds: [unit, integration]
+
+scopes:
+  checkout:
+    projects: [shop]
+```
+
+Tests never start containers. `#[cherry_test(scope = "checkout")]`, `@CherryTest(scope = "checkout")` or `scope: checkout` on a phase declares the need, and Cherry Test prepares the services before the job starts:
+
+- **Hardened container jobs** (a `container:` block) get their own copy of every image service. Cherry Test starts a holder container from the job image with no network of its own (`network: bridge` gives it the bridge), starts each service in the holder's network namespace, waits until each is healthy, and runs the job in the same namespace. The test reaches the service at `127.0.0.1:<port>`, so parallel jobs can all use port 5432 without seeing each other. The holder and the services are removed with their anonymous volumes when the job ends, also on timeout or cancellation.
+- **Local execution** starts the scope's image services once per phase with the port published on a random `127.0.0.1` port, next to the scope's Compose services, and removes them when the phase ends.
+
+Both export the usual `CHERRY_TEST_{PROJECT}_{SERVICE}_HOST`, `_PORT` and `_URL` (`_URL` only for `kind: http`, the default) and list the scopes in `CHERRY_TEST_SCOPE_PROVISIONED`; `TestEnv` and `env.project(...).db(...)` read them, and the test process starts nothing for those scopes. A test run outside Cherry Test starts the image services itself, with published ports, as it starts Compose stacks.
+
+`health.exec` runs in the service container until it exits with status 0; `tcp: true`, the default, waits for a socket listening on the port. A service that does not start, stops, or is not healthy within `timeout` (default 60s) fails the job before its tests run, with the reason in the job's diagnostics and the service's output in `sidecar-<project>-<service>.log` beside the job's logs. Unknown keys are rejected; `env`, `tmpfs`, `mounts`, `pull` and a health probe apply only to services with `image`.
 
 ### Mocks and real dependencies
 
@@ -690,6 +729,7 @@ The `latest` symlink is available on Unix. On other systems, use the run path pr
 | `CHERRY_TEST_{PROJECT}_{SERVICE}_URL` | HTTP service URL exported after startup |
 | `CHERRY_TEST_RUN_DIR` | Current run directory, set by Cherry Test |
 | `CHERRY_TEST_REPORT_DIR` | The job's own report directory, `report/` in its adapter output; after the job Cherry Test merges it into the run's `reports/` in configuration order, appending `*.jsonl` files and copying the others |
+| `CHERRY_TEST_SCOPE_PROVISIONED` | Comma-separated scopes Cherry Test prepared for the job because they use [services from images](#services-from-images); the test process reads their endpoints instead of starting them |
 | `VITEST_JSON_REPORT` | JSON output path passed to Vitest |
 | `VITEST_COVERAGE_DIR` | Coverage output directory passed to Vitest |
 | `RUST_LOG` | Tracing filter, such as `cherry_test=info` |

@@ -7,21 +7,15 @@ use std::process::{Command, Stdio};
 use anyhow::{bail, Context, Result};
 use cherry_test_common::adapter::{AdapterRequest, ExecutionMode};
 use cherry_test_common::container::{
-    BindMount, CacheVolume, ContainerConfig, ContainerSpec, NetworkMode, SeedMode, WorkspaceAccess,
-    WritableMount, DEFAULT_TIMEOUT_SECS,
+    normalize_path as normalize, BindMount, CacheVolume, ContainerConfig, ContainerSpec,
+    NetworkMode, SeedMode, WorkspaceAccess, WritableMount, DEFAULT_TIMEOUT_SECS,
+};
+pub use cherry_test_common::container::{
+    sanitize_name, JOB_LABEL, OWNER_PID_ENV, PID_LABEL, RUN_LABEL, SERVICE_LABEL,
 };
 use serde::Deserialize;
 
 use super::process;
-
-/// Label that carries the run id of every container Cherry Test starts.
-pub const RUN_LABEL: &str = "cherry-test.run";
-/// Label that carries the `project/package/phase` key of the job.
-pub const JOB_LABEL: &str = "cherry-test.job";
-/// Label that carries the process id of the Cherry Test run that owns the container.
-pub const PID_LABEL: &str = "cherry-test.pid";
-/// Environment variable that passes the owning run's process id to adapter processes.
-pub const OWNER_PID_ENV: &str = "CHERRY_TEST_OWNER_PID";
 
 /// Host-side facts for one container invocation that are not part of the resolved spec.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
@@ -182,6 +176,7 @@ pub fn resolve(
         caches,
         env_pass,
         env_set,
+        sidecars: None,
     }))
 }
 
@@ -204,9 +199,18 @@ pub fn container_argv(
         format!("{PID_LABEL}={}", call.owner_pid),
     );
     push(&mut argv, "--pull", spec.pull.as_str());
-    push(&mut argv, "--network", spec.network.as_str());
-    if spec.network != NetworkMode::None {
-        push(&mut argv, "--add-host", "host.docker.internal:host-gateway");
+    match &spec.sidecars {
+        Some(sidecars) => push(
+            &mut argv,
+            "--network",
+            format!("container:{}", sidecars.holder),
+        ),
+        None => {
+            push(&mut argv, "--network", spec.network.as_str());
+            if spec.network != NetworkMode::None {
+                push(&mut argv, "--add-host", "host.docker.internal:host-gateway");
+            }
+        }
     }
     if let Some(user) = &call.user {
         push(&mut argv, "--user", user.clone());
@@ -281,10 +285,20 @@ pub fn container_argv(
     for name in &call.auth_names {
         push(&mut argv, "-e", name.clone());
     }
+    let local: Vec<String> = spec
+        .sidecars
+        .iter()
+        .flat_map(|sidecars| sidecars.services.iter())
+        .map(|service| cherry_test_core::sidecar::env_prefix(&service.project, &service.service))
+        .collect();
     for (key, value) in &request.env {
-        let value = map(value)
-            .replace("127.0.0.1:", "host.docker.internal:")
-            .replace("localhost:", "host.docker.internal:");
+        let value = if local.iter().any(|prefix| key.starts_with(prefix)) {
+            map(value)
+        } else {
+            map(value)
+                .replace("127.0.0.1:", "host.docker.internal:")
+                .replace("localhost:", "host.docker.internal:")
+        };
         push(&mut argv, "-e", format!("{key}={value}"));
     }
     for name in &spec.env_pass {
@@ -376,26 +390,6 @@ pub fn prepare(spec: &ContainerSpec) -> Result<()> {
 /// Docker container name for a job: `ct-<run>-<project>-<package>-<phase>`, sanitized.
 pub fn container_name(run_id: &str, project: &str, package: &str, phase: &str) -> String {
     sanitize_name(&format!("ct-{run_id}-{project}-{package}-{phase}"))
-}
-
-/// Replaces every character Docker does not accept in a container name with `-`, and makes
-/// sure the name starts with a letter or digit.
-pub fn sanitize_name(raw: &str) -> String {
-    let name: String = raw
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-') {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    if name.starts_with(|c: char| c.is_ascii_alphanumeric()) {
-        name
-    } else {
-        format!("ct{name}")
-    }
 }
 
 /// Volumes kept for well-known toolchain images when `caches` is not configured.
@@ -518,8 +512,7 @@ fn remove(ids: &[String]) -> Result<()> {
     if ids.is_empty() {
         return Ok(());
     }
-    let mut args = vec!["rm".to_string(), "-f".to_string()];
-    args.extend(ids.iter().cloned());
+    let args = cherry_test_core::sidecar::remove_argv(ids);
     let output = Command::new("docker")
         .args(&args)
         .stdin(Stdio::null())
@@ -598,24 +591,6 @@ fn copy_tree(from: &Path, to: &Path) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn normalize(path: &Path) -> PathBuf {
-    let mut parts: Vec<Component> = Vec::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => match parts.last() {
-                Some(Component::Normal(_)) => {
-                    parts.pop();
-                }
-                Some(Component::RootDir | Component::Prefix(_)) => {}
-                _ => parts.push(component),
-            },
-            other => parts.push(other),
-        }
-    }
-    parts.iter().collect()
 }
 
 fn workspace_relative(path: &str) -> Result<PathBuf> {
@@ -1103,6 +1078,71 @@ mod tests {
         assert!(started.elapsed() < std::time::Duration::from_secs(25));
         assert_eq!(run_ids(&run_id), "");
         assert_eq!(remove_run(&run_id).unwrap(), 0);
+    }
+
+    #[derive(Deserialize)]
+    struct GoldenLabels {
+        run: String,
+        job: String,
+        owner_pid: u32,
+    }
+
+    #[derive(Deserialize)]
+    struct SidecarCase {
+        name: String,
+        request: AdapterRequest,
+        request_json: String,
+        call: ContainerCall,
+        argv: Vec<String>,
+        labels: GoldenLabels,
+        holder_argv: Vec<String>,
+        service_argvs: Vec<Vec<String>>,
+        published_argvs: Vec<Vec<String>>,
+        probe_argvs: Vec<Vec<String>>,
+        remove_argv: Vec<String>,
+        env: Vec<(String, String)>,
+    }
+
+    fn sidecar_outputs(case: &SidecarCase) -> serde_json::Value {
+        use cherry_test_core::sidecar;
+        let spec = case.request.container.clone().unwrap();
+        let sidecars = spec.sidecars.clone().unwrap();
+        let labels = sidecar::Labels {
+            run: case.labels.run.clone(),
+            job: case.labels.job.clone(),
+            owner_pid: case.labels.owner_pid,
+        };
+        serde_json::json!({
+            "request_json": serde_json::to_string(&case.request).unwrap(),
+            "argv": container_argv(&spec, &case.request, &case.call),
+            "holder_argv": sidecar::holder_argv(&sidecars.holder, &spec.image, spec.pull, spec.network, &labels),
+            "service_argvs": sidecars.services.iter().map(|service| sidecar::service_argv(service, sidecar::ServiceNetwork::Holder(&sidecars.holder), &labels)).collect::<Vec<_>>(),
+            "published_argvs": sidecars.services.iter().map(|service| sidecar::service_argv(service, sidecar::ServiceNetwork::Published, &labels)).collect::<Vec<_>>(),
+            "probe_argvs": sidecars.services.iter().map(|service| sidecar::probe_argv(service, &sidecars.holder)).collect::<Vec<_>>(),
+            "remove_argv": sidecar::remove_argv(&sidecar::container_names(&sidecars)),
+            "env": sidecars.services.iter().flat_map(sidecar::sidecar_env).collect::<Vec<_>>(),
+        })
+    }
+
+    #[test]
+    fn sidecar_argv_matches_golden_cases() {
+        let cases: Vec<SidecarCase> =
+            serde_json::from_str(include_str!("../../tests/golden/sidecar-argv.json")).unwrap();
+        assert!(cases.len() >= 2);
+        for case in &cases {
+            let actual = sidecar_outputs(case);
+            let expected = serde_json::json!({
+                "request_json": case.request_json,
+                "argv": case.argv,
+                "holder_argv": case.holder_argv,
+                "service_argvs": case.service_argvs,
+                "published_argvs": case.published_argvs,
+                "probe_argvs": case.probe_argvs,
+                "remove_argv": case.remove_argv,
+                "env": case.env,
+            });
+            assert_eq!(actual, expected, "{}", case.name);
+        }
     }
 
     #[derive(Deserialize)]

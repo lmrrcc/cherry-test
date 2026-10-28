@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{bail, Result};
 use serde::de::{self, Deserializer, MapAccess, Visitor};
@@ -11,6 +11,20 @@ use serde::{Deserialize, Serialize};
 
 /// Seconds a container tool invocation may run when `timeout` is not configured.
 pub const DEFAULT_TIMEOUT_SECS: u64 = 1800;
+
+/// Seconds an image service may take to become healthy when `health.timeout` is not configured.
+pub const DEFAULT_HEALTH_TIMEOUT_SECS: u64 = 60;
+
+/// Label that carries the run id of every container Cherry Test starts.
+pub const RUN_LABEL: &str = "cherry-test.run";
+/// Label that carries the `project/package/phase` key of the job, or `scope/<name>` for a scope's services.
+pub const JOB_LABEL: &str = "cherry-test.job";
+/// Label that carries the process id of the Cherry Test run that owns the container.
+pub const PID_LABEL: &str = "cherry-test.pid";
+/// Label that carries the `project/service` an image service container provides.
+pub const SERVICE_LABEL: &str = "cherry-test.service";
+/// Environment variable that passes the owning run's process id to adapter processes.
+pub const OWNER_PID_ENV: &str = "CHERRY_TEST_OWNER_PID";
 
 /// Whether `docker run` pulls the image first.
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -312,6 +326,45 @@ impl<'de> Deserialize<'de> for Timeout {
     }
 }
 
+/// Replaces every character Docker does not accept in a container name with `-`, and makes
+/// sure the name starts with a letter or digit.
+pub fn sanitize_name(raw: &str) -> String {
+    let name: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    if name.starts_with(|c: char| c.is_ascii_alphanumeric()) {
+        name
+    } else {
+        format!("ct{name}")
+    }
+}
+
+/// Removes `.` components and resolves `..` against the components before it, without touching the file system.
+pub fn normalize_path(path: &Path) -> PathBuf {
+    let mut parts: Vec<Component> = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => match parts.last() {
+                Some(Component::Normal(_)) => {
+                    parts.pop();
+                }
+                Some(Component::RootDir | Component::Prefix(_)) => {}
+                _ => parts.push(component),
+            },
+            other => parts.push(other),
+        }
+    }
+    parts.iter().collect()
+}
+
 /// Parses `90`, `90s`, `30m` or `2h` into seconds. Zero and values above `i64::MAX` are rejected.
 pub fn parse_duration(text: &str) -> Result<u64> {
     let (digits, factor) = match text.as_bytes().last() {
@@ -365,6 +418,41 @@ pub struct ContainerSpec {
     pub caches: Vec<CacheVolume>,
     pub env_pass: Vec<String>,
     pub env_set: BTreeMap<String, String>,
+    /// Image services the job reaches at `127.0.0.1`; absent when the job's scopes declare none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidecars: Option<SidecarSpec>,
+}
+
+/// The job's private network: a holder container owns the network namespace, and the job and
+/// every image service join it, so each service listens on `127.0.0.1:<port>` for this job only.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SidecarSpec {
+    pub holder: String,
+    pub services: Vec<SidecarService>,
+}
+
+/// One image service started for a job, or for a scope in local execution.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SidecarService {
+    pub project: String,
+    pub service: String,
+    pub name: String,
+    pub image: String,
+    pub pull: PullPolicy,
+    pub port: u16,
+    pub kind: String,
+    pub env: BTreeMap<String, String>,
+    pub tmpfs: Vec<String>,
+    pub mounts: Vec<BindMount>,
+    pub health: HealthCheck,
+}
+
+/// How Cherry Test decides that an image service is ready: a command inside the service
+/// container that exits with status 0, or, when `exec` is empty, a socket listening on the port.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct HealthCheck {
+    pub exec: Vec<String>,
+    pub timeout_secs: u64,
 }
 
 /// A fresh per-job host directory mounted over a workspace path.

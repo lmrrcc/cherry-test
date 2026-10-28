@@ -1,0 +1,592 @@
+[
+  {
+    "argv": [
+      "run",
+      "--rm",
+      "--init",
+      "--name",
+      "ct-20261028-101500-abc123-shop-api-integration",
+      "--label",
+      "cherry-test.run=20261028-101500-abc123",
+      "--label",
+      "cherry-test.job=shop/api/integration",
+      "--label",
+      "cherry-test.pid=4242",
+      "--pull",
+      "never",
+      "--network",
+      "container:ct-20261028-101500-abc123-shop-api-integration-net",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "-v",
+      "/work/shop:/workspace:ro",
+      "-v",
+      "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/api/integration:/workspace/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/api/integration",
+      "-w",
+      "/workspace/api",
+      "-e",
+      "CHERRY_TEST_PHASE=integration",
+      "-e",
+      "CHERRY_TEST_REPORT_DIR=/workspace/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/api/integration/report",
+      "-e",
+      "CHERRY_TEST_SCOPE_PROVISIONED=checkout",
+      "-e",
+      "CHERRY_TEST_SHOP_DB_HOST=127.0.0.1",
+      "-e",
+      "CHERRY_TEST_SHOP_DB_PORT=5432",
+      "postgres:16-alpine",
+      "./mvnw",
+      "-B",
+      "verify"
+    ],
+    "call": {
+      "args": [
+        "-B",
+        "verify"
+      ],
+      "auth_names": [],
+      "owner_pid": 4242,
+      "program": "./mvnw",
+      "user": null
+    },
+    "env": [
+      [
+        "CHERRY_TEST_SHOP_DB_HOST",
+        "127.0.0.1"
+      ],
+      [
+        "CHERRY_TEST_SHOP_DB_PORT",
+        "5432"
+      ]
+    ],
+    "holder_argv": [
+      "run",
+      "-d",
+      "--name",
+      "ct-20261028-101500-abc123-shop-api-integration-net",
+      "--label",
+      "cherry-test.run=20261028-101500-abc123",
+      "--label",
+      "cherry-test.job=shop/api/integration",
+      "--label",
+      "cherry-test.pid=4242",
+      "--pull",
+      "never",
+      "--network",
+      "none",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--read-only",
+      "--entrypoint",
+      "sleep",
+      "postgres:16-alpine",
+      "infinity"
+    ],
+    "labels": {
+      "job": "shop/api/integration",
+      "owner_pid": 4242,
+      "run": "20261028-101500-abc123"
+    },
+    "name": "postgres sidecar with an exec health check on a job without network",
+    "probe_argvs": [
+      [
+        "exec",
+        "ct-20261028-101500-abc123-shop-api-integration-shop-db",
+        "pg_isready",
+        "-h",
+        "127.0.0.1",
+        "-p",
+        "5432"
+      ]
+    ],
+    "published_argvs": [
+      [
+        "run",
+        "-d",
+        "--name",
+        "ct-20261028-101500-abc123-shop-api-integration-shop-db",
+        "--label",
+        "cherry-test.run=20261028-101500-abc123",
+        "--label",
+        "cherry-test.job=shop/api/integration",
+        "--label",
+        "cherry-test.pid=4242",
+        "--label",
+        "cherry-test.service=shop/db",
+        "--pull",
+        "never",
+        "-p",
+        "127.0.0.1::5432",
+        "--tmpfs",
+        "/var/lib/postgresql/data",
+        "-v",
+        "/work/shop/fixtures/sql:/docker-entrypoint-initdb.d:ro",
+        "-e",
+        "POSTGRES_DB=shop",
+        "-e",
+        "POSTGRES_PASSWORD=test",
+        "postgres:16-alpine"
+      ]
+    ],
+    "remove_argv": [
+      "rm",
+      "-f",
+      "-v",
+      "ct-20261028-101500-abc123-shop-api-integration-net",
+      "ct-20261028-101500-abc123-shop-api-integration-shop-db"
+    ],
+    "request": {
+      "args": [],
+      "container": {
+        "caches": [],
+        "cap_drop": [
+          "ALL"
+        ],
+        "cpus": null,
+        "env_pass": [],
+        "env_set": {},
+        "image": "postgres:16-alpine",
+        "job": "shop/api/integration",
+        "memory": null,
+        "mount_root": "/work/shop",
+        "mounts": [],
+        "name": "ct-20261028-101500-abc123-shop-api-integration",
+        "network": "none",
+        "no_new_privileges": true,
+        "outputs": [
+          "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/api/integration"
+        ],
+        "pids": null,
+        "pull": "never",
+        "read_only_root": false,
+        "run": "20261028-101500-abc123",
+        "shm_size": null,
+        "sidecars": {
+          "holder": "ct-20261028-101500-abc123-shop-api-integration-net",
+          "services": [
+            {
+              "env": {
+                "POSTGRES_DB": "shop",
+                "POSTGRES_PASSWORD": "test"
+              },
+              "health": {
+                "exec": [
+                  "pg_isready",
+                  "-h",
+                  "127.0.0.1",
+                  "-p",
+                  "5432"
+                ],
+                "timeout_secs": 60
+              },
+              "image": "postgres:16-alpine",
+              "kind": "postgres",
+              "mounts": [
+                {
+                  "read_only": true,
+                  "source": "/work/shop/fixtures/sql",
+                  "target": "/docker-entrypoint-initdb.d"
+                }
+              ],
+              "name": "ct-20261028-101500-abc123-shop-api-integration-shop-db",
+              "port": 5432,
+              "project": "shop",
+              "pull": "never",
+              "service": "db",
+              "tmpfs": [
+                "/var/lib/postgresql/data"
+              ]
+            }
+          ]
+        },
+        "timeout_secs": 1800,
+        "tmpfs": [],
+        "user": null,
+        "workspace": "ro",
+        "writable": []
+      },
+      "coverage": false,
+      "cwd": "/work/shop/api",
+      "env": {
+        "CHERRY_TEST_PHASE": "integration",
+        "CHERRY_TEST_REPORT_DIR": "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/api/integration/report",
+        "CHERRY_TEST_SCOPE_PROVISIONED": "checkout",
+        "CHERRY_TEST_SHOP_DB_HOST": "127.0.0.1",
+        "CHERRY_TEST_SHOP_DB_PORT": "5432"
+      },
+      "execution": "container",
+      "manifest": "/work/shop/api/pom.xml",
+      "options": {},
+      "output": "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/api/integration",
+      "package": "api",
+      "phase": "integration",
+      "project": "shop",
+      "protocol": 1,
+      "root": "/work/shop",
+      "strict": false
+    },
+    "request_json": "{\"protocol\":1,\"project\":\"shop\",\"package\":\"api\",\"phase\":\"integration\",\"root\":\"/work/shop\",\"manifest\":\"/work/shop/api/pom.xml\",\"cwd\":\"/work/shop/api\",\"output\":\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/api/integration\",\"execution\":\"container\",\"coverage\":false,\"strict\":false,\"args\":[],\"env\":{\"CHERRY_TEST_PHASE\":\"integration\",\"CHERRY_TEST_REPORT_DIR\":\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/api/integration/report\",\"CHERRY_TEST_SCOPE_PROVISIONED\":\"checkout\",\"CHERRY_TEST_SHOP_DB_HOST\":\"127.0.0.1\",\"CHERRY_TEST_SHOP_DB_PORT\":\"5432\"},\"options\":{},\"container\":{\"name\":\"ct-20261028-101500-abc123-shop-api-integration\",\"run\":\"20261028-101500-abc123\",\"job\":\"shop/api/integration\",\"image\":\"postgres:16-alpine\",\"pull\":\"never\",\"network\":\"none\",\"user\":null,\"cap_drop\":[\"ALL\"],\"no_new_privileges\":true,\"read_only_root\":false,\"cpus\":null,\"memory\":null,\"pids\":null,\"shm_size\":null,\"tmpfs\":[],\"timeout_secs\":1800,\"workspace\":\"ro\",\"mount_root\":\"/work/shop\",\"outputs\":[\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/api/integration\"],\"writable\":[],\"mounts\":[],\"caches\":[],\"env_pass\":[],\"env_set\":{},\"sidecars\":{\"holder\":\"ct-20261028-101500-abc123-shop-api-integration-net\",\"services\":[{\"project\":\"shop\",\"service\":\"db\",\"name\":\"ct-20261028-101500-abc123-shop-api-integration-shop-db\",\"image\":\"postgres:16-alpine\",\"pull\":\"never\",\"port\":5432,\"kind\":\"postgres\",\"env\":{\"POSTGRES_DB\":\"shop\",\"POSTGRES_PASSWORD\":\"test\"},\"tmpfs\":[\"/var/lib/postgresql/data\"],\"mounts\":[{\"source\":\"/work/shop/fixtures/sql\",\"target\":\"/docker-entrypoint-initdb.d\",\"read_only\":true}],\"health\":{\"exec\":[\"pg_isready\",\"-h\",\"127.0.0.1\",\"-p\",\"5432\"],\"timeout_secs\":60}}]}}}",
+    "service_argvs": [
+      [
+        "run",
+        "-d",
+        "--name",
+        "ct-20261028-101500-abc123-shop-api-integration-shop-db",
+        "--label",
+        "cherry-test.run=20261028-101500-abc123",
+        "--label",
+        "cherry-test.job=shop/api/integration",
+        "--label",
+        "cherry-test.pid=4242",
+        "--label",
+        "cherry-test.service=shop/db",
+        "--pull",
+        "never",
+        "--network",
+        "container:ct-20261028-101500-abc123-shop-api-integration-net",
+        "--tmpfs",
+        "/var/lib/postgresql/data",
+        "-v",
+        "/work/shop/fixtures/sql:/docker-entrypoint-initdb.d:ro",
+        "-e",
+        "POSTGRES_DB=shop",
+        "-e",
+        "POSTGRES_PASSWORD=test",
+        "postgres:16-alpine"
+      ]
+    ]
+  },
+  {
+    "argv": [
+      "run",
+      "--rm",
+      "--init",
+      "--name",
+      "ct-20261028-101500-abc123-shop-prices-integration",
+      "--label",
+      "cherry-test.run=20261028-101500-abc123",
+      "--label",
+      "cherry-test.job=shop/prices/integration",
+      "--label",
+      "cherry-test.pid=7",
+      "--pull",
+      "never",
+      "--network",
+      "container:ct-20261028-101500-abc123-shop-prices-integration-net",
+      "--user",
+      "1000:1000",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "-v",
+      "/work/shop:/workspace:ro",
+      "-v",
+      "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration:/workspace/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration",
+      "-w",
+      "/workspace/prices",
+      "-e",
+      "CHERRY_TEST_AUTH_OKTA_ACCESS_TOKEN",
+      "-e",
+      "CHERRY_TEST_PHASE=integration",
+      "-e",
+      "CHERRY_TEST_PRICING_MOCK_HOST=127.0.0.1",
+      "-e",
+      "CHERRY_TEST_PRICING_MOCK_PORT=8080",
+      "-e",
+      "CHERRY_TEST_PRICING_MOCK_URL=http://127.0.0.1:8080",
+      "-e",
+      "CHERRY_TEST_SCOPE_PROVISIONED=prices,pricing",
+      "-e",
+      "CHERRY_TEST_SHOP_API_URL=http://host.docker.internal:49153",
+      "-e",
+      "CHERRY_TEST_SHOP_CACHE_HOST=127.0.0.1",
+      "-e",
+      "CHERRY_TEST_SHOP_CACHE_PORT=6379",
+      "eclipse-temurin:25-jdk",
+      "./mvnw",
+      "-B",
+      "verify",
+      "-Dit.test=PriceIT"
+    ],
+    "call": {
+      "args": [
+        "-B",
+        "verify",
+        "-Dit.test=PriceIT"
+      ],
+      "auth_names": [
+        "CHERRY_TEST_AUTH_OKTA_ACCESS_TOKEN"
+      ],
+      "owner_pid": 7,
+      "program": "./mvnw",
+      "user": "1000:1000"
+    },
+    "env": [
+      [
+        "CHERRY_TEST_PRICING_MOCK_HOST",
+        "127.0.0.1"
+      ],
+      [
+        "CHERRY_TEST_PRICING_MOCK_PORT",
+        "8080"
+      ],
+      [
+        "CHERRY_TEST_PRICING_MOCK_URL",
+        "http://127.0.0.1:8080"
+      ],
+      [
+        "CHERRY_TEST_SHOP_CACHE_HOST",
+        "127.0.0.1"
+      ],
+      [
+        "CHERRY_TEST_SHOP_CACHE_PORT",
+        "6379"
+      ]
+    ],
+    "holder_argv": [
+      "run",
+      "-d",
+      "--name",
+      "ct-20261028-101500-abc123-shop-prices-integration-net",
+      "--label",
+      "cherry-test.run=20261028-101500-abc123",
+      "--label",
+      "cherry-test.job=shop/prices/integration",
+      "--label",
+      "cherry-test.pid=7",
+      "--pull",
+      "never",
+      "--network",
+      "bridge",
+      "--add-host",
+      "host.docker.internal:host-gateway",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--read-only",
+      "--entrypoint",
+      "sleep",
+      "eclipse-temurin:25-jdk",
+      "infinity"
+    ],
+    "labels": {
+      "job": "shop/prices/integration",
+      "owner_pid": 7,
+      "run": "20261028-101500-abc123"
+    },
+    "name": "bridge job with two sidecars: Compose URLs reach the host, sidecar URLs stay on loopback",
+    "probe_argvs": [
+      [
+        "exec",
+        "ct-20261028-101500-abc123-shop-prices-integration-net",
+        "cat",
+        "/proc/net/tcp",
+        "/proc/net/tcp6"
+      ],
+      [
+        "exec",
+        "ct-20261028-101500-abc123-shop-prices-integration-shop-cache",
+        "redis-cli",
+        "ping"
+      ]
+    ],
+    "published_argvs": [
+      [
+        "run",
+        "-d",
+        "--name",
+        "ct-20261028-101500-abc123-shop-prices-integration-pricing-mock",
+        "--label",
+        "cherry-test.run=20261028-101500-abc123",
+        "--label",
+        "cherry-test.job=shop/prices/integration",
+        "--label",
+        "cherry-test.pid=7",
+        "--label",
+        "cherry-test.service=pricing/mock",
+        "--pull",
+        "missing",
+        "-p",
+        "127.0.0.1::8080",
+        "wiremock/wiremock:3.9.1"
+      ],
+      [
+        "run",
+        "-d",
+        "--name",
+        "ct-20261028-101500-abc123-shop-prices-integration-shop-cache",
+        "--label",
+        "cherry-test.run=20261028-101500-abc123",
+        "--label",
+        "cherry-test.job=shop/prices/integration",
+        "--label",
+        "cherry-test.pid=7",
+        "--label",
+        "cherry-test.service=shop/cache",
+        "--pull",
+        "never",
+        "-p",
+        "127.0.0.1::6379",
+        "--tmpfs",
+        "/data:size=16m",
+        "redis:7-alpine"
+      ]
+    ],
+    "remove_argv": [
+      "rm",
+      "-f",
+      "-v",
+      "ct-20261028-101500-abc123-shop-prices-integration-net",
+      "ct-20261028-101500-abc123-shop-prices-integration-pricing-mock",
+      "ct-20261028-101500-abc123-shop-prices-integration-shop-cache"
+    ],
+    "request": {
+      "args": [
+        "-Dit.test=PriceIT"
+      ],
+      "container": {
+        "caches": [],
+        "cap_drop": [
+          "ALL"
+        ],
+        "cpus": null,
+        "env_pass": [],
+        "env_set": {},
+        "image": "eclipse-temurin:25-jdk",
+        "job": "shop/prices/integration",
+        "memory": null,
+        "mount_root": "/work/shop",
+        "mounts": [],
+        "name": "ct-20261028-101500-abc123-shop-prices-integration",
+        "network": "bridge",
+        "no_new_privileges": true,
+        "outputs": [
+          "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration"
+        ],
+        "pids": null,
+        "pull": "never",
+        "read_only_root": false,
+        "run": "20261028-101500-abc123",
+        "shm_size": null,
+        "sidecars": {
+          "holder": "ct-20261028-101500-abc123-shop-prices-integration-net",
+          "services": [
+            {
+              "env": {},
+              "health": {
+                "exec": [],
+                "timeout_secs": 30
+              },
+              "image": "wiremock/wiremock:3.9.1",
+              "kind": "http",
+              "mounts": [],
+              "name": "ct-20261028-101500-abc123-shop-prices-integration-pricing-mock",
+              "port": 8080,
+              "project": "pricing",
+              "pull": "missing",
+              "service": "mock",
+              "tmpfs": []
+            },
+            {
+              "env": {},
+              "health": {
+                "exec": [
+                  "redis-cli",
+                  "ping"
+                ],
+                "timeout_secs": 60
+              },
+              "image": "redis:7-alpine",
+              "kind": "redis",
+              "mounts": [],
+              "name": "ct-20261028-101500-abc123-shop-prices-integration-shop-cache",
+              "port": 6379,
+              "project": "shop",
+              "pull": "never",
+              "service": "cache",
+              "tmpfs": [
+                "/data:size=16m"
+              ]
+            }
+          ]
+        },
+        "timeout_secs": 1800,
+        "tmpfs": [],
+        "user": null,
+        "workspace": "ro",
+        "writable": []
+      },
+      "coverage": false,
+      "cwd": "/work/shop/prices",
+      "env": {
+        "CHERRY_TEST_PHASE": "integration",
+        "CHERRY_TEST_PRICING_MOCK_HOST": "127.0.0.1",
+        "CHERRY_TEST_PRICING_MOCK_PORT": "8080",
+        "CHERRY_TEST_PRICING_MOCK_URL": "http://127.0.0.1:8080",
+        "CHERRY_TEST_SCOPE_PROVISIONED": "prices,pricing",
+        "CHERRY_TEST_SHOP_API_URL": "http://127.0.0.1:49153",
+        "CHERRY_TEST_SHOP_CACHE_HOST": "127.0.0.1",
+        "CHERRY_TEST_SHOP_CACHE_PORT": "6379"
+      },
+      "execution": "container",
+      "manifest": "/work/shop/prices/pom.xml",
+      "options": {},
+      "output": "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration",
+      "package": "prices",
+      "phase": "integration",
+      "project": "shop",
+      "protocol": 1,
+      "root": "/work/shop",
+      "strict": false
+    },
+    "request_json": "{\"protocol\":1,\"project\":\"shop\",\"package\":\"prices\",\"phase\":\"integration\",\"root\":\"/work/shop\",\"manifest\":\"/work/shop/prices/pom.xml\",\"cwd\":\"/work/shop/prices\",\"output\":\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration\",\"execution\":\"container\",\"coverage\":false,\"strict\":false,\"args\":[\"-Dit.test=PriceIT\"],\"env\":{\"CHERRY_TEST_PHASE\":\"integration\",\"CHERRY_TEST_PRICING_MOCK_HOST\":\"127.0.0.1\",\"CHERRY_TEST_PRICING_MOCK_PORT\":\"8080\",\"CHERRY_TEST_PRICING_MOCK_URL\":\"http://127.0.0.1:8080\",\"CHERRY_TEST_SCOPE_PROVISIONED\":\"prices,pricing\",\"CHERRY_TEST_SHOP_API_URL\":\"http://127.0.0.1:49153\",\"CHERRY_TEST_SHOP_CACHE_HOST\":\"127.0.0.1\",\"CHERRY_TEST_SHOP_CACHE_PORT\":\"6379\"},\"options\":{},\"container\":{\"name\":\"ct-20261028-101500-abc123-shop-prices-integration\",\"run\":\"20261028-101500-abc123\",\"job\":\"shop/prices/integration\",\"image\":\"eclipse-temurin:25-jdk\",\"pull\":\"never\",\"network\":\"bridge\",\"user\":null,\"cap_drop\":[\"ALL\"],\"no_new_privileges\":true,\"read_only_root\":false,\"cpus\":null,\"memory\":null,\"pids\":null,\"shm_size\":null,\"tmpfs\":[],\"timeout_secs\":1800,\"workspace\":\"ro\",\"mount_root\":\"/work/shop\",\"outputs\":[\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration\"],\"writable\":[],\"mounts\":[],\"caches\":[],\"env_pass\":[],\"env_set\":{},\"sidecars\":{\"holder\":\"ct-20261028-101500-abc123-shop-prices-integration-net\",\"services\":[{\"project\":\"pricing\",\"service\":\"mock\",\"name\":\"ct-20261028-101500-abc123-shop-prices-integration-pricing-mock\",\"image\":\"wiremock/wiremock:3.9.1\",\"pull\":\"missing\",\"port\":8080,\"kind\":\"http\",\"env\":{},\"tmpfs\":[],\"mounts\":[],\"health\":{\"exec\":[],\"timeout_secs\":30}},{\"project\":\"shop\",\"service\":\"cache\",\"name\":\"ct-20261028-101500-abc123-shop-prices-integration-shop-cache\",\"image\":\"redis:7-alpine\",\"pull\":\"never\",\"port\":6379,\"kind\":\"redis\",\"env\":{},\"tmpfs\":[\"/data:size=16m\"],\"mounts\":[],\"health\":{\"exec\":[\"redis-cli\",\"ping\"],\"timeout_secs\":60}}]}}}",
+    "service_argvs": [
+      [
+        "run",
+        "-d",
+        "--name",
+        "ct-20261028-101500-abc123-shop-prices-integration-pricing-mock",
+        "--label",
+        "cherry-test.run=20261028-101500-abc123",
+        "--label",
+        "cherry-test.job=shop/prices/integration",
+        "--label",
+        "cherry-test.pid=7",
+        "--label",
+        "cherry-test.service=pricing/mock",
+        "--pull",
+        "missing",
+        "--network",
+        "container:ct-20261028-101500-abc123-shop-prices-integration-net",
+        "wiremock/wiremock:3.9.1"
+      ],
+      [
+        "run",
+        "-d",
+        "--name",
+        "ct-20261028-101500-abc123-shop-prices-integration-shop-cache",
+        "--label",
+        "cherry-test.run=20261028-101500-abc123",
+        "--label",
+        "cherry-test.job=shop/prices/integration",
+        "--label",
+        "cherry-test.pid=7",
+        "--label",
+        "cherry-test.service=shop/cache",
+        "--pull",
+        "never",
+        "--network",
+        "container:ct-20261028-101500-abc123-shop-prices-integration-net",
+        "--tmpfs",
+        "/data:size=16m",
+        "redis:7-alpine"
+      ]
+    ]
+  }
+]

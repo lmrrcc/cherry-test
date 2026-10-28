@@ -62,6 +62,9 @@ pub struct Job {
     pub exclusive: bool,
     /// Why the job's `container:` settings could not be resolved; the job then fails without starting.
     pub container_error: Option<String>,
+    /// The job's scopes that declare image services: the runner provides them, so the test
+    /// process reads their endpoints from `CHERRY_TEST_SCOPE_PROVISIONED` and its environment.
+    pub provisioned: Vec<String>,
 }
 
 /// The jobs of one phase, in configuration order.
@@ -173,7 +176,7 @@ fn job(
         options,
         container: None,
     };
-    let container_error = match crate::adapters::container::resolve(
+    let mut container_error = match crate::adapters::container::resolve(
         opts.config.defaults.container.as_ref(),
         package.container.as_ref(),
         &request,
@@ -204,6 +207,22 @@ fn job(
             scopes.push(scope.clone());
         }
     }
+    let provisioned = provisioned_scopes(opts.config, &scopes);
+    if let Some(spec) = request.container.as_mut() {
+        match cherry_test_core::sidecar::image_services(opts.config, &scopes) {
+            Ok(services) => {
+                spec.sidecars = cherry_test_core::sidecar::job_sidecars(
+                    opts.workspace_root,
+                    &spec.name,
+                    &services,
+                    spec.pull,
+                );
+            }
+            Err(error) => {
+                container_error.get_or_insert(format!("{error:#}"));
+            }
+        }
+    }
     let resources = job_resources(package.resources.as_ref(), request.container.as_ref());
     Job {
         key: JobKey::new(project_id, &member.name, phase),
@@ -214,7 +233,22 @@ fn job(
         estimate_ms: 0,
         exclusive: package.exclusive,
         container_error,
+        provisioned,
     }
+}
+
+/// The scopes, each once and in order, that select at least one image service.
+pub fn provisioned_scopes(config: &crate::config::Config, scopes: &[String]) -> Vec<String> {
+    let mut provisioned: Vec<String> = Vec::new();
+    for scope in scopes {
+        let has_images =
+            cherry_test_core::sidecar::image_services(config, std::slice::from_ref(scope))
+                .is_ok_and(|services| !services.is_empty());
+        if has_images && !provisioned.contains(scope) {
+            provisioned.push(scope.clone());
+        }
+    }
+    provisioned
 }
 
 /// What a job reserves: the package's `resources`, else the `cpus`/`memory` limits of its container, else 1 CPU and 1g.
@@ -388,6 +422,74 @@ pub(crate) mod tests {
         let opts = options(root.path(), &run_dir, &config, &[]);
         let error = plan(&projects, &opts, &PreflightPlan::default()).unwrap_err();
         assert_eq!(error.to_string(), "unknown test kind smoke");
+    }
+
+    #[test]
+    fn plans_sidecars_for_container_jobs_with_image_services() {
+        let (root, mut config, projects) = fixture();
+        let shop = config.projects.get_mut("shop").unwrap();
+        shop.services.insert(
+            "db".into(),
+            serde_yaml::from_str(
+                "image: postgres:16-alpine\nport: 5432\nkind: postgres\nenv: {POSTGRES_PASSWORD: test}\nhealth: {exec: [pg_isready]}\n",
+            )
+            .unwrap(),
+        );
+        shop.services.insert(
+            "api".into(),
+            serde_yaml::from_str("service: shop-api\nport: 3000\n").unwrap(),
+        );
+        config.scopes.insert(
+            "checkout".into(),
+            cherry_test_core::ScopeConfig {
+                projects: vec!["shop".into()],
+                services: Default::default(),
+            },
+        );
+        let run_dir = RunDir::create(root.path(), std::path::Path::new("runs")).unwrap();
+        let local = {
+            let opts = options(root.path(), &run_dir, &config, &[]);
+            plan(&projects, &opts, &PreflightPlan::default()).unwrap()
+        };
+        let job = &local.phases[1].jobs[0];
+        assert_eq!(job.provisioned, ["checkout"]);
+        assert!(job.request.container.is_none());
+        config.defaults.execution = cherry_test_common::adapter::ExecutionMode::Container;
+        config.defaults.container =
+            Some(serde_yaml::from_str("image: eclipse-temurin:25-jdk\n").unwrap());
+        let opts = options(root.path(), &run_dir, &config, &[]);
+        let planned = plan(&projects, &opts, &PreflightPlan::default()).unwrap();
+        let unit = &planned.phases[0].jobs[0];
+        assert!(unit.provisioned.is_empty());
+        assert!(unit.request.container.as_ref().unwrap().sidecars.is_none());
+        let job = &planned.phases[1].jobs[0];
+        let spec = job.request.container.as_ref().unwrap();
+        let sidecars = spec.sidecars.as_ref().unwrap();
+        assert_eq!(sidecars.holder, format!("{}-net", spec.name));
+        assert_eq!(sidecars.services.len(), 1);
+        let db = &sidecars.services[0];
+        assert_eq!(db.name, format!("{}-shop-db", spec.name));
+        assert_eq!(db.pull, cherry_test_common::container::PullPolicy::Never);
+        assert_eq!(db.health.exec, ["pg_isready"]);
+        assert_eq!(db.health.timeout_secs, 60);
+        let mut env = cherry_test_core::Environment::new();
+        crate::runner::extend_with_provisioned(&mut env, job);
+        assert_eq!(
+            env,
+            cherry_test_core::Environment::from([
+                (
+                    "CHERRY_TEST_SCOPE_PROVISIONED".to_string(),
+                    "checkout".to_string()
+                ),
+                (
+                    "CHERRY_TEST_SHOP_DB_HOST".to_string(),
+                    "127.0.0.1".to_string()
+                ),
+                ("CHERRY_TEST_SHOP_DB_PORT".to_string(), "5432".to_string()),
+            ])
+        );
+        let request = crate::run_env::request_env(&env);
+        assert_eq!(request.len(), 3);
     }
 
     #[test]

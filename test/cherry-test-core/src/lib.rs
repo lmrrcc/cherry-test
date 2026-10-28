@@ -7,13 +7,14 @@ pub mod naming;
 pub mod repo_root;
 pub mod report;
 pub mod scope;
+pub mod sidecar;
 pub mod workspace;
 
 pub use cherry_test_macros::cherry_test;
 pub use config::{
-    AuthProfileConfig, Cpus, Defaults, ExternalRunner, Jobs, Memory, PackageConfig, PackageRuntime,
-    ParallelConfig, ProjectConfig, ResourcesConfig, ScopeConfig, ServiceConfig, TestItConfig,
-    WorkspaceConfig,
+    AuthProfileConfig, Cpus, Defaults, ExternalRunner, HealthProbe, Jobs, Memory, PackageConfig,
+    PackageRuntime, ParallelConfig, ProjectConfig, ResourcesConfig, ScopeConfig, ServiceConfig,
+    ServiceHealth, ServiceMount, TestItConfig, WorkspaceConfig,
 };
 pub use env::{DbEnv, ProjectEnv, ServiceEnv, TestEnv};
 pub use http::HttpRecord;
@@ -22,9 +23,9 @@ pub use naming::{parse_test_name, TestId};
 pub use repo_root::{resolve_config_roots, resolve_repo_root};
 pub use scope::{effective_scope, is_none, needs_docker, resolve_projects};
 pub use workspace::{
-    boot_scope, boot_scope_in, boot_workspace, docker_available, process_environment,
-    teardown_scopes, teardown_scopes_in, teardown_workspace, Environment, ScopeBoot, ScopeState,
-    COMPOSE_PROJECT,
+    boot_compose_in, boot_scope, boot_scope_in, boot_workspace, docker_available,
+    process_environment, teardown_scopes, teardown_scopes_in, teardown_workspace, Environment,
+    ScopeBoot, ScopeState, COMPOSE_PROJECT,
 };
 
 pub mod prelude {

@@ -513,6 +513,7 @@ fn infer_services(root: &Path, compose_rel: &str) -> Result<HashMap<String, Serv
                     port: 5432,
                     health: None,
                     kind: Some("postgres".into()),
+                    ..Default::default()
                 },
             );
             continue;
@@ -525,8 +526,9 @@ fn infer_services(root: &Path, compose_rel: &str) -> Result<HashMap<String, Serv
                     ServiceConfig {
                         service: service_name.to_string(),
                         port,
-                        health: Some(health),
+                        health: Some(cherry_test_core::ServiceHealth::Path(health)),
                         kind: None,
+                        ..Default::default()
                     },
                 );
             }
