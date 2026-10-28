@@ -279,7 +279,7 @@ The package names must match their Cargo or npm manifests. The Compose service n
 | `defaults.parallel` | Jobs at once and the CPU and memory they share; see [parallel runs](#parallel-runs-groups-and-shards) |
 | `projects.<id>.diff_base` | Override the Git base for one project |
 | `projects.<id>.packages.<name>.kinds` | Test kinds: `unit`, `integration`, `functional`, `visual`, `ui`, or `mutation` |
-| `projects.<id>.packages.<name>.resources` | CPU and memory one job of the package reserves; default is `{cpus: 1, memory: 1g}` |
+| `projects.<id>.packages.<name>.resources` | CPU and memory one job of the package reserves; default is the `container:` `cpus`/`memory` limits, else `{cpus: 1, memory: 1g}` |
 | `projects.<id>.packages.<name>.exclusive` | Run the package's jobs alone; default is `false` |
 | `scopes.<name>.projects` | Projects whose Compose stacks a scope needs |
 | `groups.<name>` | Package names or `*`/`?` globs that the filter `@name` selects |
@@ -586,7 +586,7 @@ projects:
   shop:
     packages:
       orders-api:
-        resources: {cpus: 2, memory: 4g}   # default 1 CPU and 1g per job
+        resources: {cpus: 2, memory: 4g}   # default: the container's cpus/memory limits, else 1 CPU and 1g
       storefront:
         exclusive: true                    # runs with nothing else
 ```
@@ -595,7 +595,7 @@ Jobs start longest first, using the moving averages Cherry Test writes to `durat
 
 Scopes still boot once per phase, one after another. With one job at a time they boot right before the first job that needs them, as before; with more, every scope the phase needs boots before its jobs start. Scopes stop at the end of the phase. With `phase_barrier: false` all phases form one pool that shares one boot and teardown. Each job's adapter receives its own environment: the variables Cherry Test started with, plus the run, phase, `.env.test`, service and auth variables. The run never changes its own environment.
 
-Terminal lines of different jobs can interleave. Reports cannot: results, coverage and HTML are assembled in configuration order, so a run with `--jobs 4` writes the same report files as one with `--jobs 1`.
+Every job writes its test evidence (HTTP records, screenshots) to its own `CHERRY_TEST_REPORT_DIR`, so jobs never append to the same file; after each job the directory is merged into the run's `reports/` in configuration order. Terminal lines of different jobs can interleave. Reports cannot: results, coverage and HTML are assembled in configuration order, so a run with `--jobs 4` writes the same report files as one with `--jobs 1`.
 
 **Groups** name sets of packages. The filter `@name` selects them:
 
@@ -689,7 +689,7 @@ The `latest` symlink is available on Unix. On other systems, use the run path pr
 | `CHERRY_TEST_{PROJECT}_{SERVICE}_PORT` | Mapped service port exported after startup |
 | `CHERRY_TEST_{PROJECT}_{SERVICE}_URL` | HTTP service URL exported after startup |
 | `CHERRY_TEST_RUN_DIR` | Current run directory, set by Cherry Test |
-| `CHERRY_TEST_REPORT_DIR` | Current report directory, set by Cherry Test |
+| `CHERRY_TEST_REPORT_DIR` | The job's own report directory, `report/` in its adapter output; after the job Cherry Test merges it into the run's `reports/` in configuration order, appending `*.jsonl` files and copying the others |
 | `VITEST_JSON_REPORT` | JSON output path passed to Vitest |
 | `VITEST_COVERAGE_DIR` | Coverage output directory passed to Vitest |
 | `RUST_LOG` | Tracing filter, such as `cherry_test=info` |

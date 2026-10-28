@@ -12,6 +12,7 @@ import com.cherrytest.core.ParallelConfig;
 import com.cherrytest.core.Workspace;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
@@ -259,8 +260,9 @@ public final class Scheduler {
                     String setup = setupJob(job, state, layers, options);
                     SortedMap<String, String> environment =
                             layers.jobEnv(state, job.key().phase(), job.key().project());
-                    finished.add(new Finished(
-                            entry.getKey(), Runner.executeJob(job, environment, state.preflight, setup, options)));
+                    Runner.JobOutcome outcome = Runner.executeJob(job, environment, state.preflight, setup, options);
+                    options.runDir().mergeJobReport(Runner.jobReportDir(job.request()));
+                    finished.add(new Finished(entry.getKey(), outcome));
                 }
             } else {
                 List<Prepared> prepared = new ArrayList<>();
@@ -271,7 +273,18 @@ public final class Scheduler {
                     String setup = setupJob(entry.getValue(), state, layers, options);
                     prepared.add(new Prepared(entry.getKey(), entry.getValue(), setup));
                 }
-                finished.addAll(runParallel(prepared, state, layers, options));
+                List<Finished> stageFinished = new ArrayList<>(runParallel(prepared, state, layers, options));
+                stageFinished.sort(Comparator.comparingInt(Finished::order));
+                for (Finished done : stageFinished) {
+                    for (Prepared item : prepared) {
+                        if (item.position() == done.order()) {
+                            options.runDir()
+                                    .mergeJobReport(
+                                            Runner.jobReportDir(item.job().request()));
+                        }
+                    }
+                }
+                finished.addAll(stageFinished);
             }
             Workspace.teardownScopes(state.scopes, layers.phaseEnv(state, stage.lastPhase()));
             if (ProcessRunner.cancelled()) {

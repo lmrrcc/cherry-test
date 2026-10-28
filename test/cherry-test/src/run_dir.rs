@@ -67,6 +67,40 @@ impl RunDir {
         ]
     }
 
+    /// Folds one job's report directory into the run's: `*.jsonl` files are appended, others copied over.
+    /// The job directory is removed afterwards, so the run keeps the layout of a single shared directory.
+    pub fn merge_job_report(&self, job_report: &Path) -> Result<()> {
+        if !job_report.is_dir() {
+            return Ok(());
+        }
+        let mut files = Vec::new();
+        collect_files(job_report, &mut files)?;
+        for file in files {
+            let relative = file.strip_prefix(job_report)?;
+            let target = self.reports.join(relative);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("create {}", parent.display()))?;
+            }
+            if file.extension().and_then(|ext| ext.to_str()) == Some("jsonl") {
+                use std::io::Write;
+                let content =
+                    std::fs::read(&file).with_context(|| format!("read {}", file.display()))?;
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&target)
+                    .and_then(|mut out| out.write_all(&content))
+                    .with_context(|| format!("append {}", target.display()))?;
+            } else {
+                std::fs::copy(&file, &target)
+                    .with_context(|| format!("copy {} to {}", file.display(), target.display()))?;
+            }
+        }
+        std::fs::remove_dir_all(job_report)
+            .with_context(|| format!("remove {}", job_report.display()))
+    }
+
     pub fn update_latest_symlink(&self, workspace_root: &Path, runs_base: &Path) -> Result<()> {
         let base = if runs_base.is_absolute() {
             runs_base.to_path_buf()
@@ -136,6 +170,23 @@ fn is_leap(y: u64) -> bool {
     y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
 }
 
+/// Regular files under `dir`, depth first in name order.
+fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
+        .with_context(|| format!("read {}", dir.display()))?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<std::io::Result<_>>()?;
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            collect_files(&path, out)?;
+        } else {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,5 +240,35 @@ mod tests {
         );
         assert!(std::env::var("CHERRY_TEST_RUN_DIR")
             .map_or(true, |dir| dir != run.root.to_string_lossy()));
+    }
+
+    #[test]
+    fn merges_job_reports_in_job_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = RunDir::create(dir.path(), Path::new("runs")).unwrap();
+        let first = run.reports.join("adapters/shop/api/unit/report");
+        let second = run.reports.join("adapters/shop/web/unit/report");
+        for (job, line, shot) in [(&first, "api\n", "api-v1"), (&second, "web\n", "web-v2")] {
+            std::fs::create_dir_all(job.join("integration")).unwrap();
+            std::fs::create_dir_all(job.join("screenshots")).unwrap();
+            std::fs::write(job.join("integration/shop.jsonl"), line).unwrap();
+            std::fs::write(job.join("screenshots/home.png"), shot).unwrap();
+        }
+        std::fs::write(second.join("screenshots/web.png"), "web").unwrap();
+        run.merge_job_report(&first).unwrap();
+        run.merge_job_report(&second).unwrap();
+        run.merge_job_report(&run.reports.join("adapters/shop/none/unit/report"))
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(run.reports.join("integration/shop.jsonl")).unwrap(),
+            "api\nweb\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(run.reports.join("screenshots/home.png")).unwrap(),
+            "web-v2"
+        );
+        assert!(run.reports.join("screenshots/web.png").is_file());
+        assert!(!first.exists());
+        assert!(!second.exists());
     }
 }

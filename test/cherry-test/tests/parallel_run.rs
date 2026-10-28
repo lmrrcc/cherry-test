@@ -19,6 +19,16 @@ fn main() {
     let phase = field(&request, "phase");
     let weight: u64 = package.rsplit('-').next().and_then(|n| n.parse().ok()).unwrap_or(1);
     std::thread::sleep(std::time::Duration::from_millis(weight * 40));
+    let evidence = std::path::Path::new(&std::env::var("CHERRY_TEST_REPORT_DIR").unwrap()).join("evidence");
+    std::fs::create_dir_all(&evidence).unwrap();
+    std::fs::write(evidence.join(format!("{package}-{phase}.txt")), &package).unwrap();
+    use std::io::Write;
+    let mut shared = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(evidence.join("shared.jsonl"))
+        .unwrap();
+    writeln!(shared, "{{\"job\":\"{package}/{phase}\"}}").unwrap();
     let failed = package == "b-fail-2" && phase == "unit";
     let status = if failed { "failed" } else { "passed" };
     println!(
@@ -147,6 +157,47 @@ fn jobs_one_and_four_produce_the_same_results() {
         9
     );
     assert_eq!(sequential, parallel);
+    let shared = sequential
+        .iter()
+        .find(|(path, _)| path == "reports/evidence/shared.jsonl")
+        .map(|(_, text)| text.clone())
+        .unwrap();
+    let jobs: Vec<&str> = shared
+        .lines()
+        .map(|line| {
+            line.trim_start_matches("{\"job\":\"")
+                .trim_end_matches("\"}")
+        })
+        .collect();
+    assert_eq!(
+        jobs,
+        [
+            "a-one-3/unit",
+            "a-two-1/unit",
+            "b-fail-2/unit",
+            "b-five-1/unit",
+            "b-four-4/unit",
+            "a-one-3/integration",
+            "b-four-4/integration",
+            "b-fail-2/functional",
+            "b-five-1/functional"
+        ]
+    );
+    assert!(sequential
+        .iter()
+        .any(|(path, _)| path == "reports/evidence/b-four-4-integration.txt"));
+    assert!(sequential
+        .iter()
+        .all(|(path, _)| !path.contains("/report/")));
+    let request = sequential
+        .iter()
+        .find(|(path, _)| path == "reports/adapters/a/a-one-3/unit/request.json")
+        .map(|(_, text)| text.clone())
+        .unwrap();
+    assert!(
+        request.contains("reports/adapters/a/a-one-3/unit/report\""),
+        "{request}"
+    );
     let durations =
         std::fs::read_to_string(root.join("target/cherry-test/durations.json")).unwrap();
     for key in [

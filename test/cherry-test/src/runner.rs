@@ -113,6 +113,15 @@ pub fn execute_job(
                 .push(format!("-Dfailsafe.excludesFile={}", file.display()));
         }
     }
+    let report_dir = job_report_dir(&request);
+    std::fs::create_dir_all(&report_dir)
+        .with_context(|| format!("create {}", report_dir.display()))?;
+    let mut env = env.clone();
+    env.insert(
+        "CHERRY_TEST_REPORT_DIR".into(),
+        report_dir.to_string_lossy().into_owned(),
+    );
+    let env = &env;
     request.env = crate::run_env::request_env(env);
     if !opts.quiet {
         let _output = output_lock();
@@ -165,6 +174,13 @@ pub fn execute_job(
         lcov: lcov_file,
         elapsed: started.elapsed(),
     })
+}
+
+/// The job's own `CHERRY_TEST_REPORT_DIR`: `report/` in its adapter output, writable in hardened containers.
+///
+/// The scheduler merges it into the run's report directory in plan order once the job has finished.
+pub fn job_report_dir(request: &AdapterRequest) -> PathBuf {
+    request.output.join("report")
 }
 
 /// Folds finished jobs, taken in plan order, into per-package results and coverage lists.

@@ -13,7 +13,7 @@ use crate::adapters::process::cancelled;
 use crate::discover::ProjectGroup;
 use crate::plan::{Job, Plan, Resources};
 use crate::preflight::PreflightPlan;
-use crate::runner::{execute_job, JobOutcome, RunOptions};
+use crate::runner::{execute_job, job_report_dir, JobOutcome, RunOptions};
 
 /// Times another job may start ahead of the queue's head before the head reserves the next free capacity.
 pub const HEAD_SKIP_LIMIT: u32 = 3;
@@ -307,6 +307,8 @@ pub fn run(
                 let setup = setup_job(job, &mut state, &layers, opts);
                 let env = layers.job_env(&state, &job.key.phase, &job.key.project);
                 let outcome = execute_job(job, &env, &state.preflight, setup, opts)?;
+                opts.run_dir
+                    .merge_job_report(&job_report_dir(&job.request))?;
                 finished.push((*position, outcome));
             }
         } else {
@@ -322,7 +324,15 @@ pub fn run(
                     setup,
                 });
             }
-            finished.extend(run_parallel(&prepared, &state, &layers, opts)?);
+            let mut stage_finished = run_parallel(&prepared, &state, &layers, opts)?;
+            stage_finished.sort_by_key(|(position, _)| *position);
+            for (position, _) in &stage_finished {
+                if let Some(item) = prepared.iter().find(|item| item.position == *position) {
+                    opts.run_dir
+                        .merge_job_report(&job_report_dir(&item.job.request))?;
+                }
+            }
+            finished.extend(stage_finished);
         }
         let env = layers.phase_env(&state, stage.last_phase);
         teardown_scopes_in(&mut state.scopes, &env)?;

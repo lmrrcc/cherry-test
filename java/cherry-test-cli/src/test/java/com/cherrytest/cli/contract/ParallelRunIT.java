@@ -33,6 +33,16 @@ class ParallelRunIT {
                 let phase = field(&request, "phase");
                 let weight: u64 = package.rsplit('-').next().and_then(|n| n.parse().ok()).unwrap_or(1);
                 std::thread::sleep(std::time::Duration::from_millis(weight * 40));
+                let evidence = std::path::Path::new(&std::env::var("CHERRY_TEST_REPORT_DIR").unwrap()).join("evidence");
+                std::fs::create_dir_all(&evidence).unwrap();
+                std::fs::write(evidence.join(format!("{package}-{phase}.txt")), &package).unwrap();
+                use std::io::Write;
+                let mut shared = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(evidence.join("shared.jsonl"))
+                    .unwrap();
+                writeln!(shared, "{{\\"job\\":\\"{package}/{phase}\\"}}").unwrap();
                 let failed = package == "b-fail-2" && phase == "unit";
                 let status = if failed { "failed" } else { "passed" };
                 println!(
@@ -153,6 +163,30 @@ class ParallelRunIT {
                         .count())
                 .isEqualTo(9);
         assertThat(files(parallel)).isEqualTo(sequentialFiles);
+        String shared = sequentialFiles.stream()
+                .filter(file -> file.getKey().equals("reports/evidence/shared.jsonl"))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElseThrow();
+        assertThat(shared.lines().map(line -> line.replace("{\"job\":\"", "").replace("\"}", "")))
+                .containsExactly(
+                        "a-one-3/unit",
+                        "a-two-1/unit",
+                        "b-fail-2/unit",
+                        "b-five-1/unit",
+                        "b-four-4/unit",
+                        "a-one-3/integration",
+                        "b-four-4/integration",
+                        "b-fail-2/functional",
+                        "b-five-1/functional");
+        assertThat(sequentialFiles).anyMatch(file -> file.getKey().equals("reports/evidence/b-four-4-integration.txt"));
+        assertThat(sequentialFiles).noneMatch(file -> file.getKey().contains("/report/"));
+        String request = sequentialFiles.stream()
+                .filter(file -> file.getKey().equals("reports/adapters/a/a-one-3/unit/request.json"))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElseThrow();
+        assertThat(request).contains("reports/adapters/a/a-one-3/unit/report\"");
         String durations = Files.readString(root.resolve("target/cherry-test/durations.json"), StandardCharsets.UTF_8);
         for (String key : List.of("a/a-one-3/integration", "b/b-four-4/unit", "b/b-fail-2/functional")) {
             assertThat(durations).contains("\"" + key + "\"");

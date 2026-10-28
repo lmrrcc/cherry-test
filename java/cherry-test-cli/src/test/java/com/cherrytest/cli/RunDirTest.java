@@ -3,8 +3,12 @@ package com.cherrytest.cli;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.cherrytest.common.process.ProcessEnvironment;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -51,5 +55,32 @@ class RunDirTest {
                         Map.entry("CHERRY_TEST_REPORT_DIR", run.reports().toString()));
         assertThat(ProcessEnvironment.get("CHERRY_TEST_RUN_DIR"))
                 .isNotEqualTo(run.root().toString());
+    }
+
+    @Test
+    void merges_job_reports_in_job_order() throws IOException {
+        RunDir run = RunDir.create(workspace, Path.of("runs"), RunIdGenerator.systemClock());
+        Path first = run.reports().resolve("adapters/shop/api/unit/report");
+        Path second = run.reports().resolve("adapters/shop/web/unit/report");
+        for (Map.Entry<Path, String[]> job : List.of(
+                Map.entry(first, new String[] {"api\n", "api-v1"}),
+                Map.entry(second, new String[] {"web\n", "web-v2"}))) {
+            Files.createDirectories(job.getKey().resolve("integration"));
+            Files.createDirectories(job.getKey().resolve("screenshots"));
+            Files.writeString(
+                    job.getKey().resolve("integration/shop.jsonl"), job.getValue()[0], StandardCharsets.UTF_8);
+            Files.writeString(job.getKey().resolve("screenshots/home.png"), job.getValue()[1], StandardCharsets.UTF_8);
+        }
+        Files.writeString(second.resolve("screenshots/web.png"), "web", StandardCharsets.UTF_8);
+        run.mergeJobReport(first);
+        run.mergeJobReport(second);
+        run.mergeJobReport(run.reports().resolve("adapters/shop/none/unit/report"));
+        assertThat(Files.readString(run.reports().resolve("integration/shop.jsonl"), StandardCharsets.UTF_8))
+                .isEqualTo("api\nweb\n");
+        assertThat(Files.readString(run.reports().resolve("screenshots/home.png"), StandardCharsets.UTF_8))
+                .isEqualTo("web-v2");
+        assertThat(run.reports().resolve("screenshots/web.png")).isRegularFile();
+        assertThat(first).doesNotExist();
+        assertThat(second).doesNotExist();
     }
 }

@@ -127,6 +127,15 @@ public final class Runner {
                 args.add("-Dfailsafe.excludesFile=" + file);
             }
         }
+        Path reportDir = jobReportDir(planned);
+        try {
+            Files.createDirectories(reportDir);
+        } catch (IOException exception) {
+            throw AnyhowError.context("create " + reportDir, new AnyhowError(RustIoError.display(exception)));
+        }
+        SortedMap<String, String> jobEnvironment = new TreeMap<>(RustOrdering.STRING_ORDER);
+        jobEnvironment.putAll(environment);
+        jobEnvironment.put("CHERRY_TEST_REPORT_DIR", reportDir.toString());
         AdapterRequest request = new AdapterRequest(
                 planned.protocol(),
                 planned.project(),
@@ -140,7 +149,7 @@ public final class Runner {
                 planned.coverage(),
                 planned.strict(),
                 args,
-                RunEnv.requestEnv(environment),
+                RunEnv.requestEnv(jobEnvironment),
                 planned.options(),
                 planned.container());
         if (!options.quiet()) {
@@ -155,7 +164,7 @@ public final class Runner {
                 response = AdapterResponse.failure(failure);
             } else {
                 response = Adapters.invoke(
-                        adapter, options.config().adapters().get(adapter), request, options.self(), environment);
+                        adapter, options.config().adapters().get(adapter), request, options.self(), jobEnvironment);
             }
         } catch (RuntimeException error) {
             response = AdapterResponse.failure(AnyhowError.alternate(error));
@@ -189,6 +198,14 @@ public final class Runner {
             }
         }
         return new JobOutcome(job.key(), saved.success(), lcovFile, Duration.ofNanos(System.nanoTime() - started));
+    }
+
+    /**
+     * The job's own {@code CHERRY_TEST_REPORT_DIR}: {@code report/} in its adapter output, writable in hardened
+     * containers. The scheduler merges it into the run's report directory in plan order once the job has finished.
+     */
+    static Path jobReportDir(AdapterRequest request) {
+        return request.output().resolve("report");
     }
 
     /** Folds finished jobs, taken in plan order, into per-package results and coverage lists. */
