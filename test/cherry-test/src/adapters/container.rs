@@ -718,6 +718,7 @@ mod tests {
             env: BTreeMap::new(),
             options: BTreeMap::new(),
             container: None,
+            select: None,
         }
     }
 

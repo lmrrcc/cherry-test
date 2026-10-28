@@ -9,6 +9,7 @@ pub mod durations;
 pub mod filter;
 pub mod git_diff;
 pub mod init;
+pub mod isolation;
 pub mod node_discover;
 pub mod node_runtime;
 pub mod plan;
@@ -115,6 +116,20 @@ pub struct RunCli {
 
     #[arg(long, help = "Do not print the startup banner")]
     pub no_banner: bool,
+
+    #[arg(
+        long,
+        overrides_with = "no_isolate",
+        help = "Rerun each failed test alone to classify it as REAL, INTERFERENCE, FLAKY or INCONCLUSIVE (default: defaults.isolate.on_failure)"
+    )]
+    pub isolate: bool,
+
+    #[arg(
+        long,
+        overrides_with = "isolate",
+        help = "Do not rerun failed tests alone"
+    )]
+    pub no_isolate: bool,
 
     #[arg(long, help = "Continue after a project failure")]
     pub keep_going: bool,
@@ -280,6 +295,11 @@ fn run_tests_at_root(
             plan.config.defaults.parallel.as_ref(),
             plan.config.defaults.execution,
             &env,
+        ),
+        isolate: isolation::IsolationSettings::resolve(
+            cli.isolate,
+            cli.no_isolate,
+            plan.config.defaults.isolate.as_ref(),
         ),
         env,
     };
@@ -610,6 +630,18 @@ mod integration {
             "invalid value '3/2' for '--shard <I/N>': expected I/N with 1 <= I <= N, such as 1/4"
         ));
         assert_eq!(Cli::try_parse_from(["cherry-test"]).unwrap().run.jobs, None);
+    }
+
+    #[test]
+    fn cli_parses_isolate_flags() {
+        let isolate = Cli::try_parse_from(["cherry-test", "--isolate"]).unwrap();
+        assert!(isolate.run.isolate && !isolate.run.no_isolate);
+        let last = Cli::try_parse_from(["cherry-test", "--isolate", "--no-isolate"]).unwrap();
+        assert!(!last.run.isolate && last.run.no_isolate);
+        let first = Cli::try_parse_from(["cherry-test", "--no-isolate", "--isolate"]).unwrap();
+        assert!(first.run.isolate && !first.run.no_isolate);
+        let neither = Cli::try_parse_from(["cherry-test"]).unwrap();
+        assert!(!neither.run.isolate && !neither.run.no_isolate);
     }
 
     #[test]

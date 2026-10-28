@@ -157,6 +157,9 @@ Request fields:
 | `env` | Runtime settings and service endpoints |
 | `options` | Adapter-specific settings from the package and phase |
 | `container` | Resolved container settings; present only for container execution with a `container:` block |
+| `select` | Names of the tests to run and nothing else; present only when a failed test is [rerun alone](../README.md#isolate-failures) by an adapter registered with `isolate: true` |
+
+An adapter registered under `adapters:` with `isolate: true` promises to honour `select`: run only the named tests and report them under the same names. Without it, Cherry Test does not rerun the adapter's failed tests and classifies them `INCONCLUSIVE`. Rerun requests also have `coverage` and `strict` set to `false` and their own `output`.
 
 Response fields:
 
@@ -168,7 +171,7 @@ Response fields:
 | `coverage` | Absolute paths to LCOV files inside `output` |
 | `diagnostics` | Setup, runner, or collection errors |
 
-Each test has `name`, `status` (`passed`, `failed`, or `skipped`), `duration_ms`, optional `message`, optional `source` and `line`, and an `attachments` list. Each attachment has `name`, `path`, and `media_type`.
+Each test has `name`, `status` (`passed`, `failed`, or `skipped`), `duration_ms`, optional `message`, optional `source` and `line`, and an `attachments` list. Each attachment has `name`, `path`, and `media_type`. After reruns, Cherry Test adds `isolation` (`class`, `runs`, `passed`, `logs`, optional `reason`) to the failed tests in the saved `result.json`; adapters do not set it.
 
 Test names must be unique within a package phase. All attachment and coverage paths must resolve to real files inside `output`; symlinks cannot escape it. Copy expected screenshots into `output` before returning them. Do not return successful invented tests when a tool did not run. Return a failed response with a diagnostic instead.
 

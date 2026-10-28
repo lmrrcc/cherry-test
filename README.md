@@ -48,6 +48,7 @@ The GitHub repository is [`lmrrcc/cherry-test`](https://github.com/lmrrcc/cherry
 - [Mutation testing](#mutation-testing)
 - [CRAP score](#crap-score)
 - [Parallel runs, groups, and shards](#parallel-runs-groups-and-shards)
+- [Isolate failures](#isolate-failures)
 - [Command reference](#command-reference)
 - [Run files and environment variables](#run-files-and-environment-variables)
 - [Current limits](#current-limits)
@@ -277,6 +278,7 @@ The package names must match their Cargo or npm manifests. The Compose service n
 | `defaults.scope` | Default integration scope: `global`, `none`, a project ID, or a named scope |
 | `defaults.coverage_ignore` | Coverage exclusion file; default is `.coverageignore` |
 | `defaults.parallel` | Jobs at once and the CPU and memory they share; see [parallel runs](#parallel-runs-groups-and-shards) |
+| `defaults.isolate` | Rerun failed tests alone after the run; see [isolate failures](#isolate-failures) |
 | `projects.<id>.diff_base` | Override the Git base for one project |
 | `projects.<id>.packages.<name>.kinds` | Test kinds: `unit`, `integration`, `functional`, `visual`, `ui`, or `mutation` |
 | `projects.<id>.packages.<name>.resources` | CPU and memory one job of the package reserves; default is the `container:` `cpus`/`memory` limits, else `{cpus: 1, memory: 1g}` |
@@ -657,6 +659,43 @@ cherry-test --shard 2/4 --strict --no-open
 
 Packages, with all their phases, are assigned by longest-processing-time packing on the totals in `durations.json`; without any record they are dealt round-robin in configuration order. The assignment is deterministic, so every shard must read the same `durations.json`, for example a cached copy from the main branch. A shard without packages exits successfully.
 
+## Isolate failures
+
+A test that fails next to other tests may be broken, may depend on what ran before it, or may fail at random. Cherry Test can tell these apart by rerunning each failed test alone after the run:
+
+```bash
+cherry-test --isolate --no-open
+```
+
+```yaml
+defaults:
+  isolate:
+    on_failure: true   # default false; --isolate and --no-isolate override it
+    runs: 3            # reruns per failed test; default 3
+    max_tests: 10      # failed tests to rerun, in configuration order; default 10
+```
+
+Each rerun is a fresh job of the same package phase that selects only that test: a new process, and with container execution a new container and new [image services](#services-from-images). Its scopes boot for the rerun and stop after it. Every failed test gets one class:
+
+| Class | Meaning |
+| --- | --- |
+| `REAL` | Failed in every rerun alone |
+| `INTERFERENCE` | Passed in every rerun alone: it fails only together with the rest of its package |
+| `FLAKY` | Passed in some reruns and failed in others |
+| `INCONCLUSIVE` | A rerun hit an infrastructure error, or the adapter cannot run one test |
+
+The built-in adapters select one test like this:
+
+| Adapter | Selection |
+| --- | --- |
+| `cargo` | `<test name> --exact` after the phase's arguments |
+| `maven` | `-Dtest=Class#method` (unit) or `-Dit.test=Class#method` (integration) replacing the configured one, with `-Dsurefire.failIfNoSpecifiedTests=false`; a class annotated with `@TestMethodOrder` or `@TestInstance(PER_CLASS)` reruns whole, since its methods may depend on each other |
+| `vitest` | The test file and `-t ^<full name>$` |
+
+Gradle, CMake, Playwright and command phases are classified `INCONCLUSIVE`. An adapter registered under `adapters:` opts in with `isolate: true`; its rerun requests then carry `select`, the names of the tests to run (see the [adapter guide](docs/adapters.md#executable-protocol-version-1)).
+
+Reruns never change a test's status or the exit code: the run passes or fails exactly as without them. The terminal prints one line per class after the run, the HTML report links to the classes on the phases page, each test's entry in `result.json` gains `isolation: {class, runs, passed, logs, reason}`, and `reports/isolation.json` lists them all. Each rerun keeps its request, logs and result in `reports/isolation/<project>/<package>/<phase>/<n>/<run>/`; reruns add no coverage and no integration records.
+
 ## Command reference
 
 ```bash
@@ -678,6 +717,7 @@ cherry-test -- --nocapture
 | `--kinds <list>` | Run only these phases. `mutation` runs only when it is named |
 | `--jobs <N\|auto>` | Run up to N jobs at once; `auto` uses one per budgeted CPU; default `defaults.parallel.jobs` or 1 |
 | `--shard <I/N>` | Run only the packages of shard I of N |
+| `--isolate`, `--no-isolate` | Rerun failed tests alone to classify them, or do not; default `defaults.isolate.on_failure` |
 | `--no-crap` | Skip cyclomatic complexity and the CRAP report |
 | `--no-html` | Skip HTML generation |
 | `--no-open` | Write the report without opening a browser |
@@ -703,12 +743,14 @@ target/cherry-test/
     reports/
       index.html
       phases.html
+      isolation.json
       integration/*.jsonl
       adapters/<project>/<package>/<phase>/
         request.json
         result.json
         coverage.lcov
         ...logs, screenshots, and build output
+      isolation/<project>/<package>/<phase>/<n>/<run>/
     env.json
 ```
 

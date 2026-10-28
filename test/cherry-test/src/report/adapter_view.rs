@@ -178,6 +178,10 @@ pub fn write(reports: &Path) -> Result<JumpIndex> {
     let sections = load_phase_sections(reports)?;
     let index = index_rendered_definitions(&sections);
     let mut body = String::from("<p><a href=\"index.html\">Back to report</a></p><h1>Tests and coverage by phase</h1><p>Markers distinguish covered lines, uncovered lines, and lines with no coverage measurement. Each measured run is shown with the lines above and below it.</p>");
+    if let Some(report) = crate::isolation::read_report(reports)?.filter(|report| report.failed > 0)
+    {
+        body.push_str(&render_isolation_section(&report));
+    }
     for section in &sections {
         body.push_str(&section.head);
         for file in &section.files {
@@ -198,6 +202,70 @@ pub fn write(reports: &Path) -> Result<JumpIndex> {
     );
     std::fs::write(reports.join("phases.html"), document)?;
     Ok(index)
+}
+
+/// The `isolation` section: every failed test that was rerun alone, its class and its reruns.
+fn render_isolation_section(report: &crate::isolation::IsolationReport) -> String {
+    let mut html = format!(
+        "<section id=\"isolation\"><h2>Failed tests rerun alone</h2><p>Each failed test ran alone up to {} {}, each time as a fresh job. Statuses below are those of the main run; the class explains the failure.</p><ul>",
+        report.runs,
+        if report.runs == 1 { "time" } else { "times" }
+    );
+    for test in &report.tests {
+        html.push_str(&format!(
+            "<li>{} {} / {} / {}: {}{}</li>",
+            isolation_badge(test.class),
+            escape(&test.project),
+            escape(&test.package),
+            escape(&test.phase),
+            escape(&test.test),
+            isolation_detail(test.runs, test.passed, &test.logs, test.reason.as_deref())
+        ));
+    }
+    let left = report.failed.saturating_sub(report.tests.len());
+    if left > 0 {
+        html.push_str(&format!(
+            "<li>{left} more failed {} not rerun (max_tests {})</li>",
+            if left == 1 { "test" } else { "tests" },
+            report.max_tests
+        ));
+    }
+    html.push_str("</ul></section>");
+    html
+}
+
+fn isolation_badge(class: cherry_test_common::adapter::IsolationClass) -> String {
+    format!(
+        "<strong class=\"{}\">{}</strong>",
+        crate::isolation::badge_class(class),
+        class.as_str()
+    )
+}
+
+/// `, 2/3 passed alone (run 1, run 2, run 3)`, with the reason when the reruns could not decide.
+fn isolation_detail(runs: u32, passed: u32, logs: &[String], reason: Option<&str>) -> String {
+    let mut html = String::new();
+    if runs > 0 {
+        html.push_str(&format!(", {passed}/{runs} passed alone"));
+        let links: Vec<String> = logs
+            .iter()
+            .enumerate()
+            .map(|(index, log)| {
+                format!(
+                    "<a href=\"{}/result.json\">run {}</a>",
+                    escape(log),
+                    index + 1
+                )
+            })
+            .collect();
+        if !links.is_empty() {
+            html.push_str(&format!(" ({})", links.join(", ")));
+        }
+    }
+    if let Some(reason) = reason {
+        html.push_str(&format!(" <span class=\"muted\">{}</span>", escape(reason)));
+    }
+    html
 }
 
 fn index_rendered_definitions(sections: &[PhaseSection]) -> JumpIndex {
@@ -261,6 +329,18 @@ fn load_phase_sections(reports: &Path) -> Result<Vec<PhaseSection>> {
                 escape(&test.name),
                 test.duration_ms
             ));
+            if let Some(isolation) = &test.isolation {
+                head.push_str(&format!(
+                    " {}{}",
+                    isolation_badge(isolation.class),
+                    isolation_detail(
+                        isolation.runs,
+                        isolation.passed,
+                        &isolation.logs,
+                        isolation.reason.as_deref()
+                    )
+                ));
+            }
             if let Some(message) = test.message {
                 head.push_str(&format!("<pre>{}</pre>", escape(&message)));
             }
@@ -348,6 +428,43 @@ mod tests {
         assert_eq!(
             relative_link(&reports, &inside).unwrap(),
             "actual%20image.png"
+        );
+    }
+
+    #[test]
+    fn phases_page_marks_isolated_tests_and_lists_them() {
+        use cherry_test_common::adapter::IsolationClass;
+        let report = crate::isolation::IsolationReport {
+            runs: 3,
+            max_tests: 1,
+            failed: 2,
+            tests: vec![crate::isolation::IsolatedTest {
+                project: "shop".into(),
+                package: "prices".into(),
+                phase: "unit".into(),
+                test: "rounds <half>".into(),
+                class: IsolationClass::Flaky,
+                runs: 3,
+                passed: 2,
+                logs: vec![
+                    "isolation/shop/prices/unit/1/1".into(),
+                    "isolation/shop/prices/unit/1/2".into(),
+                    "isolation/shop/prices/unit/1/3".into(),
+                ],
+                reason: None,
+            }],
+        };
+        assert_eq!(
+            render_isolation_section(&report),
+            "<section id=\"isolation\"><h2>Failed tests rerun alone</h2><p>Each failed test ran alone up to 3 times, each time as a fresh job. Statuses below are those of the main run; the class explains the failure.</p><ul><li><strong class=\"isolation skip\">FLAKY</strong> shop / prices / unit: rounds &lt;half&gt;, 2/3 passed alone (<a href=\"isolation/shop/prices/unit/1/1/result.json\">run 1</a>, <a href=\"isolation/shop/prices/unit/1/2/result.json\">run 2</a>, <a href=\"isolation/shop/prices/unit/1/3/result.json\">run 3</a>)</li><li>1 more failed test not rerun (max_tests 1)</li></ul></section>"
+        );
+        assert_eq!(
+            isolation_detail(0, 0, &[], Some("adapter `gradle` cannot run a single test")),
+            " <span class=\"muted\">adapter `gradle` cannot run a single test</span>"
+        );
+        assert_eq!(
+            isolation_badge(IsolationClass::Real),
+            "<strong class=\"isolation fail\">REAL</strong>"
         );
     }
 

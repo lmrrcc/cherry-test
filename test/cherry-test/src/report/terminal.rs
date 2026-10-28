@@ -1132,6 +1132,7 @@ mod tests {
             ],
             tests_report: crate::report::TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
             report_path: PathBuf::from(
                 "target/cherry-test/runs/20260523-064607-178a68/reports/index.html",
             ),

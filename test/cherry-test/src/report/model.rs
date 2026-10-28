@@ -40,6 +40,8 @@ pub struct ReportSnapshot {
     pub integration_rows: Vec<IntegrationRow>,
     pub tests_report: TestsReport,
     pub crap: CrapReport,
+    /// How many failed tests each isolation class holds, from `reports/isolation.json`; empty without isolation.
+    pub isolation: Vec<(cherry_test_common::adapter::IsolationClass, usize)>,
     pub report_path: PathBuf,
 }
 
@@ -223,6 +225,9 @@ pub fn build_report_snapshot(
             &diff_paths,
             &added_lines,
         )?,
+        isolation: crate::isolation::read_report(&run_dir.reports)?
+            .map(|report| report.counts())
+            .unwrap_or_default(),
         report_path: run_dir.report_html(),
     })
 }
@@ -528,6 +533,7 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
             report_path: PathBuf::from(
                 "target/cherry-test/runs/20260523-143022-a1b2c3/reports/index.html",
             ),

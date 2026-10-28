@@ -28,6 +28,8 @@ pub struct RunOptions<'a> {
     /// The run's base environment: the process snapshot plus the workspace and run variables.
     pub env: Environment,
     pub parallelism: crate::scheduler::Parallelism,
+    /// Rerun failed tests alone after the main schedule; `None` when isolation is off.
+    pub isolate: Option<crate::isolation::IsolationSettings>,
 }
 
 /// When the terminal lists individual test results.
@@ -78,7 +80,18 @@ pub fn run_projects(
         .estimate(&mut plan);
     }
     let finished = crate::scheduler::run(&plan, projects, opts, preflight)?;
+    if let Err(error) = crate::isolation::run(&plan, projects, opts, preflight) {
+        eprintln!("warning: failed-test isolation stopped: {error:#}");
+    }
     aggregate(opts, finished)
+}
+
+/// What invoking one job's adapter produced, before coverage and reports.
+pub struct Invocation {
+    pub request: AdapterRequest,
+    pub response: AdapterResponse,
+    /// Why the job did not reach its tests: a setup, container, image service or adapter error.
+    pub infrastructure: Option<String>,
 }
 
 /// Runs one planned job: completes its request from the job environment, invokes the adapter and saves the result.
@@ -95,52 +108,15 @@ pub fn execute_job(
     let adapter = job.adapter.as_str();
     let phase = job.key.phase.as_str();
     let package = job.key.package.as_str();
-    let mut request = job.request.clone();
-    if adapter == "cargo" && phase == "integration" {
-        for skip in preflight.skipped.iter().filter(|s| s.package == package) {
-            request
-                .args
-                .extend(["--skip".into(), skip.function.clone()]);
-        }
-    }
-    if adapter == "maven" && phase == "integration" {
-        if let Some(excludes) = maven_skip_excludes(preflight, package) {
-            std::fs::create_dir_all(&request.output)?;
-            let file = request.output.join("cherry-test-skips.txt");
-            std::fs::write(&file, excludes)?;
-            request
-                .args
-                .push(format!("-Dfailsafe.excludesFile={}", file.display()));
-        }
-    }
-    let report_dir = job_report_dir(&request);
-    std::fs::create_dir_all(&report_dir)
-        .with_context(|| format!("create {}", report_dir.display()))?;
-    let mut env = env.clone();
-    env.insert(
-        "CHERRY_TEST_REPORT_DIR".into(),
-        report_dir.to_string_lossy().into_owned(),
-    );
-    extend_with_provisioned(&mut env, job);
-    let env = &env;
-    request.env = crate::run_env::request_env(env);
     if !opts.quiet {
         let _output = output_lock();
         println!("==> {}/{package}/{phase} ({adapter})", job.key.project);
     }
-    let setup = setup.and_then(|()| job.container_error.clone().map_or(Ok(()), Err));
-    let result = match setup {
-        Ok(()) => invoke_with_sidecars(adapter, &request, env, opts),
-        Err(message) => Err(message),
-    };
-    let mut response = match result {
-        Ok(response) => response,
-        Err(message) => AdapterResponse {
-            success: false,
-            diagnostics: vec![message],
-            ..Default::default()
-        },
-    };
+    let Invocation {
+        request,
+        mut response,
+        ..
+    } = invoke_job(job, env, preflight, setup, opts)?;
     if discovers_scopes(adapter) && phase == "integration" {
         record_skips(&mut response, preflight, package, request.strict);
     }
@@ -173,6 +149,71 @@ pub fn execute_job(
         success: response.success,
         lcov: lcov_file,
         elapsed: started.elapsed(),
+    })
+}
+
+/// Completes the job's request from `env` and invokes its adapter, with its image services when it has any.
+///
+/// Nothing is printed, no coverage is read and no report is written.
+pub fn invoke_job(
+    job: &Job,
+    env: &Environment,
+    preflight: &PreflightPlan,
+    setup: std::result::Result<(), String>,
+    opts: &RunOptions<'_>,
+) -> Result<Invocation> {
+    let adapter = job.adapter.as_str();
+    let phase = job.key.phase.as_str();
+    let package = job.key.package.as_str();
+    let mut request = job.request.clone();
+    if adapter == "cargo" && phase == "integration" {
+        for skip in preflight.skipped.iter().filter(|s| s.package == package) {
+            request
+                .args
+                .extend(["--skip".into(), skip.function.clone()]);
+        }
+    }
+    if adapter == "maven" && phase == "integration" {
+        if let Some(excludes) = maven_skip_excludes(preflight, package) {
+            std::fs::create_dir_all(&request.output)?;
+            let file = request.output.join("cherry-test-skips.txt");
+            std::fs::write(&file, excludes)?;
+            request
+                .args
+                .push(format!("-Dfailsafe.excludesFile={}", file.display()));
+        }
+    }
+    let report_dir = job_report_dir(&request);
+    std::fs::create_dir_all(&report_dir)
+        .with_context(|| format!("create {}", report_dir.display()))?;
+    let mut env = env.clone();
+    env.insert(
+        "CHERRY_TEST_REPORT_DIR".into(),
+        report_dir.to_string_lossy().into_owned(),
+    );
+    extend_with_provisioned(&mut env, job);
+    let env = &env;
+    request.env = crate::run_env::request_env(env);
+    let setup = setup.and_then(|()| job.container_error.clone().map_or(Ok(()), Err));
+    let result = match setup {
+        Ok(()) => invoke_with_sidecars(adapter, &request, env, opts),
+        Err(message) => Err(message),
+    };
+    Ok(match result {
+        Ok(response) => Invocation {
+            request,
+            response,
+            infrastructure: None,
+        },
+        Err(message) => Invocation {
+            request,
+            response: AdapterResponse {
+                success: false,
+                diagnostics: vec![message.clone()],
+                ..Default::default()
+            },
+            infrastructure: Some(message),
+        },
     })
 }
 

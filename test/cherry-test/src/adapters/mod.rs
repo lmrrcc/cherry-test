@@ -289,14 +289,26 @@ pub fn save(
         .join(&request.project)
         .join(&request.package)
         .join(&request.phase);
-    std::fs::create_dir_all(&dir)?;
+    write_result(&dir.join("result.json"), request, &response)?;
+    Ok(response)
+}
+
+/// Writes `result.json`: the job's project, package and phase with the adapter response.
+pub fn write_result(
+    path: &Path,
+    request: &AdapterRequest,
+    response: &AdapterResponse,
+) -> Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
     std::fs::write(
-        dir.join("result.json"),
+        path,
         serde_json::to_vec_pretty(
             &serde_json::json!({"project":request.project,"package":request.package,"phase":request.phase,"result":response}),
         )?,
     )?;
-    Ok(response)
+    Ok(())
 }
 
 pub fn read_rows(reports: &Path) -> Result<Vec<serde_json::Value>> {
@@ -350,6 +362,7 @@ mod tests {
             env: Default::default(),
             options: Default::default(),
             container: None,
+            select: None,
         }
     }
 

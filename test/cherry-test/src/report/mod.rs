@@ -273,6 +273,7 @@ mod tests {
             project_diff_sections: vec![],
             tests_report: crate::report::TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
             report_path: PathBuf::from(
                 "target/cherry-test/runs/20260523-143022-a1b2c3/reports/index.html",
             ),

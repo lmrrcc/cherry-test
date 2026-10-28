@@ -175,6 +175,7 @@ fn job(
         env: BTreeMap::new(),
         options,
         container: None,
+        select: None,
     };
     let mut container_error = match crate::adapters::container::resolve(
         opts.config.defaults.container.as_ref(),
@@ -209,18 +210,8 @@ fn job(
     }
     let provisioned = provisioned_scopes(opts.config, &scopes);
     if let Some(spec) = request.container.as_mut() {
-        match cherry_test_core::sidecar::image_services(opts.config, &scopes) {
-            Ok(services) => {
-                spec.sidecars = cherry_test_core::sidecar::job_sidecars(
-                    opts.workspace_root,
-                    &spec.name,
-                    &services,
-                    spec.pull,
-                );
-            }
-            Err(error) => {
-                container_error.get_or_insert(format!("{error:#}"));
-            }
+        if let Err(error) = attach_sidecars(opts, spec, &scopes) {
+            container_error.get_or_insert(error);
         }
     }
     let resources = job_resources(package.resources.as_ref(), request.container.as_ref());
@@ -235,6 +226,70 @@ fn job(
         container_error,
         provisioned,
     }
+}
+
+/// Gives a container job its private network when its scopes select image services.
+fn attach_sidecars(
+    opts: &RunOptions<'_>,
+    spec: &mut ContainerSpec,
+    scopes: &[String],
+) -> std::result::Result<(), String> {
+    let services = cherry_test_core::sidecar::image_services(opts.config, scopes)
+        .map_err(|error| format!("{error:#}"))?;
+    spec.sidecars = cherry_test_core::sidecar::job_sidecars(
+        opts.workspace_root,
+        &spec.name,
+        &services,
+        spec.pull,
+    );
+    Ok(())
+}
+
+/// A fresh job that reruns one test of `job` alone: its own output, container name, writable
+/// directories and image services, no coverage, not strict, and the narrowed selection.
+pub fn rerun_job(
+    job: &Job,
+    narrowing: &crate::isolation::Narrowing,
+    output: std::path::PathBuf,
+    suffix: &str,
+    opts: &RunOptions<'_>,
+) -> Job {
+    let mut rerun = job.clone();
+    rerun.request.output = output;
+    rerun.request.coverage = false;
+    rerun.request.strict = false;
+    match narrowing {
+        crate::isolation::Narrowing::Args(args) => rerun.request.args = args.clone(),
+        crate::isolation::Narrowing::Select(names) => rerun.request.select = Some(names.clone()),
+        crate::isolation::Narrowing::Unsupported(_) => {}
+    }
+    if job.request.container.is_none() {
+        return rerun;
+    }
+    let package = &opts.config.projects[&job.key.project].packages[&job.key.package];
+    let jobs_root = opts.run_dir.root.join("isolation").join(suffix);
+    match crate::adapters::container::resolve(
+        opts.config.defaults.container.as_ref(),
+        package.container.as_ref(),
+        &rerun.request,
+        &opts.run_dir.id,
+        &jobs_root,
+    ) {
+        Ok(Some(mut spec)) => {
+            spec.name =
+                cherry_test_common::container::sanitize_name(&format!("{}-{suffix}", spec.name));
+            if let Err(error) = attach_sidecars(opts, &mut spec, &job.scopes) {
+                rerun.container_error.get_or_insert(error);
+            }
+            rerun.request.container = Some(spec);
+        }
+        Ok(None) => rerun.request.container = None,
+        Err(error) => {
+            rerun.request.container = None;
+            rerun.container_error.get_or_insert(format!("{error:#}"));
+        }
+    }
+    rerun
 }
 
 /// The scopes, each once and in order, that select at least one image service.
@@ -364,6 +419,7 @@ pub(crate) mod tests {
             kinds,
             env: Default::default(),
             parallelism: Default::default(),
+            isolate: None,
         }
     }
 
@@ -490,6 +546,66 @@ pub(crate) mod tests {
         );
         let request = crate::run_env::request_env(&env);
         assert_eq!(request.len(), 3);
+    }
+
+    #[test]
+    fn rerun_jobs_get_fresh_outputs_containers_and_sidecars() {
+        let (root, mut config, projects) = fixture();
+        config.projects.get_mut("shop").unwrap().services.insert(
+            "db".into(),
+            serde_yaml::from_str("image: postgres:16-alpine\nport: 5432\n").unwrap(),
+        );
+        config.scopes.insert(
+            "checkout".into(),
+            cherry_test_core::ScopeConfig {
+                projects: vec!["shop".into()],
+                services: Default::default(),
+            },
+        );
+        config.defaults.execution = cherry_test_common::adapter::ExecutionMode::Container;
+        config.defaults.container = Some(
+            serde_yaml::from_str("image: eclipse-temurin:25-jdk\nwritable: [build]\n").unwrap(),
+        );
+        let run_dir = RunDir::create(root.path(), std::path::Path::new("runs")).unwrap();
+        let opts = options(root.path(), &run_dir, &config, &[]);
+        let planned = plan(&projects, &opts, &PreflightPlan::default()).unwrap();
+        let job = &planned.phases[1].jobs[0];
+        let output = run_dir.reports.join("isolation/shop/api/integration/2/3");
+        let rerun = rerun_job(
+            job,
+            &crate::isolation::Narrowing::Args(vec!["only_this".into(), "--exact".into()]),
+            output.clone(),
+            "isolate-2-3",
+            &opts,
+        );
+        assert_eq!(rerun.request.output, output);
+        assert_eq!(rerun.request.args, ["only_this", "--exact"]);
+        assert!(!rerun.request.coverage && !rerun.request.strict);
+        assert_eq!(rerun.key, job.key);
+        assert_eq!(rerun.provisioned, ["checkout"]);
+        let original = job.request.container.as_ref().unwrap();
+        let fresh = rerun.request.container.as_ref().unwrap();
+        assert_eq!(fresh.name, format!("{}-isolate-2-3", original.name));
+        assert_eq!(fresh.outputs, [output]);
+        assert_eq!(
+            fresh.writable[0].source,
+            run_dir
+                .root
+                .join("isolation/isolate-2-3/jobs/shop/api/integration/w/build")
+        );
+        let sidecars = fresh.sidecars.as_ref().unwrap();
+        assert_eq!(sidecars.holder, format!("{}-net", fresh.name));
+        assert_eq!(sidecars.services[0].name, format!("{}-shop-db", fresh.name));
+        assert_ne!(sidecars.holder, original.sidecars.as_ref().unwrap().holder);
+        let select = rerun_job(
+            job,
+            &crate::isolation::Narrowing::Select(vec!["only_this".into()]),
+            run_dir.reports.join("isolation/x"),
+            "isolate-1-1",
+            &opts,
+        );
+        assert_eq!(select.request.select, Some(vec!["only_this".to_string()]));
+        assert!(select.request.args.is_empty());
     }
 
     #[test]

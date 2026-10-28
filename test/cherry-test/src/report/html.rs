@@ -114,6 +114,17 @@ fn render_report(snapshot: &ReportSnapshot, jumps: &JumpIndex) -> String {
     let mut body = String::from("<section id=\"projects_summary\"><h2>projects</h2>");
     body.push_str(&render_projects_table(snapshot));
     body.push_str("</section><p><a href=\"phases.html\">Test phases, screenshots, logs and source coverage</a></p>");
+    if !snapshot.isolation.is_empty() {
+        let counts: Vec<String> = snapshot
+            .isolation
+            .iter()
+            .map(|(class, count)| format!("{count} {}", class.as_str()))
+            .collect();
+        body.push_str(&format!(
+            "<p><a href=\"phases.html#isolation\">Failed tests rerun alone: {}</a></p>",
+            counts.join(", ")
+        ));
+    }
     body.push_str(&render_tests_section(snapshot, jumps));
     body.push_str(&render_project_sections(snapshot, jumps));
     if snapshot.crap.enabled {
@@ -1074,6 +1085,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let html = render_projects_table(&snapshot);
@@ -1129,6 +1142,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let status = build_status_html(&snapshot);
@@ -1268,6 +1283,8 @@ mod tests {
                 location: None,
             }]),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let html = render_html(&snapshot);
@@ -1331,6 +1348,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let html = render_html(&snapshot);
@@ -1402,6 +1421,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let html = render_html(&snapshot);
@@ -1504,6 +1525,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let html = render_html(&snapshot);
@@ -1552,6 +1575,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let html = render_html(&snapshot);
@@ -1656,6 +1681,8 @@ mod tests {
             integration_rows: rows.clone(),
             tests_report: build_tests_report(&rows, &preflight, &dir),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let html = render_html(&snapshot);
@@ -1759,6 +1786,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let html = render_html(&snapshot);
@@ -1814,6 +1843,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let html = render_html(&snapshot);
@@ -1853,6 +1884,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let html = render_html(&snapshot);
@@ -1903,6 +1936,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let html = render_html(&snapshot);
@@ -1939,6 +1974,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let html = render_html(&snapshot);
@@ -1972,6 +2009,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         };
         let table = render_projects_table(&snapshot);
@@ -2203,6 +2242,8 @@ mod tests {
             integration_rows: vec![],
             tests_report: TestsReport::default(),
             crap,
+            isolation: Vec::new(),
+
             report_path: PathBuf::from("index.html"),
         }
     }

@@ -256,6 +256,7 @@ mod tests {
             integration_rows: vec![],
             tests_report: crate::report::TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
             report_path: PathBuf::from("index.html"),
         };
         let plain = crate::report::format_status_line(&snapshot, 200);
@@ -284,6 +285,7 @@ mod tests {
             integration_rows: vec![],
             tests_report: crate::report::TestsReport::default(),
             crap: crate::crap::CrapReport::default(),
+            isolation: Vec::new(),
             report_path: PathBuf::from("index.html"),
         };
         let plain = crate::report::format_status_line(&snapshot, 260);

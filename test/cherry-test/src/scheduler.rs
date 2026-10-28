@@ -200,7 +200,7 @@ impl RunState {
         }
     }
 
-    fn start_phase(&mut self) {
+    pub(crate) fn start_phase(&mut self) {
         self.phase_booted.clear();
         self.phase_compose.clear();
         self.auth_ready = false;
@@ -429,7 +429,7 @@ fn run_parallel(
 }
 
 /// Boots the job's scopes not yet started in this phase, then runs the auth preflight once per integration phase.
-fn setup_job(
+pub(crate) fn setup_job(
     job: &Job,
     state: &mut RunState,
     layers: &EnvLayers<'_>,

@@ -39,6 +39,53 @@ pub struct Defaults {
     pub parallel: Option<ParallelConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub container: Option<ContainerConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isolate: Option<IsolateConfig>,
+}
+
+/// `defaults.isolate`: rerun each failed test alone to tell real failures from interference and flakiness.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct IsolateConfig {
+    #[serde(default)]
+    pub on_failure: bool,
+    #[serde(default = "default_isolate_runs", deserialize_with = "positive_count")]
+    pub runs: u32,
+    #[serde(
+        default = "default_isolate_max_tests",
+        deserialize_with = "positive_count"
+    )]
+    pub max_tests: u32,
+}
+
+impl Default for IsolateConfig {
+    fn default() -> Self {
+        Self {
+            on_failure: false,
+            runs: default_isolate_runs(),
+            max_tests: default_isolate_max_tests(),
+        }
+    }
+}
+
+fn default_isolate_runs() -> u32 {
+    3
+}
+
+fn default_isolate_max_tests() -> u32 {
+    10
+}
+
+fn positive_count<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<u32, D::Error> {
+    match ScalarValue::deserialize(deserializer)? {
+        ScalarValue::Integer(count) => u32::try_from(count)
+            .ok()
+            .filter(|count| *count > 0)
+            .ok_or_else(|| serde::de::Error::custom("expected a positive number")),
+        _ => Err(serde::de::Error::custom("expected a positive number")),
+    }
 }
 
 impl Default for Defaults {
@@ -56,6 +103,7 @@ impl Default for Defaults {
             coverage_ignore: default_coverage_ignore(),
             parallel: None,
             container: None,
+            isolate: None,
         }
     }
 }
@@ -1064,6 +1112,46 @@ groups:
             },
         );
         assert_eq!(cfg.diff_base_for_project("mini"), "develop");
+    }
+
+    #[test]
+    fn parses_isolate_defaults_and_rejects_bad_values() {
+        let raw: RawConfig = serde_yaml::from_str(
+            "defaults:\n  isolate:\n    on_failure: true\n    runs: 5\n    max_tests: 2\n",
+        )
+        .unwrap();
+        assert_eq!(
+            raw.defaults.isolate,
+            Some(IsolateConfig {
+                on_failure: true,
+                runs: 5,
+                max_tests: 2
+            })
+        );
+        let raw: RawConfig =
+            serde_yaml::from_str("defaults:\n  isolate: {on_failure: true}\n").unwrap();
+        assert_eq!(
+            raw.defaults.isolate,
+            Some(IsolateConfig {
+                on_failure: true,
+                runs: 3,
+                max_tests: 10
+            })
+        );
+        assert_eq!(IsolateConfig::default().runs, 3);
+        assert!(serde_yaml::from_str::<RawConfig>("defaults: {}\n")
+            .unwrap()
+            .defaults
+            .isolate
+            .is_none());
+        for yaml in [
+            "defaults:\n  isolate:\n    reruns: 2\n",
+            "defaults:\n  isolate:\n    runs: 0\n",
+            "defaults:\n  isolate:\n    max_tests: -1\n",
+            "defaults:\n  isolate:\n    runs: many\n",
+        ] {
+            assert!(serde_yaml::from_str::<RawConfig>(yaml).is_err(), "{yaml}");
+        }
     }
 
     mod services {

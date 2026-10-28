@@ -449,6 +449,7 @@ mod tests {
             env: Default::default(),
             options: Default::default(),
             container: None,
+            select: None,
         }
     }
 
