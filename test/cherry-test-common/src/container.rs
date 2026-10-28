@@ -312,7 +312,7 @@ impl<'de> Deserialize<'de> for Timeout {
     }
 }
 
-/// Parses `90`, `90s`, `30m` or `2h` into seconds. Zero and overflowing values are rejected.
+/// Parses `90`, `90s`, `30m` or `2h` into seconds. Zero and values above `i64::MAX` are rejected.
 pub fn parse_duration(text: &str) -> Result<u64> {
     let (digits, factor) = match text.as_bytes().last() {
         Some(b's') => (&text[..text.len() - 1], 1),
@@ -325,6 +325,7 @@ pub fn parse_duration(text: &str) -> Result<u64> {
             .parse::<u64>()
             .ok()
             .and_then(|value| value.checked_mul(factor))
+            .filter(|value| i64::try_from(*value).is_ok())
     } else {
         None
     };
@@ -442,6 +443,7 @@ mod tests {
             "-5s",
             "10d",
             "99999999999999999999h",
+            "9223372036854775808",
         ] {
             let error = parse_duration(text).unwrap_err();
             assert_eq!(

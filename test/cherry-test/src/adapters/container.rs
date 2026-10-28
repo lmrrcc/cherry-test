@@ -601,19 +601,21 @@ fn copy_tree(from: &Path, to: &Path) -> Result<()> {
 }
 
 fn normalize(path: &Path) -> PathBuf {
-    let mut result = PathBuf::new();
+    let mut parts: Vec<Component> = Vec::new();
     for component in path.components() {
         match component {
             Component::CurDir => {}
-            Component::ParentDir => {
-                if !result.pop() {
-                    result.push("..");
+            Component::ParentDir => match parts.last() {
+                Some(Component::Normal(_)) => {
+                    parts.pop();
                 }
-            }
-            other => result.push(other.as_os_str()),
+                Some(Component::RootDir | Component::Prefix(_)) => {}
+                _ => parts.push(component),
+            },
+            other => parts.push(other),
         }
     }
-    result
+    parts.iter().collect()
 }
 
 fn workspace_relative(path: &str) -> Result<PathBuf> {
@@ -1107,6 +1109,7 @@ mod tests {
     struct GoldenCase {
         name: String,
         request: AdapterRequest,
+        request_json: String,
         call: ContainerCall,
         argv: Vec<String>,
     }
@@ -1117,6 +1120,12 @@ mod tests {
             serde_json::from_str(include_str!("../../tests/golden/container-argv.json")).unwrap();
         assert!(cases.len() >= 4);
         for case in cases {
+            assert_eq!(
+                serde_json::to_string(&case.request).unwrap(),
+                case.request_json,
+                "{}",
+                case.name
+            );
             let spec = case.request.container.clone().unwrap();
             assert_eq!(
                 container_argv(&spec, &case.request, &case.call),
