@@ -8,6 +8,9 @@ public final class Durations {
     /** Seconds a container tool invocation may run when {@code timeout} is not configured. */
     public static final long DEFAULT_TIMEOUT_SECS = 1800;
 
+    /** Seconds an image service may take to become healthy when {@code health.timeout} is not configured. */
+    public static final long DEFAULT_HEALTH_TIMEOUT_SECS = 60;
+
     private Durations() {}
 
     /** Parses {@code 90}, {@code 90s}, {@code 30m} or {@code 2h} into seconds; zero and overflow are rejected. */

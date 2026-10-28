@@ -8,12 +8,15 @@ import com.cherrytest.common.container.CacheConfig;
 import com.cherrytest.common.container.CacheVolume;
 import com.cherrytest.common.container.ContainerConfig;
 import com.cherrytest.common.container.ContainerEnvConfig;
+import com.cherrytest.common.container.ContainerLabels;
 import com.cherrytest.common.container.ContainerSpec;
 import com.cherrytest.common.container.Durations;
 import com.cherrytest.common.container.MountConfig;
 import com.cherrytest.common.container.NetworkMode;
 import com.cherrytest.common.container.PullPolicy;
 import com.cherrytest.common.container.SeedMode;
+import com.cherrytest.common.container.SidecarService;
+import com.cherrytest.common.container.SidecarSpec;
 import com.cherrytest.common.container.WorkspaceAccess;
 import com.cherrytest.common.container.WritableConfig;
 import com.cherrytest.common.container.WritableMount;
@@ -24,6 +27,7 @@ import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustIoError;
 import com.cherrytest.common.rustcompat.RustOrdering;
 import com.cherrytest.common.rustcompat.RustText;
+import com.cherrytest.core.Sidecars;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -45,13 +49,13 @@ import tools.jackson.databind.JsonNode;
  */
 public final class Container {
     /** Label that carries the run id of every container Cherry Test starts. */
-    public static final String RUN_LABEL = "cherry-test.run";
+    public static final String RUN_LABEL = ContainerLabels.RUN_LABEL;
     /** Label that carries the {@code project/package/phase} key of the job. */
-    public static final String JOB_LABEL = "cherry-test.job";
+    public static final String JOB_LABEL = ContainerLabels.JOB_LABEL;
     /** Label that carries the process id of the Cherry Test run that owns the container. */
-    public static final String PID_LABEL = "cherry-test.pid";
+    public static final String PID_LABEL = ContainerLabels.PID_LABEL;
     /** Environment variable that passes the owning run's process id to adapter processes. */
-    public static final String OWNER_PID_ENV = "CHERRY_TEST_OWNER_PID";
+    public static final String OWNER_PID_ENV = ContainerLabels.OWNER_PID_ENV;
 
     private Container() {}
 
@@ -210,7 +214,8 @@ public final class Container {
                 mounts,
                 caches,
                 envPass,
-                envSet);
+                envSet,
+                null);
     }
 
     /**
@@ -225,9 +230,14 @@ public final class Container {
         push(argv, "--label", JOB_LABEL + "=" + spec.job());
         push(argv, "--label", PID_LABEL + "=" + call.ownerPid());
         push(argv, "--pull", spec.pull().wireName());
-        push(argv, "--network", spec.network().wireName());
-        if (spec.network() != NetworkMode.NONE) {
-            push(argv, "--add-host", "host.docker.internal:host-gateway");
+        SidecarSpec sidecars = spec.sidecars();
+        if (sidecars != null) {
+            push(argv, "--network", "container:" + sidecars.holder());
+        } else {
+            push(argv, "--network", spec.network().wireName());
+            if (spec.network() != NetworkMode.NONE) {
+                push(argv, "--add-host", "host.docker.internal:host-gateway");
+            }
         }
         String user = call.user();
         if (user != null) {
@@ -282,11 +292,20 @@ public final class Container {
         for (String name : call.authNames()) {
             push(argv, "-e", name);
         }
+        List<String> local = new ArrayList<>();
+        if (sidecars != null) {
+            for (SidecarService service : sidecars.services()) {
+                local.add(Sidecars.envPrefix(service.project(), service.service()));
+            }
+        }
         for (Map.Entry<String, String> entry : request.env().entrySet()) {
-            String value = map(mountRoot, entry.getValue())
-                    .replace("127.0.0.1:", "host.docker.internal:")
-                    .replace("localhost:", "host.docker.internal:");
-            push(argv, "-e", entry.getKey() + "=" + value);
+            String key = entry.getKey();
+            String value = local.stream().anyMatch(key::startsWith)
+                    ? map(mountRoot, entry.getValue())
+                    : map(mountRoot, entry.getValue())
+                            .replace("127.0.0.1:", "host.docker.internal:")
+                            .replace("localhost:", "host.docker.internal:");
+            push(argv, "-e", key + "=" + value);
         }
         for (String name : spec.envPass()) {
             push(argv, "-e", name);
@@ -362,14 +381,7 @@ public final class Container {
      * sure the name starts with a letter or digit.
      */
     public static String sanitizeName(String raw) {
-        StringBuilder name = new StringBuilder();
-        raw.codePoints()
-                .forEach(c -> name.append(
-                        isAsciiAlphanumeric(c) || c == '_' || c == '.' || c == '-' ? Character.toString(c) : "-"));
-        if (!name.isEmpty() && isAsciiAlphanumeric(name.charAt(0))) {
-            return name.toString();
-        }
-        return "ct" + name;
+        return ContainerLabels.sanitizeName(raw);
     }
 
     /** Volumes kept for well-known toolchain images when {@code caches} is not configured. */
@@ -493,8 +505,7 @@ public final class Container {
         if (ids.isEmpty()) {
             return;
         }
-        List<String> args = new ArrayList<>(List.of("rm", "-f"));
-        args.addAll(ids);
+        List<String> args = Sidecars.removeArgv(ids);
         CommandOutput output;
         try {
             output = SystemCommand.of("docker").args(args).output();

@@ -601,10 +601,16 @@ mod tests {
             "CHERRY_TEST_WORKSPACE_ROOT".into(),
             root.path().to_string_lossy().into(),
         );
-        env.insert(
-            "PATH".into(),
-            root.path().join("no-docker").to_string_lossy().into(),
-        );
+        let bin = root.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("docker"), "#!/bin/sh\nexit 1\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(bin.join("docker"), std::fs::Permissions::from_mode(0o755))
+                .unwrap();
+        }
+        env.insert("PATH".into(), bin.to_string_lossy().into());
         env.insert(
             crate::sidecar::SCOPE_PROVISIONED_ENV.into(),
             "checkout".into(),

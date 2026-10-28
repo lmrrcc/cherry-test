@@ -2,6 +2,7 @@ package com.cherrytest.cli;
 
 import com.cherrytest.cli.adapters.ProcessRunner;
 import com.cherrytest.common.adapter.ExecutionMode;
+import com.cherrytest.common.container.ContainerSpec;
 import com.cherrytest.common.process.CommandOutput;
 import com.cherrytest.common.process.SystemCommand;
 import com.cherrytest.common.rustcompat.AnyhowError;
@@ -155,6 +156,9 @@ public final class Scheduler {
         final SortedMap<String, String> serviceEnv = new TreeMap<>(RustOrdering.STRING_ORDER);
         final SortedMap<String, String> authEnv = new TreeMap<>(RustOrdering.STRING_ORDER);
         private final TreeSet<String> phaseBooted = new TreeSet<>(RustOrdering.STRING_ORDER);
+        /** Scopes whose Compose services this phase started for jobs that run their image services themselves. */
+        private final TreeSet<String> phaseCompose = new TreeSet<>(RustOrdering.STRING_ORDER);
+
         private boolean authReady;
 
         public RunState(PreflightPlan preflight) {
@@ -163,6 +167,7 @@ public final class Scheduler {
 
         void startPhase() {
             phaseBooted.clear();
+            phaseCompose.clear();
             authReady = false;
         }
     }
@@ -392,9 +397,24 @@ public final class Scheduler {
      */
     private static @Nullable String setupJob(
             Plan.Job job, RunState state, EnvLayers layers, Runner.RunOptions options) {
+        ContainerSpec container = job.request().container();
+        boolean ownNetwork = container != null && container.sidecars() != null;
         try {
             for (String scope : job.scopes()) {
-                if (!state.phaseBooted.contains(scope)) {
+                if (state.phaseBooted.contains(scope)) {
+                    continue;
+                }
+                if (ownNetwork) {
+                    if (!state.phaseCompose.contains(scope)) {
+                        Workspace.ScopeBoot boot = Workspace.bootCompose(
+                                scope,
+                                state.scopes,
+                                layers.phaseEnv(state, job.key().phase()));
+                        boot.exports()
+                                .forEach(variable -> state.serviceEnv.put(variable.getKey(), variable.getValue()));
+                        state.phaseCompose.add(scope);
+                    }
+                } else {
                     Workspace.ScopeBoot boot = Workspace.bootScope(
                             scope,
                             state.scopes,
@@ -403,7 +423,8 @@ public final class Scheduler {
                     state.phaseBooted.add(scope);
                 }
             }
-            if (job.key().phase().equals("integration") && !state.authReady && !state.phaseBooted.isEmpty()) {
+            boolean booted = !state.phaseBooted.isEmpty() || !state.phaseCompose.isEmpty();
+            if (job.key().phase().equals("integration") && !state.authReady && booted) {
                 List<Map.Entry<String, String>> exports = AuthPreflight.runAuthPreflight(
                         options.workspaceRoot(),
                         options.config(),

@@ -116,16 +116,7 @@ public final class ConfigWriter {
         if (!project.services().isEmpty()) {
             List<Map.Entry<String, SerdeYamlWriter.Node>> services = new ArrayList<>();
             for (Map.Entry<String, ServiceConfig> service : project.services().entrySet()) {
-                List<Map.Entry<String, SerdeYamlWriter.Node>> serviceFields = new ArrayList<>();
-                serviceFields.add(entry("service", scalar(service.getValue().service())));
-                serviceFields.add(entry("port", scalar((long) service.getValue().port())));
-                if (service.getValue().health() != null) {
-                    serviceFields.add(entry("health", scalar(service.getValue().health())));
-                }
-                if (service.getValue().kind() != null) {
-                    serviceFields.add(entry("kind", scalar(service.getValue().kind())));
-                }
-                services.add(entry(service.getKey(), new SerdeYamlWriter.Mapping(serviceFields)));
+                services.add(entry(service.getKey(), service(service.getValue())));
             }
             fields.add(entry("services", new SerdeYamlWriter.Mapping(services)));
         }
@@ -142,6 +133,57 @@ public final class ConfigWriter {
         }
         if (project.ui() != null) {
             fields.add(entry("ui", runner(project.ui())));
+        }
+        return new SerdeYamlWriter.Mapping(fields);
+    }
+
+    private static SerdeYamlWriter.Node service(ServiceConfig service) {
+        List<Map.Entry<String, SerdeYamlWriter.Node>> fields = new ArrayList<>();
+        if (!service.service().isEmpty()) {
+            fields.add(entry("service", scalar(service.service())));
+        }
+        fields.add(entry("port", scalar((long) service.port())));
+        switch (service.health()) {
+            case ServiceHealth.HttpPath(String path) -> fields.add(entry("health", scalar(path)));
+            case ServiceHealth.Probe(HealthProbe probe) -> {
+                List<Map.Entry<String, SerdeYamlWriter.Node>> probeFields = new ArrayList<>();
+                if (probe.exec() != null) {
+                    probeFields.add(entry("exec", strings(probe.exec())));
+                }
+                if (probe.tcp() != null) {
+                    probeFields.add(entry("tcp", scalar(probe.tcp())));
+                }
+                if (probe.timeout() != null) {
+                    probeFields.add(entry("timeout", scalar(probe.timeout() + "s")));
+                }
+                fields.add(entry("health", new SerdeYamlWriter.Mapping(probeFields)));
+            }
+            case null -> {}
+        }
+        if (service.kind() != null) {
+            fields.add(entry("kind", scalar(service.kind())));
+        }
+        if (service.image() != null) {
+            fields.add(entry("image", scalar(service.image())));
+        }
+        if (service.pull() != null) {
+            fields.add(entry("pull", scalar(service.pull().wireName())));
+        }
+        if (!service.env().isEmpty()) {
+            List<Map.Entry<String, SerdeYamlWriter.Node>> env = new ArrayList<>();
+            service.env().forEach((name, value) -> env.add(entry(name, scalar(value))));
+            fields.add(entry("env", new SerdeYamlWriter.Mapping(env)));
+        }
+        if (!service.tmpfs().isEmpty()) {
+            fields.add(entry("tmpfs", strings(service.tmpfs())));
+        }
+        if (!service.mounts().isEmpty()) {
+            List<SerdeYamlWriter.Node> mounts = new ArrayList<>();
+            for (ServiceMount mount : service.mounts()) {
+                mounts.add(new SerdeYamlWriter.Mapping(
+                        List.of(entry("source", scalar(mount.source())), entry("target", scalar(mount.target())))));
+            }
+            fields.add(entry("mounts", new SerdeYamlWriter.Sequence(mounts)));
         }
         return new SerdeYamlWriter.Mapping(fields);
     }

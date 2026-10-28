@@ -5,6 +5,7 @@ import com.cherrytest.common.adapter.ExecutionMode;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustIoError;
 import com.cherrytest.common.rustcompat.RustOrdering;
+import com.cherrytest.common.rustcompat.RustText;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -154,6 +155,7 @@ public final class TestItConfig {
         }
         SortedMap<String, ProjectConfig> projects = parseProjects(raw);
         mergeLegacyPackages(projects, parsePackages(YamlValues.field(raw, "packages"), "packages."), workspaceRoot);
+        validateServices(projects);
         for (Map.Entry<String, ProjectConfig> project : projects.entrySet()) {
             if (project.getValue().path() == null) {
                 project.setValue(project.getValue().withPath(project.getKey()));
@@ -528,22 +530,101 @@ public final class TestItConfig {
         if (value == null) {
             return services;
         }
-        YamlValues.mapping(value, path).forEach((name, entry) -> {
-            String servicePath = path + name + ".";
-            Map<String, Object> map = YamlValues.mapping(entry, path + name);
-            Object port = YamlValues.field(map, "port");
-            if (port == null) {
-                throw new AnyhowError(servicePath + ": missing field `port`");
-            }
-            services.put(
-                    name,
-                    new ServiceConfig(
-                            YamlValues.requiredString(map, "service", servicePath),
-                            (int) YamlValues.unsigned(port, servicePath + "port", 0xFFFFL),
-                            YamlValues.optionalString(map, "health", servicePath),
-                            YamlValues.optionalString(map, "kind", servicePath)));
-        });
+        YamlValues.mapping(value, path)
+                .forEach((name, entry) -> services.put(name, ServiceYaml.parse(entry, path + name)));
         return services;
+    }
+
+    /**
+     * Checks every service: a Compose {@code service} or an {@code image}, and image settings only on image services.
+     * Projects and services are checked in name order, so the first error is the same on every run.
+     */
+    private static void validateServices(SortedMap<String, ProjectConfig> projects) {
+        for (Map.Entry<String, ProjectConfig> project : projects.entrySet()) {
+            TreeMap<String, ServiceConfig> services = new TreeMap<>(RustOrdering.STRING_ORDER);
+            services.putAll(project.getValue().services());
+            for (Map.Entry<String, ServiceConfig> service : services.entrySet()) {
+                validateService("projects." + project.getKey() + ".services." + service.getKey(), service.getValue());
+            }
+        }
+    }
+
+    private static void validateService(String path, ServiceConfig service) {
+        String image = service.image();
+        if (image == null) {
+            if (service.service().isEmpty()) {
+                throw new AnyhowError(path + ": missing field `service`");
+            }
+            Map<String, Boolean> imageOnly = new LinkedHashMap<>();
+            imageOnly.put("pull", service.pull() != null);
+            imageOnly.put("env", !service.env().isEmpty());
+            imageOnly.put("tmpfs", !service.tmpfs().isEmpty());
+            imageOnly.put("mounts", !service.mounts().isEmpty());
+            imageOnly.put("health", service.health() instanceof ServiceHealth.Probe);
+            for (Map.Entry<String, Boolean> field : imageOnly.entrySet()) {
+                if (field.getValue()) {
+                    throw new AnyhowError(path + "." + field.getKey() + ": applies only to a service with `image`");
+                }
+            }
+            return;
+        }
+        if (!service.service().isEmpty()) {
+            throw new AnyhowError(path + ": set `service` for a Compose service or `image`, not both");
+        }
+        if (image.isEmpty() || image.startsWith("-") || image.codePoints().anyMatch(RustText::isWhitespace)) {
+            throw new AnyhowError(path + ".image: invalid image `" + image + "`");
+        }
+        for (String name : service.env().keySet()) {
+            if (!Sidecars.isEnvName(name)) {
+                throw new AnyhowError(path + ".env: `" + name + "` is not a variable name");
+            }
+        }
+        for (String tmpfs : service.tmpfs()) {
+            if (!tmpfs.startsWith("/") || tmpfs.codePoints().anyMatch(RustText::isWhitespace)) {
+                throw new AnyhowError(path + ".tmpfs: `" + tmpfs + "` is not an absolute container path");
+            }
+        }
+        for (ServiceMount mount : service.mounts()) {
+            if (mount.source().isEmpty() || mount.source().contains(":")) {
+                throw new AnyhowError(path + ".mounts: invalid source `" + mount.source() + "`");
+            }
+            if (!mount.target().startsWith("/")
+                    || mount.target().contains(":")
+                    || mount.target().codePoints().anyMatch(RustText::isWhitespace)) {
+                throw new AnyhowError(
+                        path + ".mounts: target `" + mount.target() + "` is not an absolute container path");
+            }
+        }
+        switch (service.health()) {
+            case ServiceHealth.HttpPath ignored ->
+                throw new AnyhowError(path + ".health: an image service takes {exec: [...]} or {tcp: true}");
+            case ServiceHealth.Probe(HealthProbe probe) -> {
+                List<String> exec = probe.exec();
+                Boolean tcp = probe.tcp();
+                if (exec != null && tcp == null && exec.isEmpty()) {
+                    throw new AnyhowError(path + ".health.exec: needs a command");
+                }
+                if (exec != null && tcp != null) {
+                    throw new AnyhowError(path + ".health: set `exec` or `tcp`, not both");
+                }
+                if (exec == null && Boolean.FALSE.equals(tcp)) {
+                    throw new AnyhowError(path + ".health: set `exec` or `tcp: true`");
+                }
+            }
+            case null -> {}
+        }
+    }
+
+    /** Whether any project declares a service Cherry Test starts from an image. */
+    public boolean imageServicesConfigured() {
+        for (ProjectConfig project : projects.values()) {
+            for (ServiceConfig service : project.services().values()) {
+                if (service.isImage()) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     static SortedMap<String, PackageConfig> parsePackages(@Nullable Object value, String path) {

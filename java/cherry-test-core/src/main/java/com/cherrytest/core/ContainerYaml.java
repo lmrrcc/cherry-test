@@ -212,14 +212,14 @@ final class ContainerYaml {
         return new ContainerEnvConfig(pass, set);
     }
 
-    private static Map<String, Object> struct(Object value, String path, String name) {
+    static Map<String, Object> struct(Object value, String path, String name) {
         if (!(value instanceof Map<?, ?>)) {
             throw new AnyhowError(path + ": invalid type: " + YamlValues.describe(value) + ", expected struct " + name);
         }
         return YamlValues.mapping(value, path);
     }
 
-    private static <T> List<T> sequence(Object value, String path, BiFunction<Object, String, T> element) {
+    static <T> List<T> sequence(Object value, String path, BiFunction<Object, String, T> element) {
         if (!(value instanceof List<?> list)) {
             throw new AnyhowError(path + ": invalid type: " + YamlValues.describe(value) + ", expected a sequence");
         }
@@ -232,12 +232,12 @@ final class ContainerYaml {
         return result;
     }
 
-    private static List<String> texts(Object value, String path) {
+    static List<String> texts(Object value, String path) {
         return sequence(value, path, ContainerYaml::text);
     }
 
     /** A plain scalar read as a string, the way serde_yaml reads it into a {@code String}. */
-    private static String text(Object value, String path) {
+    static String text(Object value, String path) {
         return switch (value) {
             case String text -> text;
             case Boolean bool -> bool.toString();
@@ -250,7 +250,7 @@ final class ContainerYaml {
         };
     }
 
-    private static <T> T variant(Object value, String path, java.util.function.Function<String, T> fromWire) {
+    static <T> T variant(Object value, String path, java.util.function.Function<String, T> fromWire) {
         String text = text(value, path);
         try {
             return fromWire.apply(text);
@@ -259,7 +259,7 @@ final class ContainerYaml {
         }
     }
 
-    private static boolean bool(Object value, String path) {
+    static boolean bool(Object value, String path) {
         if (value instanceof Boolean bool) {
             return bool;
         }
@@ -279,7 +279,7 @@ final class ContainerYaml {
         };
     }
 
-    private static Long timeout(Object value, String path) {
+    static Long timeout(Object value, String path) {
         String text = switch (value) {
             case String string -> string;
             case Integer number -> number.toString();

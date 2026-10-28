@@ -36,7 +36,8 @@ public record ContainerSpec(
         List<BindMount> mounts,
         List<CacheVolume> caches,
         List<String> envPass,
-        SortedMap<String, String> envSet) {
+        SortedMap<String, String> envSet,
+        @Nullable SidecarSpec sidecars) {
     public ContainerSpec {
         capDrop = List.copyOf(capDrop);
         tmpfs = List.copyOf(tmpfs);
@@ -78,6 +79,37 @@ public record ContainerSpec(
                 mounts,
                 caches,
                 envPass,
-                envSet);
+                envSet,
+                sidecars);
+    }
+
+    /** The same spec with the job's image services, or none. */
+    public ContainerSpec withSidecars(@Nullable SidecarSpec replacement) {
+        return new ContainerSpec(
+                name,
+                run,
+                job,
+                image,
+                pull,
+                network,
+                user,
+                capDrop,
+                noNewPrivileges,
+                readOnlyRoot,
+                cpus,
+                memory,
+                pids,
+                shmSize,
+                tmpfs,
+                timeoutSecs,
+                workspace,
+                mountRoot,
+                outputs,
+                writable,
+                mounts,
+                caches,
+                envPass,
+                envSet,
+                replacement);
     }
 }

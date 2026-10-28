@@ -9,8 +9,11 @@ import com.cherrytest.common.adapter.TestStatus;
 import com.cherrytest.common.container.BindMount;
 import com.cherrytest.common.container.CacheVolume;
 import com.cherrytest.common.container.ContainerSpec;
+import com.cherrytest.common.container.HealthCheck;
 import com.cherrytest.common.container.NetworkMode;
 import com.cherrytest.common.container.PullPolicy;
+import com.cherrytest.common.container.SidecarService;
+import com.cherrytest.common.container.SidecarSpec;
 import com.cherrytest.common.container.WorkspaceAccess;
 import com.cherrytest.common.container.WritableMount;
 import com.cherrytest.common.rustcompat.AnyhowError;
@@ -114,7 +117,94 @@ public final class AdapterJson {
         spec.envPass().forEach(envPass::add);
         ObjectNode envSet = node.putObject("env_set");
         spec.envSet().forEach(envSet::put);
+        SidecarSpec sidecars = spec.sidecars();
+        if (sidecars != null) {
+            node.set("sidecars", sidecarsValue(sidecars));
+        }
         return node;
+    }
+
+    private static ObjectNode sidecarsValue(SidecarSpec sidecars) {
+        ObjectNode node = NODES.objectNode();
+        node.put("holder", sidecars.holder());
+        ArrayNode services = node.putArray("services");
+        for (SidecarService service : sidecars.services()) {
+            ObjectNode entry = services.addObject();
+            entry.put("project", service.project());
+            entry.put("service", service.service());
+            entry.put("name", service.name());
+            entry.put("image", service.image());
+            entry.put("pull", service.pull().wireName());
+            entry.put("port", service.port());
+            entry.put("kind", service.kind());
+            ObjectNode env = entry.putObject("env");
+            service.env().forEach(env::put);
+            ArrayNode tmpfs = entry.putArray("tmpfs");
+            service.tmpfs().forEach(tmpfs::add);
+            ArrayNode mounts = entry.putArray("mounts");
+            for (BindMount mount : service.mounts()) {
+                ObjectNode item = mounts.addObject();
+                item.put("source", mount.source().toString());
+                item.put("target", mount.target());
+                item.put("read_only", mount.readOnly());
+            }
+            ObjectNode health = entry.putObject("health");
+            ArrayNode exec = health.putArray("exec");
+            service.health().exec().forEach(exec::add);
+            health.put("timeout_secs", service.health().timeoutSecs());
+        }
+        return node;
+    }
+
+    private static @Nullable SidecarSpec parseSidecars(@Nullable JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new AnyhowError("invalid type: " + describe(node) + ", expected struct SidecarSpec");
+        }
+        List<SidecarService> services = new ArrayList<>();
+        for (JsonNode entry : sequence(required(node, "services"))) {
+            if (!entry.isObject()) {
+                throw new AnyhowError("invalid type: " + describe(entry) + ", expected struct SidecarService");
+            }
+            SortedMap<String, String> env = new TreeMap<>(RustOrdering.STRING_ORDER);
+            JsonNode envNode = required(entry, "env");
+            if (!envNode.isObject()) {
+                throw new AnyhowError("invalid type: " + describe(envNode) + ", expected a map");
+            }
+            for (Map.Entry<String, JsonNode> variable : envNode.properties()) {
+                env.put(variable.getKey(), stringValue(variable.getValue()));
+            }
+            List<String> tmpfs = new ArrayList<>();
+            sequence(required(entry, "tmpfs")).forEach(value -> tmpfs.add(stringValue(value)));
+            List<BindMount> mounts = new ArrayList<>();
+            for (JsonNode mount : sequence(required(entry, "mounts"))) {
+                mounts.add(new BindMount(
+                        Path.of(stringValue(required(mount, "source"))),
+                        stringValue(required(mount, "target")),
+                        requiredBool(mount, "read_only")));
+            }
+            JsonNode health = required(entry, "health");
+            if (!health.isObject()) {
+                throw new AnyhowError("invalid type: " + describe(health) + ", expected struct HealthCheck");
+            }
+            List<String> exec = new ArrayList<>();
+            sequence(required(health, "exec")).forEach(value -> exec.add(stringValue(value)));
+            services.add(new SidecarService(
+                    stringValue(required(entry, "project")),
+                    stringValue(required(entry, "service")),
+                    stringValue(required(entry, "name")),
+                    stringValue(required(entry, "image")),
+                    PullPolicy.fromWire(stringValue(required(entry, "pull"))),
+                    (int) requiredU64(entry, "port", 0xFFFFL),
+                    stringValue(required(entry, "kind")),
+                    env,
+                    tmpfs,
+                    mounts,
+                    new HealthCheck(exec, requiredU64(health, "timeout_secs", -1L))));
+        }
+        return new SidecarSpec(stringValue(required(node, "holder")), services);
     }
 
     private static void putNullable(ObjectNode node, String field, @Nullable String value) {
@@ -190,7 +280,8 @@ public final class AdapterJson {
                 mounts,
                 caches,
                 envPass,
-                envSet);
+                envSet,
+                parseSidecars(node.get("sidecars")));
     }
 
     public static ObjectNode responseValue(AdapterResponse response) {

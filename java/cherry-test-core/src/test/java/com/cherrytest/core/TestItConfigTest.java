@@ -289,6 +289,122 @@ class TestItConfigTest {
     }
 
     @Nested
+    class services {
+        private String error(String yaml) {
+            try {
+                load(yaml);
+            } catch (AnyhowError failure) {
+                return AnyhowError.alternate(failure);
+            } catch (IOException failure) {
+                throw new AssertionError(failure);
+            }
+            throw new AssertionError("expected an error for " + yaml);
+        }
+
+        @Test
+        void parses_image_services_and_their_health() throws IOException {
+            TestItConfig config = load("""
+                    projects:
+                      shop:
+                        compose: docker-compose.test.yml
+                        services:
+                          api:
+                            service: shop-api
+                            port: 3000
+                            health: /health
+                          db:
+                            image: postgres:16-alpine
+                            port: 5432
+                            kind: postgres
+                            pull: missing
+                            env: {POSTGRES_PASSWORD: test}
+                            tmpfs: [/var/lib/postgresql/data]
+                            mounts:
+                              - {source: fixtures/sql, target: /docker-entrypoint-initdb.d}
+                            health:
+                              exec: [pg_isready, -h, 127.0.0.1]
+                              timeout: 90s
+                          mock:
+                            image: wiremock/wiremock:3.9.1
+                            port: 8080
+                            health: {tcp: true}
+                    scopes:
+                      checkout:
+                        projects: [shop]
+                        services: {shop: [api, db]}
+                    """);
+            ProjectConfig shop = config.project("shop");
+            ServiceConfig api = Objects.requireNonNull(shop.services().get("api"));
+            assertThat(api.isImage()).isFalse();
+            assertThat(api.health()).isEqualTo(new ServiceHealth.HttpPath("/health"));
+            ServiceConfig db = Objects.requireNonNull(shop.services().get("db"));
+            assertThat(db.isImage()).isTrue();
+            assertThat(db.image()).isEqualTo("postgres:16-alpine");
+            assertThat(db.pull()).isEqualTo(PullPolicy.MISSING);
+            assertThat(db.env()).containsExactly(Map.entry("POSTGRES_PASSWORD", "test"));
+            assertThat(db.tmpfs()).containsExactly("/var/lib/postgresql/data");
+            assertThat(db.mounts()).containsExactly(new ServiceMount("fixtures/sql", "/docker-entrypoint-initdb.d"));
+            assertThat(db.health())
+                    .isEqualTo(new ServiceHealth.Probe(
+                            new HealthProbe(List.of("pg_isready", "-h", "127.0.0.1"), null, 90L)));
+            assertThat(Objects.requireNonNull(shop.services().get("mock")).health())
+                    .isEqualTo(new ServiceHealth.Probe(new HealthProbe(null, true, null)));
+            assertThat(config.imageServicesConfigured()).isTrue();
+            ConfigWriter.write(config);
+            assertThat(Files.readString(root.resolve("cherry-test.yaml"), StandardCharsets.UTF_8))
+                    .contains("      api:\n        service: shop-api\n        port: 3000\n        health: /health\n");
+        }
+
+        @Test
+        void rejects_unknown_image_service_fields() {
+            Map<String, String> cases = new LinkedHashMap<>();
+            cases.put("health: {exec: [true], retries: 3}", "retries");
+            cases.put("mounts: [{source: a, target: /a, read_only: false}]", "read_only");
+            cases.forEach((yaml, field) -> assertThat(error(
+                            "projects:\n  shop:\n    services:\n      db:\n        image: postgres\n        port: 5432\n        "
+                                    + yaml + "\n"))
+                    .contains("unknown field `" + field + "`"));
+        }
+
+        @Test
+        void a_service_is_compose_or_image() {
+            Map<String, String> cases = new LinkedHashMap<>();
+            cases.put("", "projects.shop.services.db: missing field `service`");
+            cases.put(
+                    "        service: db\n        image: postgres\n",
+                    "projects.shop.services.db: set `service` for a Compose service or `image`, not both");
+            cases.put(
+                    "        service: db\n        env: {A: b}\n",
+                    "projects.shop.services.db.env: applies only to a service with `image`");
+            cases.put("        image: --privileged\n", "projects.shop.services.db.image: invalid image `--privileged`");
+            cases.put(
+                    "        image: postgres\n        health: /health\n",
+                    "projects.shop.services.db.health: an image service takes {exec: [...]} or {tcp: true}");
+            cases.put(
+                    "        image: postgres\n        health: {exec: []}\n",
+                    "projects.shop.services.db.health.exec: needs a command");
+            cases.put(
+                    "        image: postgres\n        health: {exec: [x], tcp: true}\n",
+                    "projects.shop.services.db.health: set `exec` or `tcp`, not both");
+            cases.put(
+                    "        image: postgres\n        health: {tcp: false}\n",
+                    "projects.shop.services.db.health: set `exec` or `tcp: true`");
+            cases.put(
+                    "        image: postgres\n        tmpfs: [data]\n",
+                    "projects.shop.services.db.tmpfs: `data` is not an absolute container path");
+            cases.put(
+                    "        image: postgres\n        env: {A-B: x}\n",
+                    "projects.shop.services.db.env: `A-B` is not a variable name");
+            cases.put(
+                    "        image: postgres\n        mounts: [{source: a, target: data}]\n",
+                    "projects.shop.services.db.mounts: target `data` is not an absolute container path");
+            cases.forEach((body, expected) -> assertThat(
+                            error("projects:\n  shop:\n    services:\n      db:\n        port: 5432\n" + body))
+                    .isEqualTo(expected));
+        }
+    }
+
+    @Nested
     class with_execution {
         private TestItConfig config_with_container_package() throws IOException {
             return load("projects:\n  prices:\n    packages:\n      prices-c:\n        execution: container\n");

@@ -137,7 +137,8 @@ public final class CherryTest {
                         plan.config().defaults().parallel(),
                         plan.config().defaults().execution(),
                         env));
-        boolean containers = plan.config().containerSettingsInUse();
+        boolean containers =
+                plan.config().containerSettingsInUse() || plan.config().imageServicesConfigured();
         if (containers) {
             Container.startRun(runDir.id(), cli.quiet());
         }

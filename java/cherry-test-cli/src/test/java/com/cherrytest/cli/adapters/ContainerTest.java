@@ -11,6 +11,8 @@ import com.cherrytest.common.container.ContainerConfig;
 import com.cherrytest.common.container.ContainerSpec;
 import com.cherrytest.common.container.NetworkMode;
 import com.cherrytest.common.container.PullPolicy;
+import com.cherrytest.common.container.SidecarService;
+import com.cherrytest.common.container.SidecarSpec;
 import com.cherrytest.common.container.WorkspaceAccess;
 import com.cherrytest.common.container.WritableMount;
 import com.cherrytest.common.process.CommandOutput;
@@ -18,6 +20,7 @@ import com.cherrytest.common.process.SystemCommand;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustOrdering;
 import com.cherrytest.common.rustcompat.SerdeJsonWriter;
+import com.cherrytest.core.Sidecars;
 import com.cherrytest.core.TestItConfig;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -336,6 +339,76 @@ class ContainerTest {
         assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(25));
         assertThat(runIds(runId)).isEmpty();
         assertThat(Container.removeRun(runId)).isZero();
+    }
+
+    private static List<String> strings(JsonNode node) {
+        List<String> values = new ArrayList<>();
+        node.forEach(value -> values.add(value.stringValue()));
+        return values;
+    }
+
+    private static Container.ContainerCall call(JsonNode call) {
+        JsonNode user = call.get("user");
+        return new Container.ContainerCall(
+                call.get("program").stringValue(),
+                strings(call.get("args")),
+                call.get("owner_pid").longValue(),
+                user == null || user.isNull() ? null : user.stringValue(),
+                strings(call.get("auth_names")));
+    }
+
+    @Test
+    void sidecar_argv_matches_golden_cases() throws IOException {
+        JsonNode cases =
+                Json.parseBytes(Files.readAllBytes(Path.of("../../test/cherry-test/tests/golden/sidecar-argv.json")));
+        assertThat(cases.size()).isGreaterThanOrEqualTo(2);
+        for (JsonNode golden : cases) {
+            String name = golden.get("name").stringValue();
+            AdapterRequest request = AdapterJson.parseRequest(
+                    SerdeJsonWriter.compact(golden.get("request")).getBytes(StandardCharsets.UTF_8));
+            assertThat(AdapterJson.requestCompact(request))
+                    .as(name)
+                    .isEqualTo(golden.get("request_json").stringValue());
+            ContainerSpec spec = Objects.requireNonNull(request.container());
+            SidecarSpec sidecars = Objects.requireNonNull(spec.sidecars());
+            JsonNode labels = golden.get("labels");
+            Sidecars.Labels sidecarLabels = new Sidecars.Labels(
+                    labels.get("run").stringValue(),
+                    labels.get("job").stringValue(),
+                    labels.get("owner_pid").longValue());
+            assertThat(Container.containerArgv(spec, request, call(golden.get("call"))))
+                    .as(name)
+                    .isEqualTo(strings(golden.get("argv")));
+            assertThat(Sidecars.holderArgv(sidecars.holder(), spec.image(), spec.pull(), spec.network(), sidecarLabels))
+                    .as(name)
+                    .isEqualTo(strings(golden.get("holder_argv")));
+            List<List<String>> services = new ArrayList<>();
+            List<List<String>> published = new ArrayList<>();
+            List<List<String>> probes = new ArrayList<>();
+            List<List<String>> env = new ArrayList<>();
+            for (SidecarService service : sidecars.services()) {
+                services.add(Sidecars.serviceArgv(service, sidecars.holder(), sidecarLabels));
+                published.add(Sidecars.serviceArgv(service, null, sidecarLabels));
+                probes.add(Sidecars.probeArgv(service, sidecars.holder()));
+                Sidecars.sidecarEnv(service)
+                        .forEach(variable -> env.add(List.of(variable.getKey(), variable.getValue())));
+            }
+            List<List<String>> expectedServices = new ArrayList<>();
+            golden.get("service_argvs").forEach(argv -> expectedServices.add(strings(argv)));
+            List<List<String>> expectedPublished = new ArrayList<>();
+            golden.get("published_argvs").forEach(argv -> expectedPublished.add(strings(argv)));
+            List<List<String>> expectedProbes = new ArrayList<>();
+            golden.get("probe_argvs").forEach(argv -> expectedProbes.add(strings(argv)));
+            List<List<String>> expectedEnv = new ArrayList<>();
+            golden.get("env").forEach(pair -> expectedEnv.add(strings(pair)));
+            assertThat(services).as(name).isEqualTo(expectedServices);
+            assertThat(published).as(name).isEqualTo(expectedPublished);
+            assertThat(probes).as(name).isEqualTo(expectedProbes);
+            assertThat(Sidecars.removeArgv(Sidecars.containerNames(sidecars)))
+                    .as(name)
+                    .isEqualTo(strings(golden.get("remove_argv")));
+            assertThat(env).as(name).isEqualTo(expectedEnv);
+        }
     }
 
     @Test

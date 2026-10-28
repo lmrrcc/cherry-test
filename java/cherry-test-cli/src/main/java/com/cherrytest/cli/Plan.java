@@ -11,6 +11,8 @@ import com.cherrytest.core.Memory;
 import com.cherrytest.core.PackageConfig;
 import com.cherrytest.core.ResourcesConfig;
 import com.cherrytest.core.Scope;
+import com.cherrytest.core.Sidecars;
+import com.cherrytest.core.TestItConfig;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,14 +64,21 @@ public record Plan(List<PhasePlan> phases) {
             Resources resources,
             long estimateMs,
             boolean exclusive,
-            @Nullable String containerError) {
+            @Nullable String containerError,
+            List<String> provisioned) {
+        /**
+         * {@code provisioned}: the job's scopes that declare image services. The runner provides them, so the test
+         * process reads their endpoints from {@code CHERRY_TEST_SCOPE_PROVISIONED} and its environment.
+         */
         public Job {
             scopes = List.copyOf(scopes);
+            provisioned = List.copyOf(provisioned);
         }
 
         /** The same job with another estimate. */
         public Job withEstimate(long replacement) {
-            return new Job(key, adapter, request, scopes, resources, replacement, exclusive, containerError);
+            return new Job(
+                    key, adapter, request, scopes, resources, replacement, exclusive, containerError, provisioned);
         }
     }
 
@@ -180,7 +189,6 @@ public record Plan(List<PhasePlan> phases) {
         } catch (RuntimeException error) {
             containerError = AnyhowError.alternate(error);
         }
-        request = request.withContainer(containerSpec);
         List<String> scopes = new ArrayList<>();
         if (phase.equals("integration") && Runner.discoversScopes(adapter)) {
             for (DiscoveredTest test : preflight.discovered()) {
@@ -193,6 +201,19 @@ public record Plan(List<PhasePlan> phases) {
         if (runner != null && runner.scope() != null && Scope.needsDocker(runner.scope())) {
             scopes.add(runner.scope());
         }
+        List<String> provisioned = provisionedScopes(options.config(), scopes);
+        if (containerSpec != null) {
+            try {
+                List<Sidecars.ImageService> services = Sidecars.imageServices(options.config(), scopes);
+                containerSpec = containerSpec.withSidecars(Sidecars.jobSidecars(
+                        options.workspaceRoot(), containerSpec.name(), services, containerSpec.pull()));
+            } catch (RuntimeException error) {
+                if (containerError == null) {
+                    containerError = AnyhowError.alternate(error);
+                }
+            }
+        }
+        request = request.withContainer(containerSpec);
         return new Job(
                 new JobKey(projectId, member.name(), phase),
                 adapter,
@@ -201,7 +222,25 @@ public record Plan(List<PhasePlan> phases) {
                 jobResources(packageConfig.resources(), containerSpec),
                 0,
                 packageConfig.exclusive(),
-                containerError);
+                containerError,
+                provisioned);
+    }
+
+    /** The scopes, each once and in order, that select at least one image service. */
+    public static List<String> provisionedScopes(TestItConfig config, List<String> scopes) {
+        List<String> provisioned = new ArrayList<>();
+        for (String scope : scopes) {
+            boolean hasImages;
+            try {
+                hasImages = !Sidecars.imageServices(config, List.of(scope)).isEmpty();
+            } catch (RuntimeException unknownScope) {
+                hasImages = false;
+            }
+            if (hasImages && !provisioned.contains(scope)) {
+                provisioned.add(scope);
+            }
+        }
+        return provisioned;
     }
 
     /** What a job reserves: the package's {@code resources}, else its container's limits, else 1 CPU and 1g. */

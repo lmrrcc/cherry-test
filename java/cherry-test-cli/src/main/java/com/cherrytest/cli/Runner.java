@@ -2,6 +2,7 @@ package com.cherrytest.cli;
 
 import com.cherrytest.cli.adapters.Adapters;
 import com.cherrytest.cli.adapters.Builtins;
+import com.cherrytest.cli.adapters.Container;
 import com.cherrytest.cli.adapters.Formats;
 import com.cherrytest.cli.adapters.ProcessRunner;
 import com.cherrytest.cli.coverage.Coverage;
@@ -15,6 +16,9 @@ import com.cherrytest.common.adapter.AdapterResponse;
 import com.cherrytest.common.adapter.ExecutionMode;
 import com.cherrytest.common.adapter.TestResult;
 import com.cherrytest.common.adapter.TestStatus;
+import com.cherrytest.common.container.ContainerSpec;
+import com.cherrytest.common.container.SidecarService;
+import com.cherrytest.common.container.SidecarSpec;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustIoError;
 import com.cherrytest.common.rustcompat.RustOrdering;
@@ -23,6 +27,7 @@ import com.cherrytest.common.rustcompat.RustText;
 import com.cherrytest.core.ExternalRunner;
 import com.cherrytest.core.PackageConfig;
 import com.cherrytest.core.PackageRuntime;
+import com.cherrytest.core.Sidecars;
 import com.cherrytest.core.TestItConfig;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -136,6 +141,7 @@ public final class Runner {
         SortedMap<String, String> jobEnvironment = new TreeMap<>(RustOrdering.STRING_ORDER);
         jobEnvironment.putAll(environment);
         jobEnvironment.put("CHERRY_TEST_REPORT_DIR", reportDir.toString());
+        extendWithProvisioned(jobEnvironment, job);
         AdapterRequest request = new AdapterRequest(
                 planned.protocol(),
                 planned.project(),
@@ -163,8 +169,7 @@ public final class Runner {
             if (failure != null) {
                 response = AdapterResponse.failure(failure);
             } else {
-                response = Adapters.invoke(
-                        adapter, options.config().adapters().get(adapter), request, options.self(), jobEnvironment);
+                response = invokeWithSidecars(adapter, request, jobEnvironment, options);
             }
         } catch (RuntimeException error) {
             response = AdapterResponse.failure(AnyhowError.alternate(error));
@@ -198,6 +203,86 @@ public final class Runner {
             }
         }
         return new JobOutcome(job.key(), saved.success(), lcovFile, Duration.ofNanos(System.nanoTime() - started));
+    }
+
+    /**
+     * Adds what the runner provides for the job's scopes: {@code CHERRY_TEST_SCOPE_PROVISIONED}, and the
+     * {@code 127.0.0.1} endpoints of the image services in the job's own network.
+     */
+    static void extendWithProvisioned(Map<String, String> environment, Plan.Job job) {
+        if (!job.provisioned().isEmpty()) {
+            environment.put(Sidecars.SCOPE_PROVISIONED_ENV, String.join(",", job.provisioned()));
+        }
+        ContainerSpec spec = job.request().container();
+        SidecarSpec sidecars = spec == null ? null : spec.sidecars();
+        if (sidecars != null) {
+            for (SidecarService service : sidecars.services()) {
+                Sidecars.sidecarEnv(service)
+                        .forEach(variable -> environment.put(variable.getKey(), variable.getValue()));
+            }
+        }
+    }
+
+    /**
+     * Invokes the adapter; a job with image services gets its private network first and loses it afterwards, also
+     * when the adapter fails, times out or the run is cancelled. A service that does not start or become healthy
+     * fails the job before the adapter starts.
+     */
+    private static AdapterResponse invokeWithSidecars(
+            String adapter, AdapterRequest request, Map<String, String> environment, RunOptions options) {
+        ContainerSpec spec = request.container();
+        SidecarSpec sidecars = spec == null ? null : spec.sidecars();
+        if (spec == null || sidecars == null) {
+            return Adapters.invoke(
+                    adapter, options.config().adapters().get(adapter), request, options.self(), environment);
+        }
+        Sidecars.Labels labels = new Sidecars.Labels(spec.run(), spec.job(), Container.ownerPid());
+        try {
+            Files.createDirectories(request.output());
+        } catch (IOException exception) {
+            throw AnyhowError.context("create " + request.output(), new AnyhowError(RustIoError.display(exception)));
+        }
+        try {
+            Sidecars.startJobNetwork(
+                    environment,
+                    sidecars,
+                    spec.image(),
+                    spec.pull(),
+                    spec.network(),
+                    labels,
+                    request.output(),
+                    ProcessRunner::cancelled);
+        } catch (RuntimeException error) {
+            throw AnyhowError.context("image services of " + spec.job() + " did not start", error);
+        }
+        AdapterResponse response = null;
+        RuntimeException failure = null;
+        try {
+            response = Adapters.invoke(
+                    adapter, options.config().adapters().get(adapter), request, options.self(), environment);
+        } catch (RuntimeException error) {
+            failure = error;
+        }
+        try {
+            Sidecars.stopJobNetwork(environment, sidecars, request.output());
+        } catch (RuntimeException error) {
+            String message =
+                    "could not remove the image services of " + spec.job() + ": " + AnyhowError.alternate(error);
+            if (failure != null) {
+                throw new AnyhowError(AnyhowError.alternate(failure) + "; " + message, null);
+            }
+            if (response != null) {
+                response.success(false);
+                response.diagnostics().add(message);
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
+        if (response == null) {
+            throw new AnyhowError("adapter `" + adapter + "` returned no response");
+        }
+        return response;
     }
 
     /**

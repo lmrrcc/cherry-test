@@ -1,5 +1,8 @@
 package com.cherrytest.core;
 
+import com.cherrytest.common.container.ContainerLabels;
+import com.cherrytest.common.container.PullPolicy;
+import com.cherrytest.common.container.SidecarService;
 import com.cherrytest.common.process.ProcessEnvironment;
 import com.cherrytest.common.process.SystemCommand;
 import com.cherrytest.common.rustcompat.AnyhowError;
@@ -28,13 +31,28 @@ public final class Workspace {
 
     private Workspace() {}
 
-    /** The scopes one owner has started and the Compose files they used, in start order. */
+    /**
+     * The scopes one owner has started, the Compose files they used, in start order, and the image service
+     * containers it started.
+     */
     public static final class ScopeState {
         private final Set<String> booted = new LinkedHashSet<>();
+        private final Set<String> published = new LinkedHashSet<>();
         private final List<Path> composeFiles = new ArrayList<>();
+        private final List<String> containers = new ArrayList<>();
 
         public boolean isBooted(String scope) {
             return booted.contains(scope);
+        }
+
+        /** Whether the scope's image services run with published ports for this owner. */
+        public boolean isPublished(String scope) {
+            return published.contains(scope);
+        }
+
+        /** Image service containers this owner started and has not removed yet. */
+        public List<String> containers() {
+            return List.copyOf(containers);
         }
 
         public List<Path> composeFiles() {
@@ -51,7 +69,9 @@ public final class Workspace {
 
         private void clear() {
             booted.clear();
+            published.clear();
             composeFiles.clear();
+            containers.clear();
         }
     }
 
@@ -124,13 +144,29 @@ public final class Workspace {
 
     /**
      * Boots {@code scope} once for the owner of {@code state}; Docker runs in {@code environment} and nothing global
-     * changes. Each port lookup sees the variables of the services resolved before it.
+     * changes. Compose services start through the selected provisioner; image services start with their ports
+     * published on {@code 127.0.0.1}. Each port lookup sees the variables of the services resolved before it. A
+     * scope the runner lists in {@code CHERRY_TEST_SCOPE_PROVISIONED} is read from {@code environment} without
+     * starting anything.
      */
     public static ScopeBoot bootScope(String scope, ScopeState state, Map<String, String> environment) {
+        return boot(scope, state, environment, true);
+    }
+
+    /**
+     * Like {@link #bootScope(String, ScopeState, Map)} for a job that runs the scope's image services in its own
+     * network: only the Compose services start.
+     */
+    public static ScopeBoot bootCompose(String scope, ScopeState state, Map<String, String> environment) {
+        return boot(scope, state, environment, false);
+    }
+
+    private static ScopeBoot boot(String scope, ScopeState state, Map<String, String> environment, boolean images) {
         if (Scope.isNone(scope)) {
             return new ScopeBoot(loadRegistryFrom(environment, null), List.of());
         }
-        if (skipDocker(environment) || state.isBooted(scope)) {
+        boolean done = state.isBooted(scope) && (!images || state.isPublished(scope));
+        if (skipDocker(environment) || Sidecars.provisioned(environment, scope) || done) {
             return new ScopeBoot(loadRegistryFrom(environment, scope), List.of());
         }
         if (!dockerAvailable(environment)) {
@@ -140,64 +176,129 @@ public final class Workspace {
         Path root = workspaceRoot(environment);
         TestItConfig config = TestItConfig.load(root);
         List<String> projectNames = Scope.resolveProjects(config, scope);
-        List<Path> composeFiles = config.composeFilesForProjects(projectNames);
-        List<String> selected = new ArrayList<>();
-        for (String projectName : projectNames) {
-            ProjectConfig project = config.projects().get(projectName);
-            if (project == null) {
-                continue;
-            }
-            project.services().forEach((name, service) -> {
-                if (Scope.serviceFilter(config, scope, projectName, name)) {
-                    selected.add(service.service());
-                }
-            });
-        }
-        state.rememberFiles(composeFiles);
-        ScopeProvisioner provisioner = ScopeProvisioner.selected(environment);
-        provisioner.up(root, config, scope, projectNames, composeFiles, selected, environment);
+        List<Sidecars.ImageService> imageServices = Sidecars.imageServices(config, List.of(scope));
         Map<String, ServiceEndpoint> registry = new LinkedHashMap<>();
         List<Map.Entry<String, String>> exports = new ArrayList<>();
         Map<String, String> portEnvironment = new LinkedHashMap<>(environment);
         TreeMap<String, ObjectNode> snapshot = new TreeMap<>(RustOrdering.STRING_ORDER);
-        for (String projectName : projectNames) {
-            ProjectConfig project = config.projects().get(projectName);
-            if (project == null) {
-                continue;
-            }
-            for (Map.Entry<String, ServiceConfig> service : project.services().entrySet()) {
-                if (!Scope.serviceFilter(config, scope, projectName, service.getKey())) {
+        boolean composeRan = false;
+        if (!state.isBooted(scope)) {
+            List<String> selected = new ArrayList<>();
+            for (String projectName : projectNames) {
+                ProjectConfig project = config.projects().get(projectName);
+                if (project == null) {
                     continue;
                 }
-                ServiceEndpoint endpoint = resolveEndpoint(
-                        provisioner,
+                project.services().forEach((name, service) -> {
+                    if (!service.isImage() && Scope.serviceFilter(config, scope, projectName, name)) {
+                        selected.add(service.service());
+                    }
+                });
+            }
+            if (!selected.isEmpty() || imageServices.isEmpty()) {
+                List<Path> composeFiles = config.composeFilesForProjects(projectNames);
+                state.rememberFiles(composeFiles);
+                ScopeProvisioner provisioner = ScopeProvisioner.selected(environment);
+                provisioner.up(root, config, scope, projectNames, composeFiles, selected, environment);
+                for (String projectName : projectNames) {
+                    ProjectConfig project = config.projects().get(projectName);
+                    if (project == null) {
+                        continue;
+                    }
+                    for (Map.Entry<String, ServiceConfig> service :
+                            project.services().entrySet()) {
+                        if (service.getValue().isImage()
+                                || !Scope.serviceFilter(config, scope, projectName, service.getKey())) {
+                            continue;
+                        }
+                        ServiceEndpoint endpoint = resolveEndpoint(
+                                provisioner,
+                                root,
+                                composeFiles,
+                                projectName,
+                                service.getKey(),
+                                service.getValue(),
+                                portEnvironment);
+                        for (Map.Entry<String, String> variable : serviceEnv(endpoint)) {
+                            portEnvironment.put(variable.getKey(), variable.getValue());
+                            exports.add(variable);
+                        }
+                        snapshot.put(projectName + "." + service.getKey(), snapshotEntry(endpoint));
+                        registry.put(projectName + "\u0000" + service.getKey(), endpoint);
+                    }
+                }
+                state.rememberFiles(composeFiles);
+                composeRan = true;
+            }
+            state.booted.add(scope);
+        }
+        boolean imagesRan = false;
+        if (images && !state.isPublished(scope)) {
+            String run = environment.get("CHERRY_TEST_RUN_ID");
+            Sidecars.Labels labels = new Sidecars.Labels(
+                    run == null ? composeProject(environment) : run, "scope/" + scope, ownerPid(environment));
+            Path logs = servicesLogDir(root, environment);
+            for (Sidecars.ImageService service : imageServices) {
+                SidecarService resolved = Sidecars.resolveService(
                         root,
-                        composeFiles,
-                        projectName,
-                        service.getKey(),
-                        service.getValue(),
-                        portEnvironment);
+                        service.project(),
+                        service.service(),
+                        service.config(),
+                        ContainerLabels.sanitizeName("ct-" + composeProject(environment) + "-" + service.project() + "-"
+                                + service.service()),
+                        PullPolicy.NEVER);
+                ServiceEndpoint endpoint = Sidecars.startPublished(environment, resolved, labels, logs);
+                state.containers.add(resolved.name());
                 for (Map.Entry<String, String> variable : serviceEnv(endpoint)) {
                     portEnvironment.put(variable.getKey(), variable.getValue());
                     exports.add(variable);
                 }
-                ObjectNode entry = JsonNodeFactory.instance.objectNode();
-                entry.put("host", endpoint.host());
-                entry.put("kind", endpoint.kind());
-                entry.put("port", endpoint.port());
-                if (endpoint.url() == null) {
-                    entry.putNull("url");
-                } else {
-                    entry.put("url", endpoint.url());
-                }
-                snapshot.put(projectName + "." + service.getKey(), entry);
-                registry.put(projectName + "\u0000" + service.getKey(), endpoint);
+                snapshot.put(service.project() + "." + service.service(), snapshotEntry(endpoint));
+                registry.put(service.project() + "\u0000" + service.service(), endpoint);
+                imagesRan = true;
+            }
+            state.published.add(scope);
+        }
+        if (composeRan || imagesRan) {
+            writeEnvJson(root, environment, snapshot);
+        }
+        if (!composeRan) {
+            registry = loadRegistryFrom(portEnvironment, scope);
+        }
+        return new ScopeBoot(registry, exports);
+    }
+
+    private static ObjectNode snapshotEntry(ServiceEndpoint endpoint) {
+        ObjectNode entry = JsonNodeFactory.instance.objectNode();
+        entry.put("host", endpoint.host());
+        entry.put("kind", endpoint.kind());
+        entry.put("port", endpoint.port());
+        if (endpoint.url() == null) {
+            entry.putNull("url");
+        } else {
+            entry.put("url", endpoint.url());
+        }
+        return entry;
+    }
+
+    private static long ownerPid(Map<String, String> environment) {
+        String value = environment.get(ContainerLabels.OWNER_PID_ENV);
+        if (value != null) {
+            try {
+                return Integer.toUnsignedLong(Integer.parseUnsignedInt(value));
+            } catch (NumberFormatException ignored) {
+                return ProcessHandle.current().pid();
             }
         }
-        writeEnvJson(root, environment, snapshot);
-        state.booted.add(scope);
-        state.rememberFiles(composeFiles);
-        return new ScopeBoot(registry, exports);
+        return ProcessHandle.current().pid();
+    }
+
+    /** Where the logs of an image service that failed to start are saved: {@code services/} in the run directory. */
+    private static Path servicesLogDir(Path root, Map<String, String> environment) {
+        String runDir = environment.get("CHERRY_TEST_RUN_DIR");
+        return runDir == null
+                ? root.resolve("target/cherry-test/services")
+                : Path.of(runDir).resolve("services");
     }
 
     /** Stops every scope the current process booted through {@link #bootScope(String)}. */
@@ -205,18 +306,36 @@ public final class Workspace {
         teardownScopes(PROCESS_SCOPES, ProcessEnvironment.snapshot());
     }
 
-    /** Stops every scope recorded in {@code state} with one teardown started in {@code environment}. */
+    /**
+     * Stops every scope recorded in {@code state}: removes its image service containers, then runs one teardown
+     * started in {@code environment}.
+     */
     public static void teardownScopes(ScopeState state, Map<String, String> environment) {
         if (skipDocker(environment)) {
             state.clear();
             return;
         }
+        List<String> containers = List.copyOf(state.containers);
+        state.containers.clear();
+        RuntimeException removed = null;
+        try {
+            Sidecars.remove(environment, containers);
+        } catch (RuntimeException error) {
+            removed = error;
+        }
         if (state.composeFiles.isEmpty()) {
+            state.clear();
+            if (removed != null) {
+                throw removed;
+            }
             return;
         }
         ScopeProvisioner.selected(environment)
                 .down(workspaceRoot(environment), List.copyOf(state.composeFiles), environment);
         state.clear();
+        if (removed != null) {
+            throw removed;
+        }
     }
 
     /** The {@code _HOST}, {@code _PORT} and {@code _URL} variables of one endpoint, in that order. */

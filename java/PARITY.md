@@ -120,3 +120,6 @@ Every Rust test has a Java twin with the same snake_case name, in the matching c
 | `test/cherry-test/tests/golden/container-argv.json` | read by `adapters::container` tests and `cherry-test-cli/.../adapters/ContainerTest`: identical `docker run` argv and `request.json` bytes |
 | `test/cherry-test/tests/adapter_contract.rs` | `cherry-test-cli/.../contract/AdapterContractIT` (Failsafe, runs the shaded jar) |
 | `test/cherry-test/tests/parallel_run.rs` | `cherry-test-cli/.../contract/ParallelRunIT` (Failsafe, runs the shaded jar) |
+| `test/cherry-test-core/src/sidecar.rs` | `cherry-test-core/.../SidecarsTest`; the image service parsing tests of `config.rs` live in `TestItConfigTest$services` |
+| `test/cherry-test/tests/golden/sidecar-argv.json` | read by `adapters::container::sidecar_argv_matches_golden_cases` and `ContainerTest.sidecar_argv_matches_golden_cases`: identical holder, service, probe, removal and job argv, endpoint variables and `request.json` bytes |
+| `test/cherry-test/tests/sidecar_smoke.rs` | `cherry-test-cli/.../contract/SidecarSmokeIT` (Failsafe, runs the shaded jar; needs `CHERRY_TEST_DOCKER_SMOKE=1`, Rust runs it with `--ignored`) |

@@ -3,7 +3,12 @@ package com.cherrytest.cli;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.cherrytest.common.container.ContainerSpec;
+import com.cherrytest.common.container.PullPolicy;
+import com.cherrytest.common.container.SidecarService;
+import com.cherrytest.common.container.SidecarSpec;
 import com.cherrytest.common.rustcompat.AnyhowError;
+import com.cherrytest.common.rustcompat.RustOrdering;
 import com.cherrytest.core.PackageRuntime;
 import com.cherrytest.core.TestItConfig;
 import java.io.IOException;
@@ -12,6 +17,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -98,6 +105,65 @@ class PlanTest {
         assertThatThrownBy(() -> Plan.plan(projects(), options, emptyPreflight()))
                 .isInstanceOf(AnyhowError.class)
                 .hasMessage("unknown test kind smoke");
+    }
+
+    @Test
+    void plans_sidecars_for_container_jobs_with_image_services() throws IOException {
+        String local = """
+                projects:
+                  shop:
+                    services:
+                      db:
+                        image: postgres:16-alpine
+                        port: 5432
+                        kind: postgres
+                        env: {POSTGRES_PASSWORD: test}
+                        health: {exec: [pg_isready]}
+                      api:
+                        service: shop-api
+                        port: 3000
+                    packages:
+                      api:
+                        kinds: [unit, integration]
+                        integration:
+                          scope: checkout
+                      web:
+                        runtime: node
+                        kinds: [unit]
+                scopes:
+                  checkout:
+                    projects: [shop]
+                """;
+        Plan localPlan = Plan.plan(projects(), options(root, config(root, local), List.of()), emptyPreflight());
+        Plan.Job localJob = localPlan.phases().get(1).jobs().getFirst();
+        assertThat(localJob.provisioned()).containsExactly("checkout");
+        assertThat(localJob.request().container()).isNull();
+        String container =
+                "defaults:\n  execution: container\n  container:\n    image: eclipse-temurin:25-jdk\n" + local;
+        Runner.RunOptions options = options(root, config(root, container), List.of());
+        Plan planned = Plan.plan(projects(), options, emptyPreflight());
+        Plan.Job unit = planned.phases().getFirst().jobs().getFirst();
+        assertThat(unit.provisioned()).isEmpty();
+        assertThat(Objects.requireNonNull(unit.request().container()).sidecars())
+                .isNull();
+        Plan.Job job = planned.phases().get(1).jobs().getFirst();
+        ContainerSpec spec = Objects.requireNonNull(job.request().container());
+        SidecarSpec sidecars = Objects.requireNonNull(spec.sidecars());
+        assertThat(sidecars.holder()).isEqualTo(spec.name() + "-net");
+        assertThat(sidecars.services()).hasSize(1);
+        SidecarService db = sidecars.services().getFirst();
+        assertThat(db.name()).isEqualTo(spec.name() + "-shop-db");
+        assertThat(db.pull()).isEqualTo(PullPolicy.NEVER);
+        assertThat(db.health().exec()).containsExactly("pg_isready");
+        assertThat(db.health().timeoutSecs()).isEqualTo(60);
+        Map<String, String> environment = new TreeMap<>(RustOrdering.STRING_ORDER);
+        Runner.extendWithProvisioned(environment, job);
+        assertThat(environment)
+                .containsExactly(
+                        Map.entry("CHERRY_TEST_SCOPE_PROVISIONED", "checkout"),
+                        Map.entry("CHERRY_TEST_SHOP_DB_HOST", "127.0.0.1"),
+                        Map.entry("CHERRY_TEST_SHOP_DB_PORT", "5432"));
+        assertThat(RunEnv.requestEnv(environment)).hasSize(3);
     }
 
     @Test
