@@ -8,15 +8,19 @@ import com.cherrytest.common.rustcompat.RustText;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 final class ComposeCliProvisioner implements ScopeProvisioner {
     static final ComposeCliProvisioner INSTANCE = new ComposeCliProvisioner();
 
     private ComposeCliProvisioner() {}
 
-    private static SystemCommand compose(List<Path> composeFiles) {
-        SystemCommand command =
-                SystemCommand.of("docker").arg("compose").arg("-p").arg(Workspace.composeProject());
+    private static SystemCommand compose(List<Path> composeFiles, Map<String, String> environment) {
+        SystemCommand command = SystemCommand.of("docker")
+                .environment(environment)
+                .arg("compose")
+                .arg("-p")
+                .arg(Workspace.composeProject(environment));
         for (Path file : composeFiles) {
             command.arg("-f").arg(file.toString());
         }
@@ -30,8 +34,9 @@ final class ComposeCliProvisioner implements ScopeProvisioner {
             String scope,
             List<String> projectNames,
             List<Path> composeFiles,
-            List<String> services) {
-        SystemCommand command = compose(composeFiles).args("up", "-d", "--build", "--wait");
+            List<String> services,
+            Map<String, String> environment) {
+        SystemCommand command = compose(composeFiles, environment).args("up", "-d", "--build", "--wait");
         services.forEach(command::arg);
         command.currentDir(root);
         int status;
@@ -46,8 +51,14 @@ final class ComposeCliProvisioner implements ScopeProvisioner {
     }
 
     @Override
-    public String mappedAddress(Path root, List<Path> composeFiles, String project, String service, int port) {
-        SystemCommand command = compose(composeFiles)
+    public String mappedAddress(
+            Path root,
+            List<Path> composeFiles,
+            String project,
+            String service,
+            int port,
+            Map<String, String> environment) {
+        SystemCommand command = compose(composeFiles, environment)
                 .args("port", service, Integer.toString(port))
                 .currentDir(root);
         CommandOutput output;
@@ -63,8 +74,9 @@ final class ComposeCliProvisioner implements ScopeProvisioner {
     }
 
     @Override
-    public void down(Path root, List<Path> composeFiles) {
-        SystemCommand command = compose(composeFiles).args("down", "-v").currentDir(root);
+    public void down(Path root, List<Path> composeFiles, Map<String, String> environment) {
+        SystemCommand command =
+                compose(composeFiles, environment).args("down", "-v").currentDir(root);
         int status;
         try {
             status = command.status();

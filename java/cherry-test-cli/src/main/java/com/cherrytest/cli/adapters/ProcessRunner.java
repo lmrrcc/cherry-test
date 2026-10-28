@@ -35,15 +35,34 @@ public final class ProcessRunner {
 
     private ProcessRunner() {}
 
+    /**
+     * A process to start. A non-null {@code environment} is the child's complete environment; otherwise the child
+     * inherits the process environment. {@code environmentOverrides} apply on top of either.
+     */
     public record Spec(
             String program,
             List<String> arguments,
             Map<String, String> environmentOverrides,
             @Nullable Path workingDirectory,
-            @Nullable Path stdin) {
+            @Nullable Path stdin,
+            @Nullable Map<String, String> environment) {
         public Spec {
             arguments = List.copyOf(arguments);
             environmentOverrides = new LinkedHashMap<>(environmentOverrides);
+            environment = environment == null ? null : new LinkedHashMap<>(environment);
+        }
+
+        public Spec(
+                String program,
+                List<String> arguments,
+                Map<String, String> environmentOverrides,
+                @Nullable Path workingDirectory,
+                @Nullable Path stdin) {
+            this(program, arguments, environmentOverrides, workingDirectory, stdin, null);
+        }
+
+        public Spec withEnvironment(Map<String, String> replacement) {
+            return new Spec(program, arguments, environmentOverrides, workingDirectory, stdin, replacement);
         }
     }
 
@@ -69,13 +88,19 @@ public final class ProcessRunner {
     }
 
     private static boolean captureGroup(Spec spec, Path prefix, Path stdout, Path stderr, long timeoutSeconds) {
-        Map<String, String> environment = ProcessEnvironment.snapshot();
+        Map<String, String> environment =
+                spec.environment() == null ? ProcessEnvironment.snapshot() : new LinkedHashMap<>(spec.environment());
         environment.putAll(spec.environmentOverrides());
         Path workingDirectory =
                 spec.workingDirectory() == null ? Path.of("").toAbsolutePath() : spec.workingDirectory();
         String executable = spec.program().contains("/")
                 ? spec.program()
-                : ExecutableLookup.resolve(spec.program(), ProcessEnvironment.get("PATH"), null);
+                : ExecutableLookup.resolve(
+                        spec.program(),
+                        spec.environment() == null
+                                ? ProcessEnvironment.get("PATH")
+                                : spec.environment().get("PATH"),
+                        null);
         touch(stdout);
         touch(stderr);
         int pid;
@@ -120,7 +145,12 @@ public final class ProcessRunner {
     private static boolean captureChild(Spec spec, Path prefix, Path stdout, Path stderr, long timeoutSeconds) {
         ProcessBuilder builder = new ProcessBuilder();
         Map<String, String> environment = builder.environment();
-        ProcessEnvironment.applyTo(environment);
+        if (spec.environment() == null) {
+            ProcessEnvironment.applyTo(environment);
+        } else {
+            environment.clear();
+            environment.putAll(spec.environment());
+        }
         environment.putAll(spec.environmentOverrides());
         String executable = spec.program().contains("/")
                 ? spec.program()

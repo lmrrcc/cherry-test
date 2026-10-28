@@ -1,11 +1,12 @@
 package com.cherrytest.cli;
 
-import com.cherrytest.common.process.ProcessEnvironment;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustIoError;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 
 public record RunDir(String id, Path root, Path reports, Path coverage) {
     public static RunDir create(Path workspaceRoot, Path runsBase, RunIdGenerator ids) {
@@ -47,9 +48,11 @@ public record RunDir(String id, Path root, Path reports, Path coverage) {
         return root.resolve("env.json");
     }
 
-    public void exportEnv() {
-        ProcessEnvironment.set("CHERRY_TEST_RUN_DIR", root.toString());
-        ProcessEnvironment.set("CHERRY_TEST_REPORT_DIR", reports.toString());
+    /** {@code CHERRY_TEST_RUN_DIR} and {@code CHERRY_TEST_REPORT_DIR}, which every job of the run receives. */
+    public List<Map.Entry<String, String>> env() {
+        return List.of(
+                Map.entry("CHERRY_TEST_RUN_DIR", root.toString()),
+                Map.entry("CHERRY_TEST_REPORT_DIR", reports.toString()));
     }
 
     private static void deleteIgnoringErrors(Path path) {

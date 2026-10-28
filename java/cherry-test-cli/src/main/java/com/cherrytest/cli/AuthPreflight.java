@@ -7,12 +7,25 @@ import com.cherrytest.core.Auth;
 import com.cherrytest.core.AuthProfileConfig;
 import com.cherrytest.core.TestItConfig;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.TreeSet;
 
 public final class AuthPreflight {
     private AuthPreflight() {}
 
-    public static void runAuthPreflight(Path workspaceRoot, TestItConfig config, PreflightPlan plan, boolean quiet) {
+    /**
+     * Fetches a token for every auth profile the discovered tests use and returns the variables to export. Profiles
+     * that fail mark their tests skipped; the Okta mock URL is read from {@code environment}.
+     */
+    public static List<Map.Entry<String, String>> runAuthPreflight(
+            Path workspaceRoot,
+            TestItConfig config,
+            PreflightPlan plan,
+            boolean quiet,
+            Map<String, String> environment) {
+        List<Map.Entry<String, String>> exports = new ArrayList<>();
         TreeSet<String> profiles = new TreeSet<>(RustOrdering.STRING_ORDER);
         for (DiscoveredTest test : plan.discovered()) {
             if (test.attrAuth() != null) {
@@ -20,7 +33,7 @@ public final class AuthPreflight {
             }
         }
         if (profiles.isEmpty()) {
-            return;
+            return exports;
         }
         for (String profileName : profiles) {
             AuthProfileConfig profile;
@@ -31,7 +44,7 @@ public final class AuthPreflight {
                 continue;
             }
             try {
-                Auth.ensureProfileToken(workspaceRoot, profileName, profile);
+                exports.addAll(Auth.profileTokenEnv(workspaceRoot, profileName, profile, environment));
             } catch (RuntimeException error) {
                 markAuthSkip(plan, profileName, AnyhowError.alternate(error), quiet);
                 continue;
@@ -40,6 +53,7 @@ public final class AuthPreflight {
                 Terminal.println("auth preflight: profile `" + profileName + "` ready");
             }
         }
+        return exports;
     }
 
     private static void markAuthSkip(PreflightPlan plan, String profile, String reason, boolean quiet) {

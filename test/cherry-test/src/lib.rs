@@ -10,11 +10,14 @@ pub mod git_diff;
 pub mod init;
 pub mod node_discover;
 pub mod node_runtime;
+pub mod plan;
 pub mod preflight;
 pub mod report;
 pub mod run_dir;
+pub mod run_env;
 pub mod runner;
 pub mod scaffold;
+pub mod scheduler;
 pub mod update;
 pub mod vitest_report;
 
@@ -128,6 +131,7 @@ fn run_tests(cli: RunCli) -> Result<i32> {
     if show_banner(&cli) {
         print_banner();
     }
+    let process_env = run_env::snapshot();
     let config_roots = discover::config_roots_from(cli.root.as_deref(), cli.filter.as_deref())?;
     let mut exit_code = 0;
     let multi = config_roots.len() > 1;
@@ -135,7 +139,7 @@ fn run_tests(cli: RunCli) -> Result<i32> {
         if multi && !cli.quiet {
             println!("{COMMAND_NAME}: config root {}", config_root.display());
         }
-        let code = run_tests_at_root(&cli, config_root)?;
+        let code = run_tests_at_root(&cli, config_root, &process_env)?;
         if code != 0 {
             exit_code = code;
             if !cli.keep_going {
@@ -146,10 +150,15 @@ fn run_tests(cli: RunCli) -> Result<i32> {
     Ok(exit_code)
 }
 
-fn run_tests_at_root(cli: &RunCli, workspace: &std::path::Path) -> Result<i32> {
-    std::env::set_var(
-        "CHERRY_TEST_WORKSPACE_ROOT",
-        workspace.to_string_lossy().as_ref(),
+fn run_tests_at_root(
+    cli: &RunCli,
+    workspace: &std::path::Path,
+    process_env: &run_env::Environment,
+) -> Result<i32> {
+    let mut env = process_env.clone();
+    env.insert(
+        "CHERRY_TEST_WORKSPACE_ROOT".into(),
+        workspace.to_string_lossy().into_owned(),
     );
 
     let mut config = TestItConfig::load(workspace)?;
@@ -191,7 +200,7 @@ fn run_tests_at_root(cli: &RunCli, workspace: &std::path::Path) -> Result<i32> {
         };
 
     let coverage_requested =
-        plan.config.defaults.coverage && !cli.no_coverage && !skip_coverage_env();
+        plan.config.defaults.coverage && !cli.no_coverage && !skip_coverage_env(process_env);
     let has_rust_packages = plan.projects.iter().any(|project| {
         project.members.iter().any(|member| {
             member.runtime == cherry_test_core::PackageRuntime::Rust
@@ -219,10 +228,10 @@ fn run_tests_at_root(cli: &RunCli, workspace: &std::path::Path) -> Result<i32> {
         );
         println!();
     }
-    run_dir.export_env();
-    std::env::set_var("CHERRY_TEST_RUN_ID", &run_dir.id);
-    std::env::set_var(
-        "CHERRY_TEST_COMPOSE_PROJECT",
+    env.extend(run_dir.env());
+    env.insert("CHERRY_TEST_RUN_ID".into(), run_dir.id.clone());
+    env.insert(
+        "CHERRY_TEST_COMPOSE_PROJECT".into(),
         format!("cherry-test-{}", run_dir.id),
     );
 
@@ -239,6 +248,7 @@ fn run_tests_at_root(cli: &RunCli, workspace: &std::path::Path) -> Result<i32> {
         },
         extra_test_args: &cli.cargo_test_args,
         kinds: &cli.kinds,
+        env,
     };
 
     let preflight = plan.preflight.clone();
@@ -316,10 +326,6 @@ fn run_tests_at_root(cli: &RunCli, workspace: &std::path::Path) -> Result<i32> {
     }
 
     report::print_aggregate_report(&snapshot, !cli.quiet, cli.verbose && !cli.quiet);
-
-    if outcome.ran_integration {
-        let _ = cherry_test_core::teardown_scopes();
-    }
 
     if outcome.failed || report_failed {
         return Ok(1);
@@ -443,8 +449,8 @@ fn push_mark_run(out: &mut String, kind: char, buf: &str) {
     }
 }
 
-fn skip_coverage_env() -> bool {
-    std::env::var("CHERRY_TEST_SKIP_COVERAGE")
+fn skip_coverage_env(env: &run_env::Environment) -> bool {
+    env.get("CHERRY_TEST_SKIP_COVERAGE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
 }

@@ -5,19 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.cherrytest.common.process.ProcessEnvironment;
 import java.nio.file.Path;
 import java.time.Instant;
-import org.junit.jupiter.api.AfterEach;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class RunDirTest {
     @TempDir
     Path workspace;
-
-    @AfterEach
-    void forget_exported_variables() {
-        ProcessEnvironment.remove("CHERRY_TEST_RUN_DIR");
-        ProcessEnvironment.remove("CHERRY_TEST_REPORT_DIR");
-    }
 
     @Test
     void run_id_has_expected_shape() {
@@ -49,12 +43,13 @@ class RunDirTest {
     }
 
     @Test
-    void export_env_sets_vars() {
+    void env_names_run_and_report_dirs() {
         RunDir run = RunDir.create(workspace, Path.of("runs"), RunIdGenerator.systemClock());
-        run.exportEnv();
+        assertThat(run.env())
+                .containsExactly(
+                        Map.entry("CHERRY_TEST_RUN_DIR", run.root().toString()),
+                        Map.entry("CHERRY_TEST_REPORT_DIR", run.reports().toString()));
         assertThat(ProcessEnvironment.get("CHERRY_TEST_RUN_DIR"))
-                .isEqualTo(run.root().toString());
-        assertThat(ProcessEnvironment.get("CHERRY_TEST_REPORT_DIR"))
-                .isEqualTo(run.reports().toString());
+                .isNotEqualTo(run.root().toString());
     }
 }

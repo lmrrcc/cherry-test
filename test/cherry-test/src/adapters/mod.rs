@@ -99,10 +99,12 @@ fn discover(
     Ok(())
 }
 
+/// Runs one adapter with exactly the variables in `env`; the CLI's own environment is not inherited.
 pub fn invoke(
     name: &str,
     config: Option<&AdapterConfig>,
     request: &AdapterRequest,
+    env: &cherry_test_core::Environment,
 ) -> Result<AdapterResponse> {
     std::fs::create_dir_all(&request.output)?;
     let mut command = if let Some(config) = config {
@@ -120,6 +122,8 @@ pub fn invoke(
     let request_file = request.output.join("request.json");
     std::fs::write(&request_file, serde_json::to_vec(request)?)?;
     command
+        .env_clear()
+        .envs(env)
         .stdin(Stdio::from(std::fs::File::open(request_file)?))
         .current_dir(&request.root);
     let prefix = request.output.join("adapter");

@@ -1,9 +1,9 @@
 package com.cherrytest.core;
 
-import com.cherrytest.common.process.ProcessEnvironment;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 sealed interface ScopeProvisioner permits ComposeCliProvisioner, TestcontainersProvisioner {
     String VARIABLE = "CHERRY_TEST_PROVISIONER";
@@ -14,14 +14,21 @@ sealed interface ScopeProvisioner permits ComposeCliProvisioner, TestcontainersP
             String scope,
             List<String> projectNames,
             List<Path> composeFiles,
-            List<String> services);
+            List<String> services,
+            Map<String, String> environment);
 
-    String mappedAddress(Path root, List<Path> composeFiles, String project, String service, int port);
+    String mappedAddress(
+            Path root,
+            List<Path> composeFiles,
+            String project,
+            String service,
+            int port,
+            Map<String, String> environment);
 
-    void down(Path root, List<Path> composeFiles);
+    void down(Path root, List<Path> composeFiles, Map<String, String> environment);
 
-    static ScopeProvisioner selected() {
-        String value = ProcessEnvironment.get(VARIABLE);
+    static ScopeProvisioner selected(Map<String, String> environment) {
+        String value = environment.get(VARIABLE);
         if (value == null || value.isEmpty() || value.equals("compose")) {
             return ComposeCliProvisioner.INSTANCE;
         }

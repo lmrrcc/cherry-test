@@ -131,8 +131,13 @@ public final class Adapters {
         }
     }
 
+    /** Runs one adapter with exactly the variables in {@code environment}; the CLI's environment is not inherited. */
     public static AdapterResponse invoke(
-            String name, @Nullable AdapterConfig config, AdapterRequest request, SelfCommand self) {
+            String name,
+            @Nullable AdapterConfig config,
+            AdapterRequest request,
+            SelfCommand self,
+            Map<String, String> environment) {
         createDirectories(request.output());
         ProcessRunner.Spec spec;
         Path requestFile = request.output().resolve("request.json");
@@ -153,7 +158,10 @@ public final class Adapters {
         }
         Path prefix = request.output().resolve("adapter");
         boolean success = ProcessRunner.capture(
-                spec, prefix, config == null ? AdapterConfig.DEFAULT_TIMEOUT_SECS : config.timeoutSecs(), true);
+                spec.withEnvironment(environment),
+                prefix,
+                config == null ? AdapterConfig.DEFAULT_TIMEOUT_SECS : config.timeoutSecs(),
+                true);
         Path stdout = RustPath.withExtension(prefix, "stdout");
         byte[] data;
         try {

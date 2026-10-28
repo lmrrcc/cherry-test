@@ -15,8 +15,6 @@ import com.cherrytest.common.adapter.AdapterResponse;
 import com.cherrytest.common.adapter.ExecutionMode;
 import com.cherrytest.common.adapter.TestResult;
 import com.cherrytest.common.adapter.TestStatus;
-import com.cherrytest.common.process.EnvFile;
-import com.cherrytest.common.process.ProcessEnvironment;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustIoError;
 import com.cherrytest.common.rustcompat.RustOrdering;
@@ -25,22 +23,19 @@ import com.cherrytest.common.rustcompat.RustText;
 import com.cherrytest.core.ExternalRunner;
 import com.cherrytest.core.PackageConfig;
 import com.cherrytest.core.PackageRuntime;
-import com.cherrytest.core.Scope;
 import com.cherrytest.core.TestItConfig;
-import com.cherrytest.core.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.node.JsonNodeFactory;
 
 public final class Runner {
     private Runner() {}
@@ -59,7 +54,18 @@ public final class Runner {
             TestListing testListing,
             List<String> extraTestArgs,
             List<String> kinds,
-            Adapters.SelfCommand self) {}
+            Adapters.SelfCommand self,
+            Map<String, String> env) {
+        public RunOptions {
+            SortedMap<String, String> base = new TreeMap<>(RustOrdering.STRING_ORDER);
+            base.putAll(env);
+            env = base;
+        }
+    }
+
+    /** What one finished job contributes to the run's results. */
+    public record JobOutcome(
+            Plan.JobKey key, boolean success, @Nullable Path lcov, Duration elapsed) {}
 
     private record PackageKey(String project, String packageName) implements Comparable<PackageKey> {
         @Override
@@ -69,204 +75,131 @@ public final class Runner {
         }
     }
 
-    public static RunOutcome runProjects(
-            List<ProjectGroup> projects, RunOptions options, PreflightPlan preflightInput) {
-        PreflightPlan preflight = preflightInput.copy();
+    public static RunOutcome runProjects(List<ProjectGroup> projects, RunOptions options, PreflightPlan preflight) {
+        Plan plan = Plan.plan(projects, options, preflight);
+        List<Scheduler.Finished> finished = Scheduler.run(plan, projects, options, preflight);
+        return aggregate(options, finished);
+    }
+
+    /**
+     * Runs one planned job: completes its request from the job environment, invokes the adapter and saves the
+     * result. A non-null {@code setupError} fails the job without starting its adapter.
+     */
+    static JobOutcome executeJob(
+            Plan.Job job,
+            Map<String, String> environment,
+            PreflightPlan preflight,
+            @Nullable String setupError,
+            RunOptions options) {
+        long started = System.nanoTime();
+        String adapter = job.adapter();
+        String phase = job.key().phase();
+        String packageName = job.key().packageName();
+        AdapterRequest planned = job.request();
+        List<String> args = new ArrayList<>(planned.args());
+        if (adapter.equals("cargo") && phase.equals("integration")) {
+            for (SkippedTest skip : preflight.skipped()) {
+                if (skip.packageName().equals(packageName)) {
+                    args.add("--skip");
+                    args.add(skip.function());
+                }
+            }
+        }
+        if (adapter.equals("maven") && phase.equals("integration")) {
+            String excludes = mavenSkipExcludes(preflight, packageName);
+            if (excludes != null) {
+                Path file = planned.output().resolve("cherry-test-skips.txt");
+                try {
+                    Files.createDirectories(planned.output());
+                    Files.writeString(file, excludes, StandardCharsets.UTF_8);
+                } catch (IOException exception) {
+                    throw new AnyhowError(RustIoError.display(exception), null);
+                }
+                args.add("-Dfailsafe.excludesFile=" + file);
+            }
+        }
+        AdapterRequest request = new AdapterRequest(
+                planned.protocol(),
+                planned.project(),
+                planned.packageName(),
+                planned.phase(),
+                planned.root(),
+                planned.manifest(),
+                planned.cwd(),
+                planned.output(),
+                planned.execution(),
+                planned.coverage(),
+                planned.strict(),
+                args,
+                RunEnv.requestEnv(environment),
+                planned.options());
+        if (!options.quiet()) {
+            Terminal.println("==> " + job.key().project() + "/" + packageName + "/" + phase + " (" + adapter + ")");
+        }
+        AdapterResponse response;
+        try {
+            if (setupError != null) {
+                response = AdapterResponse.failure(setupError);
+            } else {
+                response = Adapters.invoke(
+                        adapter, options.config().adapters().get(adapter), request, options.self(), environment);
+            }
+        } catch (RuntimeException error) {
+            response = AdapterResponse.failure(AnyhowError.alternate(error));
+        }
+        if (discoversScopes(adapter) && phase.equals("integration")) {
+            recordSkips(response, preflight, packageName, request.strict());
+        }
+        CoveragePaths paths = new CoveragePaths(options.runDir(), job.key().project());
+        paths.ensureDirs();
+        Path lcovFile = null;
+        if (!response.coverage().isEmpty()) {
+            Path lcov = paths.lcovDir().resolve(packageName + "-" + phase + ".lcov");
+            try {
+                normalizeCoverage(request, response.coverage(), lcov);
+                lcovFile = lcov;
+            } catch (RuntimeException error) {
+                response.success(false);
+                response.diagnostics().add("coverage import failed: " + AnyhowError.alternate(error));
+            }
+        }
+        AdapterResponse saved =
+                Adapters.save(request, response, options.runDir().reports());
+        if (!options.quiet()) {
+            if (options.testListing() == TestListing.AFTER_EACH_PHASE) {
+                ReportOutput.printPhaseResults(saved.tests());
+            }
+            if (!saved.success()) {
+                Terminal.eprintln("  failed: " + failureSummary(saved));
+            }
+        }
+        return new JobOutcome(job.key(), saved.success(), lcovFile, Duration.ofNanos(System.nanoTime() - started));
+    }
+
+    /** Folds finished jobs, taken in plan order, into per-package results and coverage lists. */
+    static RunOutcome aggregate(RunOptions options, List<Scheduler.Finished> input) {
+        List<Scheduler.Finished> finished = new ArrayList<>(input);
+        finished.sort(Comparator.comparingInt(Scheduler.Finished::order));
         TreeMap<PackageKey, Boolean> statuses = new TreeMap<>();
         TreeMap<PackageKey, List<Path>> coverage = new TreeMap<>();
         List<Path> unit = new ArrayList<>();
         List<Path> integration = new ArrayList<>();
-        boolean ranIntegration = false;
-        for (String phase : phasesFor(options.kinds())) {
-            if (!options.kinds().isEmpty() && !options.kinds().contains(phase)) {
-                continue;
-            }
-            ProcessEnvironment.set("CHERRY_TEST_PHASE", phase);
-            TreeSet<String> booted = new TreeSet<>(RustOrdering.STRING_ORDER);
-            boolean authReady = false;
-            for (ProjectGroup project : projects) {
-                EnvFile.apply(options.workspaceRoot(), project.id());
-                for (WorkspaceMember member : project.members()) {
-                    if (ProcessRunner.cancelled()) {
-                        break;
-                    }
-                    PackageConfig packageConfig = options.config().packageConfig(project.id(), member.name());
-                    List<String> configured = options.config().packageKinds(member.name(), project.id());
-                    for (String kind : configured) {
-                        if (TestKind.parse(kind) == null) {
-                            throw new AnyhowError("unknown test kind " + kind);
-                        }
-                    }
-                    if (!configured.contains(phase)) {
-                        continue;
-                    }
-                    ExternalRunner runner = switch (phase) {
-                        case "unit" -> packageConfig.unit();
-                        case "integration" -> packageConfig.integration();
-                        case "functional" -> options.config().functionalRunner(member.name(), project.id());
-                        case "ui" -> options.config().uiRunner(member.name(), project.id());
-                        case "visual" -> packageConfig.visual();
-                        case "mutation" -> packageConfig.mutation();
-                        default -> null;
-                    };
-                    String adapter = phaseAdapter(phase, runner, packageConfig);
-                    Path cwd;
-                    if (runner != null && runner.cwd() != null) {
-                        cwd = options.workspaceRoot().resolve(runner.cwd());
-                    } else {
-                        Path manifest = options.workspaceRoot().resolve(member.manifestPath());
-                        cwd = manifest.getParent() == null ? options.workspaceRoot() : manifest.getParent();
-                    }
-                    Path output = options.runDir()
-                            .reports()
-                            .resolve("adapters")
-                            .resolve(project.id())
-                            .resolve(member.name())
-                            .resolve(phase);
-                    SortedMap<String, JsonNode> requestOptions = new TreeMap<>(RustOrdering.STRING_ORDER);
-                    requestOptions.putAll(packageConfig.options());
-                    if (runner != null) {
-                        requestOptions.putAll(runner.options());
-                        if (!runner.command().isEmpty()) {
-                            requestOptions.put("command", JsonNodeFactory.instance.stringNode(runner.command()));
-                        }
-                    }
-                    List<String> args = new ArrayList<>(runner == null ? List.of() : runner.args());
-                    if (adapter.equals("cargo")) {
-                        args.addAll(options.extraTestArgs());
-                    }
-                    List<String> scopes = new ArrayList<>();
-                    if (phase.equals("integration") && discoversScopes(adapter)) {
-                        for (DiscoveredTest test : preflight.discovered()) {
-                            if (test.packageName().equals(member.name())
-                                    && preflight.scopesToBoot().contains(test.effectiveScope())) {
-                                scopes.add(test.effectiveScope());
-                            }
-                        }
-                    }
-                    if (runner != null && runner.scope() != null && Scope.needsDocker(runner.scope())) {
-                        scopes.add(runner.scope());
-                    }
-                    RuntimeException setupError = null;
-                    try {
-                        for (String scope : scopes) {
-                            ranIntegration = true;
-                            if (!booted.contains(scope)) {
-                                Workspace.bootScope(scope);
-                                booted.add(scope);
-                            }
-                        }
-                        if (phase.equals("integration") && !authReady && !booted.isEmpty()) {
-                            AuthPreflight.runAuthPreflight(
-                                    options.workspaceRoot(), options.config(), preflight, options.quiet());
-                            authReady = true;
-                        }
-                    } catch (RuntimeException error) {
-                        setupError = error;
-                    }
-                    if (adapter.equals("cargo") && phase.equals("integration")) {
-                        for (SkippedTest skip : preflight.skipped()) {
-                            if (skip.packageName().equals(member.name())) {
-                                args.add("--skip");
-                                args.add(skip.function());
-                            }
-                        }
-                    }
-                    if (adapter.equals("maven") && phase.equals("integration")) {
-                        String excludes = mavenSkipExcludes(preflight, member.name());
-                        if (excludes != null) {
-                            Path file = output.resolve("cherry-test-skips.txt");
-                            try {
-                                Files.createDirectories(output);
-                                Files.writeString(file, excludes, StandardCharsets.UTF_8);
-                            } catch (IOException exception) {
-                                throw new AnyhowError(RustIoError.display(exception), null);
-                            }
-                            args.add("-Dfailsafe.excludesFile=" + file);
-                        }
-                    }
-                    SortedMap<String, String> env = new TreeMap<>(RustOrdering.STRING_ORDER);
-                    for (Map.Entry<String, String> variable :
-                            ProcessEnvironment.snapshot().entrySet()) {
-                        String key = variable.getKey();
-                        if (key.startsWith("CHERRY_TEST_")
-                                && !key.contains("AUTH")
-                                && !key.contains("TOKEN")
-                                && !key.contains("SECRET")) {
-                            env.put(key, variable.getValue());
-                        }
-                    }
-                    AdapterRequest request = new AdapterRequest(
-                            AdapterResponse.PROTOCOL_VERSION,
-                            project.id(),
-                            member.name(),
-                            phase,
-                            options.workspaceRoot(),
-                            options.workspaceRoot().resolve(member.manifestPath()),
-                            cwd,
-                            output,
-                            phaseExecution(
-                                    phase,
-                                    packageConfig.execution(),
-                                    options.config().defaults().execution()),
-                            phaseCollectsCoverage(phase, options.coverage()),
-                            options.config().defaults().strict(),
-                            args,
-                            env,
-                            requestOptions);
-                    if (!options.quiet()) {
-                        Terminal.println(
-                                "==> " + project.id() + "/" + member.name() + "/" + phase + " (" + adapter + ")");
-                    }
-                    AdapterResponse response;
-                    try {
-                        if (setupError != null) {
-                            throw setupError;
-                        }
-                        response = Adapters.invoke(
-                                adapter, options.config().adapters().get(adapter), request, options.self());
-                    } catch (RuntimeException error) {
-                        response = AdapterResponse.failure(AnyhowError.alternate(error));
-                    }
-                    if (discoversScopes(adapter) && phase.equals("integration")) {
-                        recordSkips(response, preflight, member.name(), request.strict());
-                    }
-                    PackageKey key = new PackageKey(project.id(), member.name());
-                    CoveragePaths paths = new CoveragePaths(options.runDir(), project.id());
-                    paths.ensureDirs();
-                    if (!response.coverage().isEmpty()) {
-                        Path lcov = paths.lcovDir().resolve(member.name() + "-" + phase + ".lcov");
-                        try {
-                            normalizeCoverage(request, response.coverage(), lcov);
-                            coverage.computeIfAbsent(key, ignored -> new ArrayList<>())
-                                    .add(lcov);
-                            if (phase.equals("unit")) {
-                                unit.add(lcov);
-                            } else if (phase.equals("integration")) {
-                                integration.add(lcov);
-                            }
-                        } catch (RuntimeException error) {
-                            response.success(false);
-                            response.diagnostics().add("coverage import failed: " + AnyhowError.alternate(error));
-                        }
-                    }
-                    AdapterResponse saved =
-                            Adapters.save(request, response, options.runDir().reports());
-                    statuses.merge(key, saved.success(), (existing, incoming) -> existing && incoming);
-                    if (!options.quiet()) {
-                        if (options.testListing() == TestListing.AFTER_EACH_PHASE) {
-                            ReportOutput.printPhaseResults(saved.tests());
-                        }
-                        if (!saved.success()) {
-                            Terminal.eprintln("  failed: " + failureSummary(saved));
-                        }
-                    }
+        List<Map.Entry<Plan.JobKey, Duration>> timings = new ArrayList<>();
+        for (Scheduler.Finished entry : finished) {
+            JobOutcome outcome = entry.outcome();
+            PackageKey key =
+                    new PackageKey(outcome.key().project(), outcome.key().packageName());
+            Path lcov = outcome.lcov();
+            if (lcov != null) {
+                coverage.computeIfAbsent(key, ignored -> new ArrayList<>()).add(lcov);
+                if (outcome.key().phase().equals("unit")) {
+                    unit.add(lcov);
+                } else if (outcome.key().phase().equals("integration")) {
+                    integration.add(lcov);
                 }
             }
-            Workspace.teardownScopes();
-            if (ProcessRunner.cancelled()) {
-                break;
-            }
+            statuses.merge(key, outcome.success(), (existing, incoming) -> existing && incoming);
+            timings.add(Map.entry(outcome.key(), outcome.elapsed()));
         }
         CoverageIgnore ignore = CoverageIgnore.load(options.workspaceRoot(), options.config());
         List<Path> lcovFiles = new ArrayList<>();
@@ -289,7 +222,7 @@ public final class Runner {
         boolean failed = ProcessRunner.cancelled()
                 || results.stream().anyMatch(result -> !result.testsPassed())
                 || (options.config().defaults().strict() && results.isEmpty());
-        return new RunOutcome(results, lcovFiles, unit, integration, failed, ranIntegration);
+        return new RunOutcome(results, lcovFiles, unit, integration, failed, timings);
     }
 
     private static void normalizeCoverage(AdapterRequest request, List<Path> files, Path output) {

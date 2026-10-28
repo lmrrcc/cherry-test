@@ -6,6 +6,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::config::AuthProfileConfig;
+use crate::workspace::{process_environment, Environment};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OAuthCache {
@@ -22,44 +23,64 @@ pub fn env_var_for_profile(profile: &str) -> String {
     )
 }
 
-pub fn ensure_profile_token_blocking(
+/// Fetches or refreshes the token of one profile and returns its `CHERRY_TEST_AUTH_*` variables.
+///
+/// The Okta mock URL is read from `env`; nothing global changes.
+pub fn profile_token_env_blocking(
     workspace_root: &Path,
     profile_name: &str,
     profile: &AuthProfileConfig,
-) -> Result<()> {
+    env: &Environment,
+) -> Result<Vec<(String, String)>> {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .context("tokio runtime for auth preflight")?
-        .block_on(ensure_profile_token(workspace_root, profile_name, profile))
+        .block_on(profile_token_env(
+            workspace_root,
+            profile_name,
+            profile,
+            env,
+        ))
 }
 
+/// Ensures a token for the current process and exports it to the process environment.
 pub async fn ensure_profile_token(
     workspace_root: &Path,
     profile_name: &str,
     profile: &AuthProfileConfig,
 ) -> Result<()> {
+    let env = process_environment();
+    for (key, value) in profile_token_env(workspace_root, profile_name, profile, &env).await? {
+        std::env::set_var(key, value);
+    }
+    Ok(())
+}
+
+async fn profile_token_env(
+    workspace_root: &Path,
+    profile_name: &str,
+    profile: &AuthProfileConfig,
+    env: &Environment,
+) -> Result<Vec<(String, String)>> {
     let cache_path = resolve_cache_path(workspace_root, profile);
     let client = Client::new();
-    let token_url = resolve_token_url(profile)?;
-    let docker_okta = service_token_url(profile).is_ok();
+    let token_url = resolve_token_url(profile, env)?;
+    let docker_okta = service_token_url(profile, env).is_ok();
     if docker_okta {
         let fresh = cherry_test_grant(&client, &token_url, profile).await?;
         write_cache(&cache_path, &fresh)?;
-        export_token(profile_name, &fresh.access_token);
-        return Ok(());
+        return Ok(token_env(profile_name, &fresh.access_token));
     }
     if let Some(cache) = read_cache(&cache_path)? {
         if now_secs() < cache.access_expires_at.saturating_sub(30) {
-            export_token(profile_name, &cache.access_token);
-            return Ok(());
+            return Ok(token_env(profile_name, &cache.access_token));
         }
         if now_secs() < cache.refresh_expires_at.saturating_sub(30) {
             match refresh_token(&client, &token_url, profile, &cache.refresh_token).await {
                 Ok(updated) => {
                     write_cache(&cache_path, &updated)?;
-                    export_token(profile_name, &updated.access_token);
-                    return Ok(());
+                    return Ok(token_env(profile_name, &updated.access_token));
                 }
                 Err(_) => {}
             }
@@ -67,8 +88,7 @@ pub async fn ensure_profile_token(
     }
     let fresh = cherry_test_grant(&client, &token_url, profile).await?;
     write_cache(&cache_path, &fresh)?;
-    export_token(profile_name, &fresh.access_token);
-    Ok(())
+    Ok(token_env(profile_name, &fresh.access_token))
 }
 
 pub fn bearer_from_env(profile: &str) -> Option<String> {
@@ -76,16 +96,18 @@ pub fn bearer_from_env(profile: &str) -> Option<String> {
     std::env::var(&key).ok().filter(|v| !v.is_empty())
 }
 
-fn export_token(profile: &str, access_token: &str) {
-    let key = env_var_for_profile(profile);
-    std::env::set_var(&key, access_token);
-    std::env::set_var(
-        format!(
-            "CHERRY_TEST_AUTH_{}_TOKEN_TYPE",
-            profile.to_uppercase().replace('-', "_")
+/// The access token and token type variables of one profile, in export order.
+fn token_env(profile: &str, access_token: &str) -> Vec<(String, String)> {
+    vec![
+        (env_var_for_profile(profile), access_token.to_string()),
+        (
+            format!(
+                "CHERRY_TEST_AUTH_{}_TOKEN_TYPE",
+                profile.to_uppercase().replace('-', "_")
+            ),
+            "Bearer".to_string(),
         ),
-        "Bearer",
-    );
+    ]
 }
 
 fn resolve_cache_path(workspace_root: &Path, profile: &AuthProfileConfig) -> PathBuf {
@@ -97,8 +119,8 @@ fn resolve_cache_path(workspace_root: &Path, profile: &AuthProfileConfig) -> Pat
     }
 }
 
-fn resolve_token_url(profile: &AuthProfileConfig) -> Result<String> {
-    if let Ok(dynamic) = service_token_url(profile) {
+fn resolve_token_url(profile: &AuthProfileConfig, env: &Environment) -> Result<String> {
+    if let Ok(dynamic) = service_token_url(profile, env) {
         return Ok(dynamic);
     }
     profile
@@ -107,7 +129,7 @@ fn resolve_token_url(profile: &AuthProfileConfig) -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("token_url missing and okta_api service URL unavailable"))
 }
 
-fn service_token_url(profile: &AuthProfileConfig) -> Result<String> {
+fn service_token_url(profile: &AuthProfileConfig, env: &Environment) -> Result<String> {
     let project = profile.okta_api_project.as_deref().unwrap_or("mini");
     let service = profile.okta_api_service.as_deref().unwrap_or("okta_api");
     let prefix = format!(
@@ -115,7 +137,8 @@ fn service_token_url(profile: &AuthProfileConfig) -> Result<String> {
         project.to_uppercase(),
         service.to_uppercase()
     );
-    let base = std::env::var(format!("{prefix}_URL"))
+    let base = env
+        .get(&format!("{prefix}_URL"))
         .context("okta_api service URL not exported; boot docker scope first")?;
     Ok(format!(
         "{}/oauth2/default/v1/token",
@@ -223,6 +246,23 @@ mod tests {
         assert_eq!(
             env_var_for_profile("okta"),
             "CHERRY_TEST_AUTH_OKTA_ACCESS_TOKEN"
+        );
+    }
+
+    #[test]
+    fn token_env_names_the_access_token_and_its_type() {
+        assert_eq!(
+            token_env("okta-mock", "abc"),
+            vec![
+                (
+                    "CHERRY_TEST_AUTH_OKTA_MOCK_ACCESS_TOKEN".to_string(),
+                    "abc".to_string()
+                ),
+                (
+                    "CHERRY_TEST_AUTH_OKTA_MOCK_TOKEN_TYPE".to_string(),
+                    "Bearer".to_string()
+                ),
+            ]
         );
     }
 

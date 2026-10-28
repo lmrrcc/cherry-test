@@ -39,7 +39,8 @@ final class TestcontainersProvisioner implements ScopeProvisioner {
             String scope,
             List<String> projectNames,
             List<Path> composeFiles,
-            List<String> services) {
+            List<String> services,
+            Map<String, String> variables) {
         for (String projectName : projectNames) {
             ProjectConfig project = config.project(projectName);
             if (project.compose() == null || environments.containsKey(projectName)) {
@@ -50,7 +51,7 @@ final class TestcontainersProvisioner implements ScopeProvisioner {
                     .map(ServiceConfig::service)
                     .distinct()
                     .toList();
-            String identifier = identifier(projectName);
+            String identifier = identifier(projectName, variables);
             ComposeContainer compose = new ComposeContainer(identifier, List.of(composeFile.toFile()))
                     .withBuild(true)
                     .withRemoveVolumes(true)
@@ -69,8 +70,8 @@ final class TestcontainersProvisioner implements ScopeProvisioner {
         ProcessEnvironment.setForChildren("CHERRY_TEST_SKIP_DOCKER", "1");
     }
 
-    private static String identifier(String projectName) {
-        String run = ProcessEnvironment.get("CHERRY_TEST_RUN_ID");
+    private static String identifier(String projectName, Map<String, String> variables) {
+        String run = variables.get("CHERRY_TEST_RUN_ID");
         String unique =
                 run == null || run.isEmpty() ? UUID.randomUUID().toString().substring(0, 8) : run;
         return "cherry-test-" + unique + "-" + projectName + "-";
@@ -136,7 +137,12 @@ final class TestcontainersProvisioner implements ScopeProvisioner {
 
     @Override
     public synchronized String mappedAddress(
-            Path root, List<Path> composeFiles, String project, String service, int port) {
+            Path root,
+            List<Path> composeFiles,
+            String project,
+            String service,
+            int port,
+            Map<String, String> variables) {
         Environment environment = environments.get(project);
         if (environment == null) {
             throw new AnyhowError("no testcontainers environment for project `" + project + "`");
@@ -162,7 +168,7 @@ final class TestcontainersProvisioner implements ScopeProvisioner {
     }
 
     @Override
-    public synchronized void down(Path root, List<Path> composeFiles) {
+    public synchronized void down(Path root, List<Path> composeFiles, Map<String, String> variables) {
         environments.values().forEach(environment -> environment.compose().stop());
         environments.clear();
     }

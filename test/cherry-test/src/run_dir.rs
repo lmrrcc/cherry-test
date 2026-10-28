@@ -53,12 +53,18 @@ impl RunDir {
         self.root.join("env.json")
     }
 
-    pub fn export_env(&self) {
-        std::env::set_var("CHERRY_TEST_RUN_DIR", self.root.to_string_lossy().as_ref());
-        std::env::set_var(
-            "CHERRY_TEST_REPORT_DIR",
-            self.reports.to_string_lossy().as_ref(),
-        );
+    /// `CHERRY_TEST_RUN_DIR` and `CHERRY_TEST_REPORT_DIR`, which every job of the run receives.
+    pub fn env(&self) -> Vec<(String, String)> {
+        vec![
+            (
+                "CHERRY_TEST_RUN_DIR".into(),
+                self.root.to_string_lossy().into_owned(),
+            ),
+            (
+                "CHERRY_TEST_REPORT_DIR".into(),
+                self.reports.to_string_lossy().into_owned(),
+            ),
+        ]
     }
 
     pub fn update_latest_symlink(&self, workspace_root: &Path, runs_base: &Path) -> Result<()> {
@@ -164,17 +170,24 @@ mod tests {
     }
 
     #[test]
-    fn export_env_sets_vars() {
+    fn env_names_run_and_report_dirs() {
         let dir = tempfile::tempdir().unwrap();
         let run = RunDir::create(dir.path(), Path::new("runs")).unwrap();
-        run.export_env();
+        let env = run.env();
         assert_eq!(
-            std::env::var("CHERRY_TEST_RUN_DIR").unwrap(),
-            run.root.to_string_lossy()
+            env,
+            vec![
+                (
+                    "CHERRY_TEST_RUN_DIR".to_string(),
+                    run.root.to_string_lossy().into_owned()
+                ),
+                (
+                    "CHERRY_TEST_REPORT_DIR".to_string(),
+                    run.reports.to_string_lossy().into_owned()
+                ),
+            ]
         );
-        assert_eq!(
-            std::env::var("CHERRY_TEST_REPORT_DIR").unwrap(),
-            run.reports.to_string_lossy()
-        );
+        assert!(std::env::var("CHERRY_TEST_RUN_DIR")
+            .map_or(true, |dir| dir != run.root.to_string_lossy()));
     }
 }

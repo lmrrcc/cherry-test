@@ -21,7 +21,8 @@ pub use naming::{parse_test_name, TestId};
 pub use repo_root::{resolve_config_roots, resolve_repo_root};
 pub use scope::{effective_scope, is_none, needs_docker, resolve_projects};
 pub use workspace::{
-    boot_scope, boot_workspace, docker_available, teardown_scopes, teardown_workspace,
+    boot_scope, boot_scope_in, boot_workspace, docker_available, process_environment,
+    teardown_scopes, teardown_scopes_in, teardown_workspace, Environment, ScopeBoot, ScopeState,
     COMPOSE_PROJECT,
 };
 
