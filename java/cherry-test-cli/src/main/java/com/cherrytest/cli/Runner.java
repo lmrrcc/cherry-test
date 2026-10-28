@@ -136,7 +136,7 @@ public final class Runner {
                         args.addAll(options.extraTestArgs());
                     }
                     List<String> scopes = new ArrayList<>();
-                    if (phase.equals("integration") && adapter.equals("cargo")) {
+                    if (phase.equals("integration") && discoversScopes(adapter)) {
                         for (DiscoveredTest test : preflight.discovered()) {
                             if (test.packageName().equals(member.name())
                                     && preflight.scopesToBoot().contains(test.effectiveScope())) {
@@ -170,6 +170,19 @@ public final class Runner {
                                 args.add("--skip");
                                 args.add(skip.function());
                             }
+                        }
+                    }
+                    if (adapter.equals("maven") && phase.equals("integration")) {
+                        String excludes = mavenSkipExcludes(preflight, member.name());
+                        if (excludes != null) {
+                            Path file = output.resolve("cherry-test-skips.txt");
+                            try {
+                                Files.createDirectories(output);
+                                Files.writeString(file, excludes, StandardCharsets.UTF_8);
+                            } catch (IOException exception) {
+                                throw new AnyhowError(RustIoError.display(exception), null);
+                            }
+                            args.add("-Dfailsafe.excludesFile=" + file);
                         }
                     }
                     SortedMap<String, String> env = new TreeMap<>(RustOrdering.STRING_ORDER);
@@ -215,7 +228,7 @@ public final class Runner {
                     } catch (RuntimeException error) {
                         response = AdapterResponse.failure(AnyhowError.alternate(error));
                     }
-                    if (adapter.equals("cargo") && phase.equals("integration")) {
+                    if (discoversScopes(adapter) && phase.equals("integration")) {
                         recordSkips(response, preflight, member.name(), request.strict());
                     }
                     PackageKey key = new PackageKey(project.id(), member.name());
@@ -322,6 +335,27 @@ public final class Runner {
             throw new AnyhowError(RustIoError.display(exception), null);
         }
         Coverage.mergeLcovFiles(List.of(output), output);
+    }
+
+    /** Adapters whose integration tests declare their scope in the source: {@code #[cherry_test]} (Cargo), {@code @CherryTest} (Maven). */
+    static boolean discoversScopes(String adapter) {
+        return adapter.equals("cargo") || adapter.equals("maven");
+    }
+
+    /** Failsafe exclusions for the scoped tests preflight skipped: one {@code Class#method} per line. */
+    static @Nullable String mavenSkipExcludes(PreflightPlan preflight, String packageName) {
+        StringBuilder lines = new StringBuilder();
+        for (SkippedTest skip : preflight.skipped()) {
+            int separator = skip.function().indexOf("::");
+            if (!skip.packageName().equals(packageName) || separator < 0) {
+                continue;
+            }
+            lines.append(skip.function().substring(0, separator).replace('.', '/'))
+                    .append('#')
+                    .append(skip.function().substring(separator + 2))
+                    .append('\n');
+        }
+        return lines.isEmpty() ? null : lines.toString();
     }
 
     static void recordSkips(AdapterResponse response, PreflightPlan preflight, String packageName, boolean strict) {

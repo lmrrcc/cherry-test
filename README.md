@@ -374,6 +374,8 @@ The macro requires an async function with one `env: TestEnv` argument and no dec
 
 The project segment must identify a configured project. These tests are marked ignored for ordinary Cargo runs; Cherry Test selects them during its integration phase.
 
+Java tests declare their scope the same way with `@CherryTest(scope = "...")` from `cherry-test-junit`, on a method named by the same contract and taking a `TestEnv`. For a Maven package, Cherry Test reads `src/test/java` of its module, keeps the classes and methods its integration phase selects (`-Dit.test`, otherwise the Failsafe default includes), and boots their scopes before the phase, as it does for `#[cherry_test]`. Without Docker, the scoped Java tests are excluded from Failsafe and recorded as skipped. A scope set on the phase in `cherry-test.yaml` still applies to any adapter.
+
 ### Mocks and real dependencies
 
 Use your test framework's mocks to exercise cases such as timeouts or an unavailable third-party API. A mock server can also be a service in your Compose file. Cherry Test runs the tests and services you configure; it does not generate mocks or provide a dedicated Testcontainers library adapter.

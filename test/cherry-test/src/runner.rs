@@ -136,7 +136,7 @@ pub fn run_projects(
                     options,
                 };
                 let mut scopes = Vec::new();
-                if phase == "integration" && adapter == "cargo" {
+                if phase == "integration" && discovers_scopes(adapter) {
                     scopes.extend(
                         preflight
                             .discovered
@@ -183,6 +183,16 @@ pub fn run_projects(
                             .extend(["--skip".into(), skip.function.clone()]);
                     }
                 }
+                if adapter == "maven" && phase == "integration" {
+                    if let Some(excludes) = maven_skip_excludes(&preflight, &member.name) {
+                        std::fs::create_dir_all(&request.output)?;
+                        let file = request.output.join("cherry-test-skips.txt");
+                        std::fs::write(&file, excludes)?;
+                        request
+                            .args
+                            .push(format!("-Dfailsafe.excludesFile={}", file.display()));
+                    }
+                }
                 request.env = std::env::vars()
                     .filter(|(k, _)| {
                         k.starts_with("CHERRY_TEST_")
@@ -205,7 +215,7 @@ pub fn run_projects(
                         ..Default::default()
                     },
                 };
-                if adapter == "cargo" && phase == "integration" {
+                if discovers_scopes(adapter) && phase == "integration" {
                     record_skips(&mut response, &preflight, &member.name, request.strict);
                 }
                 let key = (project.id.clone(), member.name.clone());
@@ -309,6 +319,23 @@ fn normalize_coverage(request: &AdapterRequest, files: &[PathBuf], output: &Path
     std::fs::write(output, result)?;
     merge_lcov_files(&[output.to_path_buf()], output)?;
     Ok(())
+}
+
+/// Adapters whose integration tests declare their scope in the source: `#[cherry_test]` (Cargo), `@CherryTest` (Maven).
+fn discovers_scopes(adapter: &str) -> bool {
+    adapter == "cargo" || adapter == "maven"
+}
+
+/// Failsafe exclusions for the scoped tests preflight skipped: one `Class#method` per line.
+fn maven_skip_excludes(preflight: &PreflightPlan, package: &str) -> Option<String> {
+    let lines: Vec<String> = preflight
+        .skipped
+        .iter()
+        .filter(|skip| skip.package == package)
+        .filter_map(|skip| skip.function.split_once("::"))
+        .map(|(class, method)| format!("{}#{method}\n", class.replace('.', "/")))
+        .collect();
+    (!lines.is_empty()).then(|| lines.concat())
 }
 
 fn record_skips(
@@ -528,6 +555,22 @@ mod tests {
         });
         record_skips(&mut response, &preflight, "api", true);
         assert!(!response.success);
+        assert!(discovers_scopes("maven"));
+        assert!(!discovers_scopes("vitest"));
+        assert!(maven_skip_excludes(&preflight, "api").is_none());
+        preflight.skipped.push(crate::preflight::SkippedTest {
+            package: "api".into(),
+            function: "com.example.WalletIT::demo_project_wallet_suite_balance_test".into(),
+            scope: "demo".into(),
+            project: "demo".into(),
+            suite: "wallet".into(),
+            test: "balance".into(),
+            reason: "no docker".into(),
+        });
+        assert_eq!(
+            maven_skip_excludes(&preflight, "api").as_deref(),
+            Some("com/example/WalletIT#demo_project_wallet_suite_balance_test\n")
+        );
         assert_eq!(response.tests.len(), 2);
         assert_eq!(
             response.tests[1].status,
