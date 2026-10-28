@@ -242,7 +242,15 @@ fn run_tests_at_root(cli: &RunCli, workspace: &std::path::Path) -> Result<i32> {
     };
 
     let preflight = plan.preflight.clone();
-    let outcome = runner::run_projects(&plan.projects, &opts, &preflight)?;
+    let containers = plan.config.container_settings_in_use();
+    if containers {
+        adapters::container::start_run(&run_dir.id, cli.quiet);
+    }
+    let outcome = runner::run_projects(&plan.projects, &opts, &preflight);
+    if containers {
+        adapters::container::finish_run(&run_dir.id);
+    }
+    let outcome = outcome?;
 
     let merged_lcov = run_dir.merged_lcov();
     let mut coverage_totals = report::CoverageTotals::default();

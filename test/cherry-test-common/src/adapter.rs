@@ -3,6 +3,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::container::ContainerSpec;
+
 pub const PROTOCOL_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -45,6 +47,9 @@ pub struct AdapterRequest {
     pub env: BTreeMap<String, String>,
     #[serde(default)]
     pub options: BTreeMap<String, serde_json::Value>,
+    /// Resolved `container:` settings; present only for container execution with a configured block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<ContainerSpec>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

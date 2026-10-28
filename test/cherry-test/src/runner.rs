@@ -134,7 +134,16 @@ pub fn run_projects(
                     args,
                     env: BTreeMap::new(),
                     options,
+                    container: None,
                 };
+                let container = adapters::container::resolve(
+                    opts.config.defaults.container.as_ref(),
+                    package.container.as_ref(),
+                    &request,
+                    &opts.run_dir.id,
+                    &opts.run_dir.root,
+                )
+                .map(|spec| request.container = spec);
                 let mut scopes = Vec::new();
                 if phase == "integration" && discovers_scopes(adapter) {
                     scopes.extend(
@@ -204,7 +213,7 @@ pub fn run_projects(
                 if !opts.quiet {
                     println!("==> {}/{}/{phase} ({adapter})", project.id, member.name);
                 }
-                let result = setup.and_then(|_| {
+                let result = setup.and(container).and_then(|_| {
                     adapters::invoke(adapter, opts.config.adapters.get(adapter), &request)
                 });
                 let mut response = match result {
