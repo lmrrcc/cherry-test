@@ -1,6 +1,7 @@
 package com.cherrytest.cli;
 
 import com.cherrytest.common.rustcompat.AnyhowError;
+import com.cherrytest.core.Jobs;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,9 +24,20 @@ final class CommandLine {
 
     static final class UsageError extends RuntimeException {
         private static final long serialVersionUID = 1L;
+        private final boolean showUsage;
 
         UsageError(String message) {
+            this(message, true);
+        }
+
+        /** An error that clap prints without the usage lines, such as an invalid or missing option value. */
+        UsageError(String message, boolean showUsage) {
             super(message, null, false, false);
+            this.showUsage = showUsage;
+        }
+
+        boolean showUsage() {
+            return showUsage;
         }
     }
 
@@ -53,6 +65,8 @@ final class CommandLine {
         boolean keepGoing = false;
         boolean quiet = false;
         boolean verbose = false;
+        Jobs jobs = null;
+        Shard shard = null;
         List<String> trailing = new ArrayList<>();
         int index = 0;
         while (index < arguments.size()) {
@@ -87,8 +101,10 @@ final class CommandLine {
                     String executionValue =
                             value != null ? value : requireValue(arguments, ++index, "--execution <EXECUTION>");
                     if (!executionValue.equals("local") && !executionValue.equals("container")) {
-                        throw new UsageError("invalid value '" + executionValue
-                                + "' for '--execution <EXECUTION>'\n  [possible values: local, container]");
+                        throw new UsageError(
+                                "invalid value '" + executionValue
+                                        + "' for '--execution <EXECUTION>'\n  [possible values: local, container]",
+                                false);
                     }
                     execution = executionValue;
                 }
@@ -99,9 +115,28 @@ final class CommandLine {
                         if (!KINDS.contains(kind)) {
                             throw new UsageError(
                                     "invalid value '" + kind
-                                            + "' for '--kinds <KINDS>'\n  [possible values: unit, integration, functional, ui, visual, mutation]");
+                                            + "' for '--kinds <KINDS>'\n  [possible values: unit, integration, functional, ui, visual, mutation]",
+                                    false);
                         }
                         kinds.add(kind);
+                    }
+                }
+                case "--jobs" -> {
+                    String jobsValue = value != null ? value : requireValue(arguments, ++index, "--jobs <N|auto>");
+                    try {
+                        jobs = Jobs.parse(jobsValue);
+                    } catch (IllegalArgumentException invalid) {
+                        throw new UsageError(
+                                "invalid value '" + jobsValue + "' for '--jobs <N|auto>': " + Jobs.EXPECTED, false);
+                    }
+                }
+                case "--shard" -> {
+                    String shardValue = value != null ? value : requireValue(arguments, ++index, "--shard <I/N>");
+                    try {
+                        shard = Shard.parse(shardValue);
+                    } catch (IllegalArgumentException invalid) {
+                        throw new UsageError(
+                                "invalid value '" + shardValue + "' for '--shard <I/N>': " + Shard.EXPECTED, false);
                     }
                 }
                 case "--no-html" -> noHtml = true;
@@ -142,6 +177,8 @@ final class CommandLine {
                 execution,
                 strict,
                 kinds,
+                jobs,
+                shard,
                 noHtml,
                 noOpen,
                 noBanner,
@@ -153,7 +190,7 @@ final class CommandLine {
 
     private static String requireValue(List<String> arguments, int index, String usage) {
         if (index >= arguments.size()) {
-            throw new UsageError("a value is required for '" + usage + "' but none was supplied");
+            throw new UsageError("a value is required for '" + usage + "' but none was supplied", false);
         }
         return arguments.get(index);
     }
@@ -208,7 +245,7 @@ final class CommandLine {
                   help     Print this message or the help of the given subcommand(s)
 
                 Arguments:
-                  [FILTER]              Project group id (e.g. mini) or package name (e.g. mini-rs-api)
+                  [FILTER]              Project group id (e.g. mini), package name (e.g. mini-rs-api) or @group
                   [CARGO_TEST_ARGS]...  Extra args forwarded to cargo test
 
                 Options:
@@ -220,6 +257,8 @@ final class CommandLine {
                       --execution <EXECUTION>  [possible values: local, container]
                       --strict
                       --kinds <KINDS>          Phases to run. mutation runs only when it is named here [possible values: unit, integration, functional, ui, visual, mutation]
+                      --jobs <N|auto>          Jobs to run at once, or auto for one per CPU (default: defaults.parallel.jobs, else 1)
+                      --shard <I/N>            Run only shard I of N; packages are spread by recorded durations
                       --no-html
                       --no-open                Do not open the HTML report in a browser
                       --no-banner              Do not print the startup banner

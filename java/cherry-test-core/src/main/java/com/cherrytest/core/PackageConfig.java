@@ -20,14 +20,60 @@ public record PackageConfig(
         @Nullable ExternalRunner unit,
         @Nullable ExternalRunner functional,
         @Nullable ExternalRunner ui,
-        @Nullable ExternalRunner mutation) {
+        @Nullable ExternalRunner mutation,
+        @Nullable ResourcesConfig resources,
+        boolean exclusive) {
     public PackageConfig {
         options = new TreeMap<>(options);
         kinds = List.copyOf(kinds);
     }
 
+    /** A package without {@code resources} and not {@code exclusive}. */
+    public PackageConfig(
+            @Nullable String adapter,
+            @Nullable ExecutionMode execution,
+            SortedMap<String, JsonNode> options,
+            @Nullable ExternalRunner integration,
+            @Nullable ExternalRunner visual,
+            PackageRuntime runtime,
+            List<String> kinds,
+            @Nullable Path manifest,
+            @Nullable ExternalRunner unit,
+            @Nullable ExternalRunner functional,
+            @Nullable ExternalRunner ui,
+            @Nullable ExternalRunner mutation) {
+        this(
+                adapter,
+                execution,
+                options,
+                integration,
+                visual,
+                runtime,
+                kinds,
+                manifest,
+                unit,
+                functional,
+                ui,
+                mutation,
+                null,
+                false);
+    }
+
     public PackageConfig withoutExecution() {
         return new PackageConfig(
-                adapter, null, options, integration, visual, runtime, kinds, manifest, unit, functional, ui, mutation);
+                adapter,
+                null,
+                options,
+                integration,
+                visual,
+                runtime,
+                kinds,
+                manifest,
+                unit,
+                functional,
+                ui,
+                mutation,
+                resources,
+                exclusive);
     }
 }

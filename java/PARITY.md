@@ -117,3 +117,4 @@ Every Rust test has a Java twin with the same snake_case name, in the matching c
 | `test/cherry-test-macros/src/lib.rs` | `cherry-test-processor/.../CherryTestProcessorTest` |
 | `test/cherry-test/src/**/*.rs` | `cherry-test-cli/src/test/java/**` (one class per Rust module) |
 | `test/cherry-test/tests/adapter_contract.rs` | `cherry-test-cli/.../contract/AdapterContractIT` (Failsafe, runs the shaded jar) |
+| `test/cherry-test/tests/parallel_run.rs` | `cherry-test-cli/.../contract/ParallelRunIT` (Failsafe, runs the shaded jar) |

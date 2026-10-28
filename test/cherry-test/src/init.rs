@@ -7,9 +7,11 @@ use cherry_test_core::{PackageRuntime, TestItConfig};
 
 use crate::config::TestKind;
 use crate::discover::{ProjectGroup, WorkspaceMember};
+use crate::durations::Durations;
 use crate::filter;
 use crate::node_runtime::resolve_node_binary;
 use crate::preflight::{self, DiscoveredTest, PreflightPlan};
+use crate::shard::Shard;
 
 #[derive(Debug, Clone)]
 pub struct TestPlan {
@@ -21,13 +23,17 @@ pub struct TestPlan {
 
 pub fn initialize(workspace_root: &Path, filter: Option<&str>, quiet: bool) -> Result<TestPlan> {
     let config = TestItConfig::load(workspace_root)?;
-    initialize_with_config(workspace_root, config, filter, quiet)
+    initialize_with_config(workspace_root, config, filter, None, quiet)
 }
+
+/// The error message of a shard that has no package to run.
+pub const EMPTY_SHARD: &str = "selects no packages";
 
 pub fn initialize_with_config(
     workspace_root: &Path,
     config: TestItConfig,
     filter: Option<&str>,
+    shard: Option<Shard>,
     quiet: bool,
 ) -> Result<TestPlan> {
     if config.projects.is_empty() {
@@ -40,9 +46,17 @@ pub fn initialize_with_config(
     let workspace_packages = load_workspace_package_names(workspace_root)?;
     let projects = resolve_projects_from_config(workspace_root, &config, &workspace_packages)?;
 
-    let projects = filter::apply_filter(projects, filter)?;
+    let mut projects = filter::apply_filter(projects, filter, &config.groups)?;
     if projects.is_empty() {
         bail!("no testable workspace members found");
+    }
+    if let Some(shard) = shard {
+        let durations =
+            Durations::load(&Durations::path(workspace_root, &config.defaults.runs_base));
+        projects = crate::shard::select(projects, shard, &durations);
+        if projects.is_empty() {
+            bail!("shard {shard} {EMPTY_SHARD}");
+        }
     }
 
     let preflight = preflight::build_preflight_plan(workspace_root, &projects, &config, quiet)?;

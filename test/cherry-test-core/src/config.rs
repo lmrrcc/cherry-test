@@ -33,6 +33,8 @@ pub struct Defaults {
     pub diff_base: String,
     #[serde(default = "default_coverage_ignore")]
     pub coverage_ignore: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parallel: Option<ParallelConfig>,
 }
 
 impl Default for Defaults {
@@ -48,8 +50,207 @@ impl Default for Defaults {
             scope: default_scope(),
             diff_base: default_diff_base(),
             coverage_ignore: default_coverage_ignore(),
+            parallel: None,
         }
     }
+}
+
+/// How many jobs run at once: a fixed number, or `auto` to follow the CPU budget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Jobs {
+    Auto,
+    Count(u32),
+}
+
+impl std::str::FromStr for Jobs {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        if value == "auto" {
+            return Ok(Jobs::Auto);
+        }
+        match value.parse::<u32>() {
+            Ok(count) if count > 0 => Ok(Jobs::Count(count)),
+            _ => Err("expected a positive number or `auto`".into()),
+        }
+    }
+}
+
+impl std::fmt::Display for Jobs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Jobs::Auto => f.write_str("auto"),
+            Jobs::Count(count) => write!(f, "{count}"),
+        }
+    }
+}
+
+impl Serialize for Jobs {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Jobs::Auto => serializer.serialize_str("auto"),
+            Jobs::Count(count) => serializer.serialize_u32(*count),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Jobs {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        match ScalarValue::deserialize(deserializer)? {
+            ScalarValue::Integer(count) => u32::try_from(count)
+                .ok()
+                .filter(|count| *count > 0)
+                .map(Jobs::Count)
+                .ok_or_else(|| serde::de::Error::custom("expected a positive number or `auto`")),
+            ScalarValue::Text(text) => text.parse().map_err(serde::de::Error::custom),
+            ScalarValue::Float(_) => Err(serde::de::Error::custom(
+                "expected a positive number or `auto`",
+            )),
+        }
+    }
+}
+
+/// A CPU amount in thousandths of a CPU; YAML gives it as a number such as `2` or `0.5`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cpus(pub u64);
+
+impl Serialize for Cpus {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_f64(self.0 as f64 / 1000.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for Cpus {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let value = match ScalarValue::deserialize(deserializer)? {
+            ScalarValue::Integer(count) => count as f64,
+            ScalarValue::Float(value) => value,
+            ScalarValue::Text(_) => {
+                return Err(serde::de::Error::custom(
+                    "expected a positive number of CPUs",
+                ))
+            }
+        };
+        let millicpus = (value * 1000.0).round();
+        if !value.is_finite() || millicpus < 1.0 {
+            return Err(serde::de::Error::custom(
+                "expected a positive number of CPUs",
+            ));
+        }
+        Ok(Cpus(millicpus as u64))
+    }
+}
+
+/// A memory amount in bytes; YAML gives it as bytes or with a binary unit such as `512m` or `8g`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Memory(pub u64);
+
+impl Memory {
+    /// Parses `8g`, `1.5G`, `512mi`, `512MiB`, `1024k` or a plain byte count; units are powers of 1024.
+    pub fn parse(value: &str) -> std::result::Result<Self, String> {
+        let error = || format!("invalid memory `{value}`; use bytes or a unit such as 512m or 8g");
+        let text = value.trim().to_ascii_lowercase();
+        let digits_end = text
+            .find(|ch: char| !ch.is_ascii_digit() && ch != '.')
+            .unwrap_or(text.len());
+        let (number, unit) = text.split_at(digits_end);
+        let unit = unit.trim();
+        let unit = unit.strip_suffix('b').unwrap_or(unit);
+        let unit = unit.strip_suffix('i').unwrap_or(unit);
+        let multiplier: u64 = match unit {
+            "" => 1,
+            "k" => 1 << 10,
+            "m" => 1 << 20,
+            "g" => 1 << 30,
+            "t" => 1 << 40,
+            _ => return Err(error()),
+        };
+        if number.is_empty() || number.starts_with('.') || number.ends_with('.') {
+            return Err(error());
+        }
+        let amount: f64 = number.parse().map_err(|_| error())?;
+        let bytes = (amount * multiplier as f64).floor();
+        if !bytes.is_finite() || bytes < 1.0 || bytes >= (1u64 << 63) as f64 {
+            return Err(error());
+        }
+        Ok(Memory(bytes as u64))
+    }
+}
+
+impl Serialize for Memory {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_u64(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for Memory {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        match ScalarValue::deserialize(deserializer)? {
+            ScalarValue::Integer(bytes) if bytes > 0 => Ok(Memory(bytes as u64)),
+            ScalarValue::Text(text) => Memory::parse(&text).map_err(serde::de::Error::custom),
+            _ => Err(serde::de::Error::custom(
+                "expected bytes or a unit such as 512m or 8g",
+            )),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ScalarValue {
+    Integer(i64),
+    Float(f64),
+    Text(String),
+}
+
+/// `defaults.parallel`: how many jobs run at once and the CPU and memory they may share.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ParallelConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jobs: Option<Jobs>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<Cpus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<Memory>,
+    #[serde(default = "default_true")]
+    pub phase_barrier: bool,
+}
+
+impl Default for ParallelConfig {
+    fn default() -> Self {
+        Self {
+            jobs: None,
+            cpus: None,
+            memory: None,
+            phase_barrier: true,
+        }
+    }
+}
+
+/// `packages.<name>.resources`: what one job of the package reserves while it runs.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ResourcesConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<Cpus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<Memory>,
 }
 
 fn default_coverage_ignore() -> PathBuf {
@@ -126,6 +327,14 @@ pub struct PackageConfig {
     pub ui: Option<ExternalRunner>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mutation: Option<ExternalRunner>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resources: Option<ResourcesConfig>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub exclusive: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -197,6 +406,8 @@ struct RawConfig {
     packages: BTreeMap<String, PackageConfig>,
     #[serde(default)]
     scopes: BTreeMap<String, ScopeConfig>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    groups: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -209,6 +420,8 @@ pub struct TestItConfig {
     pub auth: BTreeMap<String, AuthProfileConfig>,
     pub projects: BTreeMap<String, ProjectConfig>,
     pub scopes: BTreeMap<String, ScopeConfig>,
+    /// `groups.<name>`: package names or globs that the filter `@name` selects.
+    pub groups: BTreeMap<String, Vec<String>>,
 }
 
 pub type WorkspaceConfig = TestItConfig;
@@ -224,6 +437,7 @@ impl Default for TestItConfig {
             auth: BTreeMap::new(),
             projects: BTreeMap::new(),
             scopes: BTreeMap::new(),
+            groups: BTreeMap::new(),
         }
     }
 }
@@ -286,6 +500,7 @@ impl TestItConfig {
             auth: raw.auth,
             projects,
             scopes: raw.scopes,
+            groups: raw.groups,
         })
     }
 
@@ -421,6 +636,7 @@ impl TestItConfig {
             projects: self.projects.clone(),
             packages: BTreeMap::new(),
             scopes: self.scopes.clone(),
+            groups: self.groups.clone(),
         };
         let yaml = serde_yaml::to_string(&raw).context("serialize cherry-test.yaml")?;
         std::fs::write(&self.config_path, yaml)
@@ -574,6 +790,78 @@ packages:
         assert_eq!(runner.adapter.as_deref(), Some("command"));
         assert_eq!(runner.command, "cargo");
         assert_eq!(runner.args, ["mutants", "--package", "mini-rs-lib-mcap"]);
+    }
+
+    #[test]
+    fn parses_parallel_defaults_package_resources_and_groups() {
+        let yaml = r#"
+defaults:
+  parallel:
+    jobs: auto
+    cpus: 6
+    memory: 12g
+    phase_barrier: false
+packages:
+  api:
+    resources:
+      cpus: 0.5
+      memory: 512m
+    exclusive: true
+groups:
+  backend: [api, "mini-rs-*"]
+"#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let parallel = raw.defaults.parallel.unwrap();
+        assert_eq!(parallel.jobs, Some(Jobs::Auto));
+        assert_eq!(parallel.cpus, Some(Cpus(6000)));
+        assert_eq!(parallel.memory, Some(Memory(12 << 30)));
+        assert!(!parallel.phase_barrier);
+        let api = &raw.packages["api"];
+        let resources = api.resources.clone().unwrap();
+        assert_eq!(resources.cpus, Some(Cpus(500)));
+        assert_eq!(resources.memory, Some(Memory(512 << 20)));
+        assert!(api.exclusive);
+        assert_eq!(raw.groups["backend"], ["api", "mini-rs-*"]);
+        let defaults: RawConfig =
+            serde_yaml::from_str("defaults:\n  parallel:\n    jobs: 4\n").unwrap();
+        let parallel = defaults.defaults.parallel.unwrap();
+        assert_eq!(parallel.jobs, Some(Jobs::Count(4)));
+        assert!(parallel.phase_barrier);
+        assert!(serde_yaml::to_string(&Defaults::default())
+            .unwrap()
+            .lines()
+            .all(|line| !line.starts_with("parallel")));
+    }
+
+    #[test]
+    fn rejects_unknown_parallel_fields_and_invalid_amounts() {
+        for yaml in [
+            "defaults:\n  parallel:\n    workers: 2\n",
+            "packages:\n  api:\n    resources:\n      gpus: 1\n",
+            "defaults:\n  parallel:\n    jobs: 0\n",
+            "defaults:\n  parallel:\n    jobs: many\n",
+            "defaults:\n  parallel:\n    cpus: 0\n",
+            "defaults:\n  parallel:\n    memory: 8x\n",
+        ] {
+            assert!(serde_yaml::from_str::<RawConfig>(yaml).is_err(), "{yaml}");
+        }
+    }
+
+    #[test]
+    fn parses_memory_units_as_powers_of_1024() {
+        assert_eq!(Memory::parse("1024"), Ok(Memory(1024)));
+        assert_eq!(Memory::parse("1k"), Ok(Memory(1024)));
+        assert_eq!(Memory::parse("512MiB"), Ok(Memory(512 << 20)));
+        assert_eq!(Memory::parse("1.5G"), Ok(Memory(3 << 29)));
+        assert_eq!(Memory::parse(" 2 gb "), Ok(Memory(2 << 30)));
+        assert_eq!(Memory::parse("1t"), Ok(Memory(1 << 40)));
+        for invalid in ["", "g", ".5g", "5.g", "-1g", "0", "1p", "1..5g"] {
+            assert!(Memory::parse(invalid).is_err(), "{invalid}");
+        }
+        assert_eq!("auto".parse::<Jobs>(), Ok(Jobs::Auto));
+        assert_eq!("3".parse::<Jobs>(), Ok(Jobs::Count(3)));
+        assert!("0".parse::<Jobs>().is_err());
+        assert_eq!(Jobs::Count(3).to_string(), "3");
     }
 
     #[test]

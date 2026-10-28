@@ -55,13 +55,17 @@ public final class Runner {
             List<String> extraTestArgs,
             List<String> kinds,
             Adapters.SelfCommand self,
-            Map<String, String> env) {
+            Map<String, String> env,
+            Scheduler.Parallelism parallelism) {
         public RunOptions {
             SortedMap<String, String> base = new TreeMap<>(RustOrdering.STRING_ORDER);
             base.putAll(env);
             env = base;
         }
     }
+
+    /** Keeps each job's terminal block together when jobs run at once. */
+    private static final Object OUTPUT = new Object();
 
     /** What one finished job contributes to the run's results. */
     public record JobOutcome(
@@ -77,6 +81,11 @@ public final class Runner {
 
     public static RunOutcome runProjects(List<ProjectGroup> projects, RunOptions options, PreflightPlan preflight) {
         Plan plan = Plan.plan(projects, options, preflight);
+        if (options.parallelism().workers() > 1) {
+            plan = Durations.load(Durations.path(
+                            options.workspaceRoot(), options.config().defaults().runsBase()))
+                    .estimate(plan);
+        }
         List<Scheduler.Finished> finished = Scheduler.run(plan, projects, options, preflight);
         return aggregate(options, finished);
     }
@@ -134,7 +143,9 @@ public final class Runner {
                 RunEnv.requestEnv(environment),
                 planned.options());
         if (!options.quiet()) {
-            Terminal.println("==> " + job.key().project() + "/" + packageName + "/" + phase + " (" + adapter + ")");
+            synchronized (OUTPUT) {
+                Terminal.println("==> " + job.key().project() + "/" + packageName + "/" + phase + " (" + adapter + ")");
+            }
         }
         AdapterResponse response;
         try {
@@ -166,11 +177,13 @@ public final class Runner {
         AdapterResponse saved =
                 Adapters.save(request, response, options.runDir().reports());
         if (!options.quiet()) {
-            if (options.testListing() == TestListing.AFTER_EACH_PHASE) {
-                ReportOutput.printPhaseResults(saved.tests());
-            }
-            if (!saved.success()) {
-                Terminal.eprintln("  failed: " + failureSummary(saved));
+            synchronized (OUTPUT) {
+                if (options.testListing() == TestListing.AFTER_EACH_PHASE) {
+                    ReportOutput.printPhaseResults(saved.tests());
+                }
+                if (!saved.success()) {
+                    Terminal.eprintln("  failed: " + failureSummary(saved));
+                }
             }
         }
         return new JobOutcome(job.key(), saved.success(), lcovFile, Duration.ofNanos(System.nanoTime() - started));

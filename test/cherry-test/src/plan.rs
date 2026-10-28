@@ -186,14 +186,22 @@ fn job(
             scopes.push(scope.clone());
         }
     }
+    let configured = package.resources.as_ref();
     Job {
         key: JobKey::new(project_id, &member.name, phase),
         adapter,
         request,
         scopes,
-        resources: Resources::PACKAGE_DEFAULT,
+        resources: Resources {
+            millicpus: configured
+                .and_then(|resources| resources.cpus)
+                .map_or(Resources::PACKAGE_DEFAULT.millicpus, |cpus| cpus.0),
+            memory: configured
+                .and_then(|resources| resources.memory)
+                .map_or(Resources::PACKAGE_DEFAULT.memory, |memory| memory.0),
+        },
         estimate_ms: 0,
-        exclusive: false,
+        exclusive: package.exclusive,
     }
 }
 
@@ -216,7 +224,7 @@ fn phase_runner<'a>(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::config::{Config, PackageConfig, ProjectConfig};
     use crate::discover::WorkspaceMember;
@@ -264,7 +272,7 @@ mod tests {
         (root, config, projects)
     }
 
-    fn options<'a>(
+    pub(crate) fn options<'a>(
         root: &'a std::path::Path,
         run_dir: &'a RunDir,
         config: &'a Config,
@@ -280,6 +288,7 @@ mod tests {
             extra_test_args: &[],
             kinds,
             env: Default::default(),
+            parallelism: Default::default(),
         }
     }
 

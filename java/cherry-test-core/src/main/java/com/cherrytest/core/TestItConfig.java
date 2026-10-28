@@ -28,6 +28,7 @@ public final class TestItConfig {
     private final SortedMap<String, AuthProfileConfig> auth;
     private final SortedMap<String, ProjectConfig> projects;
     private final SortedMap<String, ScopeConfig> scopes;
+    private final SortedMap<String, List<String>> groups;
 
     public TestItConfig(
             SortedMap<String, AdapterConfig> adapters,
@@ -37,6 +38,18 @@ public final class TestItConfig {
             SortedMap<String, AuthProfileConfig> auth,
             SortedMap<String, ProjectConfig> projects,
             SortedMap<String, ScopeConfig> scopes) {
+        this(adapters, workspaceRoot, configPath, defaults, auth, projects, scopes, new TreeMap<>());
+    }
+
+    public TestItConfig(
+            SortedMap<String, AdapterConfig> adapters,
+            Path workspaceRoot,
+            Path configPath,
+            Defaults defaults,
+            SortedMap<String, AuthProfileConfig> auth,
+            SortedMap<String, ProjectConfig> projects,
+            SortedMap<String, ScopeConfig> scopes,
+            SortedMap<String, List<String>> groups) {
         this.adapters = sorted(adapters);
         this.workspaceRoot = workspaceRoot;
         this.configPath = configPath;
@@ -44,6 +57,7 @@ public final class TestItConfig {
         this.auth = sorted(auth);
         this.projects = sorted(projects);
         this.scopes = sorted(scopes);
+        this.groups = sorted(groups);
     }
 
     public static TestItConfig empty(Path workspaceRoot) {
@@ -87,6 +101,11 @@ public final class TestItConfig {
 
     public SortedMap<String, ScopeConfig> scopes() {
         return scopes;
+    }
+
+    /** {@code groups.<name>}: package names or globs that the filter {@code @name} selects. */
+    public SortedMap<String, List<String>> groups() {
+        return groups;
     }
 
     public TestItConfig withExecution(ExecutionMode execution) {
@@ -134,7 +153,8 @@ public final class TestItConfig {
                 parseDefaults(raw),
                 parseAuth(raw),
                 projects,
-                parseScopes(raw));
+                parseScopes(raw),
+                parseGroups(raw));
     }
 
     static Map<String, Object> parseRaw(Path path, String contents) {
@@ -327,7 +347,110 @@ public final class TestItConfig {
                 reportDir == null ? standard.reportDir() : reportDir,
                 YamlValues.stringOr(map, "scope", path, standard.scope()),
                 YamlValues.stringOr(map, "diff_base", path, standard.diffBase()),
-                coverageIgnore == null ? standard.coverageIgnore() : coverageIgnore);
+                coverageIgnore == null ? standard.coverageIgnore() : coverageIgnore,
+                parseParallel(YamlValues.field(map, "parallel"), "defaults.parallel"));
+    }
+
+    private static @Nullable ParallelConfig parseParallel(@Nullable Object value, String path) {
+        if (value == null) {
+            return null;
+        }
+        Map<String, Object> map = YamlValues.mapping(value, path);
+        rejectUnknownFields(map, path, List.of("jobs", "cpus", "memory", "phase_barrier"));
+        Object jobs = YamlValues.field(map, "jobs");
+        return new ParallelConfig(
+                jobs == null ? null : parseJobs(jobs, path + ".jobs"),
+                optionalCpus(map, path),
+                optionalMemory(map, path),
+                YamlValues.boolOr(map, "phase_barrier", path + ".", true));
+    }
+
+    private static @Nullable ResourcesConfig parseResources(@Nullable Object value, String path) {
+        if (value == null) {
+            return null;
+        }
+        Map<String, Object> map = YamlValues.mapping(value, path);
+        rejectUnknownFields(map, path, List.of("cpus", "memory"));
+        return new ResourcesConfig(optionalCpus(map, path), optionalMemory(map, path));
+    }
+
+    private static void rejectUnknownFields(Map<String, Object> map, String path, List<String> known) {
+        for (String key : map.keySet()) {
+            if (!known.contains(key)) {
+                StringBuilder expected = new StringBuilder();
+                for (int index = 0; index < known.size(); index++) {
+                    expected.append(index == 0 ? "" : ", ")
+                            .append('`')
+                            .append(known.get(index))
+                            .append('`');
+                }
+                throw new AnyhowError(path + ": unknown field `" + key + "`, expected one of " + expected);
+            }
+        }
+    }
+
+    private static Jobs parseJobs(Object value, String path) {
+        try {
+            return switch (value) {
+                case String text -> Jobs.parse(text);
+                case Double ignored -> throw new IllegalArgumentException(Jobs.EXPECTED);
+                case Number number -> Jobs.parse(number.toString());
+                default -> throw new IllegalArgumentException(Jobs.EXPECTED);
+            };
+        } catch (IllegalArgumentException invalid) {
+            throw new AnyhowError(path + ": " + Jobs.EXPECTED, invalid);
+        }
+    }
+
+    private static @Nullable Long optionalCpus(Map<String, Object> map, String path) {
+        Object value = YamlValues.field(map, "cpus");
+        if (value == null) {
+            return null;
+        }
+        String error = path + ".cpus: expected a positive number of CPUs";
+        if (!(value instanceof Number number)) {
+            throw new AnyhowError(error);
+        }
+        double cpus = number.doubleValue();
+        if (!Double.isFinite(cpus)) {
+            throw new AnyhowError(error);
+        }
+        long millicpus = Math.round(cpus * 1000.0);
+        if (millicpus < 1) {
+            throw new AnyhowError(error);
+        }
+        return millicpus;
+    }
+
+    private static @Nullable Long optionalMemory(Map<String, Object> map, String path) {
+        Object value = YamlValues.field(map, "memory");
+        if (value == null) {
+            return null;
+        }
+        return switch (value) {
+            case String text -> {
+                try {
+                    yield Memory.parse(text);
+                } catch (AnyhowError invalid) {
+                    throw AnyhowError.context(path + ".memory", invalid);
+                }
+            }
+            case Double ignored -> throw new AnyhowError(path + ".memory: expected bytes or a unit such as 512m or 8g");
+            case Number number when number.longValue() > 0 -> number.longValue();
+            default -> throw new AnyhowError(path + ".memory: expected bytes or a unit such as 512m or 8g");
+        };
+    }
+
+    private static SortedMap<String, List<String>> parseGroups(Map<String, Object> raw) {
+        SortedMap<String, List<String>> groups = new TreeMap<>(RustOrdering.STRING_ORDER);
+        Object value = YamlValues.field(raw, "groups");
+        if (value == null) {
+            return groups;
+        }
+        YamlValues.mapping(value, "groups")
+                .forEach((name, entry) ->
+                        groups.put(name, YamlValues.stringList(Map.of("value", entry), "value", "groups." + name)));
+        return groups;
     }
 
     private static SortedMap<String, AuthProfileConfig> parseAuth(Map<String, Object> raw) {
@@ -431,7 +554,9 @@ public final class TestItConfig {
                 parseRunner(YamlValues.field(map, "unit"), path + "unit."),
                 parseRunner(YamlValues.field(map, "functional"), path + "functional."),
                 parseRunner(YamlValues.field(map, "ui"), path + "ui."),
-                parseRunner(YamlValues.field(map, "mutation"), path + "mutation."));
+                parseRunner(YamlValues.field(map, "mutation"), path + "mutation."),
+                parseResources(YamlValues.field(map, "resources"), path + "resources"),
+                YamlValues.boolOr(map, "exclusive", path, false));
     }
 
     private static PackageRuntime parseRuntime(String value, String path) {

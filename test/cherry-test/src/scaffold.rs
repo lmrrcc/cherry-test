@@ -110,6 +110,7 @@ pub fn scaffold_config(root: &Path) -> Result<TestItConfig> {
         auth: std::collections::BTreeMap::new(),
         projects,
         scopes,
+        groups: BTreeMap::new(),
     })
 }
 
@@ -899,6 +900,7 @@ async fn mini_project_wallet_suite_ping_test(env: TestEnv) {
                 },
             )]),
             scopes: BTreeMap::new(),
+            groups: BTreeMap::new(),
         };
         assert!(config_needs_scaffold(&config, root));
         fs::create_dir_all(root.join("mini-rs-api")).unwrap();

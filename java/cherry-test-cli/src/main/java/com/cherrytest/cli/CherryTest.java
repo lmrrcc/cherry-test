@@ -1,6 +1,7 @@
 package com.cherrytest.cli;
 
 import com.cherrytest.cli.adapters.Adapters;
+import com.cherrytest.cli.adapters.ProcessRunner;
 import com.cherrytest.cli.coverage.Coverage;
 import com.cherrytest.cli.coverage.CoverageIgnore;
 import com.cherrytest.cli.coverage.CoverageSummary;
@@ -81,11 +82,17 @@ public final class CherryTest {
         }
         TestPlan plan;
         try {
-            plan = Init.initializeWithConfig(workspace, config, cli.filter(), cli.quiet());
+            plan = Init.initializeWithConfig(workspace, config, cli.filter(), cli.shard(), cli.quiet());
         } catch (AnyhowError error) {
             if (AnyhowError.display(error).contains("no testable workspace members found")) {
                 Terminal.eprintln("no testable workspace members found");
                 return cli.strict() ? 1 : 0;
+            }
+            if (cli.shard() != null && AnyhowError.display(error).endsWith(Init.EMPTY_SHARD)) {
+                if (!cli.quiet()) {
+                    Terminal.println("cherry-test: " + AnyhowError.display(error));
+                }
+                return 0;
             }
             throw error;
         }
@@ -123,8 +130,16 @@ public final class CherryTest {
                 cli.cargoTestArgs(),
                 cli.kinds(),
                 self,
-                env);
+                env,
+                Scheduler.Parallelism.resolve(
+                        cli.jobs(),
+                        plan.config().defaults().parallel(),
+                        plan.config().defaults().execution(),
+                        env));
         RunOutcome outcome = Runner.runProjects(plan.projects(), options, plan.preflight());
+        if (!ProcessRunner.cancelled()) {
+            recordDurations(Durations.path(workspace, plan.config().defaults().runsBase()), outcome);
+        }
         Path mergedLcov = runDir.mergedLcov();
         CoverageTotals coverageTotals = CoverageTotals.EMPTY;
         boolean htmlEnabled = plan.config().defaults().htmlReport() && !cli.noHtml();
@@ -191,6 +206,15 @@ public final class CherryTest {
         Path merged = runDir.root().resolve(name + ".lcov");
         Coverage.mergeLcovFiles(files, merged);
         return Coverage.summaryForLcov(merged, ignore);
+    }
+
+    /** Records the run's job durations; like Rust, which only traces the failure, a write error is ignored. */
+    private static void recordDurations(Path path, RunOutcome outcome) {
+        try {
+            Durations.update(path, outcome.timings());
+        } catch (RuntimeException durationsIgnoredLikeRust) {
+            return;
+        }
     }
 
     private static boolean skipCoverageEnv(Map<String, String> environment) {

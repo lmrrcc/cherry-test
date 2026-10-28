@@ -57,7 +57,8 @@ class PlanTest {
                 List.of(),
                 kinds,
                 Main.selfCommand(),
-                Map.of());
+                Map.of(),
+                Scheduler.Parallelism.SEQUENTIAL);
     }
 
     static PreflightPlan emptyPreflight() {

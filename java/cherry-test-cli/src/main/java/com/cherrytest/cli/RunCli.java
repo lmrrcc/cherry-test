@@ -1,5 +1,6 @@
 package com.cherrytest.cli;
 
+import com.cherrytest.core.Jobs;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -14,6 +15,8 @@ public record RunCli(
         @Nullable String execution,
         boolean strict,
         List<String> kinds,
+        @Nullable Jobs jobs,
+        @Nullable Shard shard,
         boolean noHtml,
         boolean noOpen,
         boolean noBanner,

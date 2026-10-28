@@ -292,7 +292,7 @@ impl JavaSelection {
     }
 }
 
-fn glob_matches(pattern: &str, text: &str) -> bool {
+pub(crate) fn glob_matches(pattern: &str, text: &str) -> bool {
     fn matches(pattern: &[char], text: &[char]) -> bool {
         match pattern.first() {
             None => text.is_empty(),

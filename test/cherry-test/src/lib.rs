@@ -5,6 +5,7 @@ pub mod coverage;
 pub mod coverage_ignore;
 pub mod crap;
 pub mod discover;
+pub mod durations;
 pub mod filter;
 pub mod git_diff;
 pub mod init;
@@ -18,6 +19,7 @@ pub mod run_env;
 pub mod runner;
 pub mod scaffold;
 pub mod scheduler;
+pub mod shard;
 pub mod update;
 pub mod vitest_report;
 
@@ -56,7 +58,7 @@ pub enum Command {
 
 #[derive(Debug, Parser)]
 pub struct RunCli {
-    #[arg(help = "Project group id (e.g. mini) or package name (e.g. mini-rs-api)")]
+    #[arg(help = "Project group id (e.g. mini), package name (e.g. mini-rs-api) or @group")]
     pub filter: Option<String>,
 
     #[arg(long, help = "Repo root directory (default: auto-detect from cwd)")]
@@ -90,6 +92,20 @@ pub struct RunCli {
         help = "Phases to run. mutation runs only when it is named here"
     )]
     pub kinds: Vec<String>,
+
+    #[arg(
+        long,
+        value_name = "N|auto",
+        help = "Jobs to run at once, or auto for one per CPU (default: defaults.parallel.jobs, else 1)"
+    )]
+    pub jobs: Option<cherry_test_core::Jobs>,
+
+    #[arg(
+        long,
+        value_name = "I/N",
+        help = "Run only shard I of N; packages are spread by recorded durations"
+    )]
+    pub shard: Option<shard::Shard>,
 
     #[arg(long)]
     pub no_html: bool,
@@ -185,19 +201,30 @@ fn run_tests_at_root(
         return Ok(0);
     }
 
-    let plan =
-        match init::initialize_with_config(workspace, config, cli.filter.as_deref(), cli.quiet) {
-            Ok(plan) => plan,
-            Err(e) => {
-                if e.to_string()
-                    .contains("no testable workspace members found")
-                {
-                    eprintln!("no testable workspace members found");
-                    return Ok(if cli.strict { 1 } else { 0 });
-                }
-                return Err(e);
+    let plan = match init::initialize_with_config(
+        workspace,
+        config,
+        cli.filter.as_deref(),
+        cli.shard,
+        cli.quiet,
+    ) {
+        Ok(plan) => plan,
+        Err(e) => {
+            if e.to_string()
+                .contains("no testable workspace members found")
+            {
+                eprintln!("no testable workspace members found");
+                return Ok(if cli.strict { 1 } else { 0 });
             }
-        };
+            if cli.shard.is_some() && e.to_string().ends_with(init::EMPTY_SHARD) {
+                if !cli.quiet {
+                    println!("{COMMAND_NAME}: {e}");
+                }
+                return Ok(0);
+            }
+            return Err(e);
+        }
+    };
 
     let coverage_requested =
         plan.config.defaults.coverage && !cli.no_coverage && !skip_coverage_env(process_env);
@@ -248,11 +275,23 @@ fn run_tests_at_root(
         },
         extra_test_args: &cli.cargo_test_args,
         kinds: &cli.kinds,
+        parallelism: scheduler::Parallelism::resolve(
+            cli.jobs,
+            plan.config.defaults.parallel.as_ref(),
+            plan.config.defaults.execution,
+            &env,
+        ),
         env,
     };
 
     let preflight = plan.preflight.clone();
     let outcome = runner::run_projects(&plan.projects, &opts, &preflight)?;
+    if !adapters::process::cancelled() {
+        let path = durations::Durations::path(workspace, &plan.config.defaults.runs_base);
+        if let Err(error) = durations::update(&path, &outcome.timings) {
+            tracing::warn!(path = %path.display(), error = %format!("{error:#}"), "could not record job durations");
+        }
+    }
 
     let merged_lcov = run_dir.merged_lcov();
     let mut coverage_totals = report::CoverageTotals::default();
@@ -529,6 +568,39 @@ mod integration {
                 .run
                 .no_crap
         );
+    }
+
+    #[test]
+    fn cli_parses_jobs_and_shard() {
+        use cherry_test_core::Jobs;
+        let cli = Cli::try_parse_from([
+            "cherry-test",
+            "--jobs",
+            "auto",
+            "--shard",
+            "2/3",
+            "@backend",
+        ])
+        .unwrap();
+        assert_eq!(cli.run.jobs, Some(Jobs::Auto));
+        assert_eq!(cli.run.shard, Some(shard::Shard { index: 2, count: 3 }));
+        assert_eq!(cli.run.filter.as_deref(), Some("@backend"));
+        assert_eq!(
+            Cli::try_parse_from(["cherry-test", "--jobs", "4"])
+                .unwrap()
+                .run
+                .jobs,
+            Some(Jobs::Count(4))
+        );
+        let error = Cli::try_parse_from(["cherry-test", "--jobs", "0"]).unwrap_err();
+        assert!(error.to_string().contains(
+            "invalid value '0' for '--jobs <N|auto>': expected a positive number or `auto`"
+        ));
+        let error = Cli::try_parse_from(["cherry-test", "--shard", "3/2"]).unwrap_err();
+        assert!(error.to_string().contains(
+            "invalid value '3/2' for '--shard <I/N>': expected I/N with 1 <= I <= N, such as 1/4"
+        ));
+        assert_eq!(Cli::try_parse_from(["cherry-test"]).unwrap().run.jobs, None);
     }
 
     #[test]

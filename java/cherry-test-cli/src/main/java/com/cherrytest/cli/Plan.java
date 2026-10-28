@@ -6,6 +6,7 @@ import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustOrdering;
 import com.cherrytest.core.ExternalRunner;
 import com.cherrytest.core.PackageConfig;
+import com.cherrytest.core.ResourcesConfig;
 import com.cherrytest.core.Scope;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -170,14 +171,20 @@ public record Plan(List<PhasePlan> phases) {
         if (runner != null && runner.scope() != null && Scope.needsDocker(runner.scope())) {
             scopes.add(runner.scope());
         }
+        ResourcesConfig configured = packageConfig.resources();
+        Long millicpus = configured == null ? null : configured.millicpus();
+        Long memory = configured == null ? null : configured.memory();
+        Resources resources = new Resources(
+                millicpus != null ? millicpus : Resources.PACKAGE_DEFAULT.millicpus(),
+                memory != null ? memory : Resources.PACKAGE_DEFAULT.memory());
         return new Job(
                 new JobKey(projectId, member.name(), phase),
                 adapter,
                 request,
                 scopes,
-                Resources.PACKAGE_DEFAULT,
+                resources,
                 0,
-                false);
+                packageConfig.exclusive());
     }
 
     private static @Nullable ExternalRunner phaseRunner(

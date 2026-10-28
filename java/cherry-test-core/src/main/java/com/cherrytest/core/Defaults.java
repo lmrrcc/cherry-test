@@ -2,6 +2,7 @@ package com.cherrytest.core;
 
 import com.cherrytest.common.adapter.ExecutionMode;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 public record Defaults(
         ExecutionMode execution,
@@ -13,7 +14,8 @@ public record Defaults(
         Path reportDir,
         String scope,
         String diffBase,
-        Path coverageIgnore) {
+        Path coverageIgnore,
+        @Nullable ParallelConfig parallel) {
     public static Defaults standard() {
         return new Defaults(
                 ExecutionMode.LOCAL,
@@ -25,7 +27,8 @@ public record Defaults(
                 Path.of("target/cherry-test/reports"),
                 "global",
                 "main",
-                Path.of(".coverageignore"));
+                Path.of(".coverageignore"),
+                null);
     }
 
     public Defaults withExecution(ExecutionMode replacement) {
@@ -39,7 +42,8 @@ public record Defaults(
                 reportDir,
                 scope,
                 diffBase,
-                coverageIgnore);
+                coverageIgnore,
+                parallel);
     }
 
     public Defaults withStrict(boolean replacement) {
@@ -53,6 +57,7 @@ public record Defaults(
                 reportDir,
                 scope,
                 diffBase,
-                coverageIgnore);
+                coverageIgnore,
+                parallel);
     }
 }

@@ -11,8 +11,9 @@ pub mod workspace;
 
 pub use cherry_test_macros::cherry_test;
 pub use config::{
-    AuthProfileConfig, Defaults, ExternalRunner, PackageConfig, PackageRuntime, ProjectConfig,
-    ScopeConfig, ServiceConfig, TestItConfig, WorkspaceConfig,
+    AuthProfileConfig, Cpus, Defaults, ExternalRunner, Jobs, Memory, PackageConfig, PackageRuntime,
+    ParallelConfig, ProjectConfig, ResourcesConfig, ScopeConfig, ServiceConfig, TestItConfig,
+    WorkspaceConfig,
 };
 pub use env::{DbEnv, ProjectEnv, ServiceEnv, TestEnv};
 pub use http::HttpRecord;

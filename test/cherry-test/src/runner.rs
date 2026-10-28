@@ -27,6 +27,7 @@ pub struct RunOptions<'a> {
     pub kinds: &'a [String],
     /// The run's base environment: the process snapshot plus the workspace and run variables.
     pub env: Environment,
+    pub parallelism: crate::scheduler::Parallelism,
 }
 
 /// When the terminal lists individual test results.
@@ -45,6 +46,15 @@ pub struct RunOutcome {
     pub timings: Vec<(JobKey, Duration)>,
 }
 
+/// Keeps each job's terminal block together when jobs run at once.
+static OUTPUT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn output_lock() -> std::sync::MutexGuard<'static, ()> {
+    OUTPUT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// What one finished job contributes to the run's results.
 #[derive(Debug, Clone)]
 pub struct JobOutcome {
@@ -59,7 +69,14 @@ pub fn run_projects(
     opts: &RunOptions<'_>,
     preflight: &PreflightPlan,
 ) -> Result<RunOutcome> {
-    let plan = crate::plan::plan(projects, opts, preflight)?;
+    let mut plan = crate::plan::plan(projects, opts, preflight)?;
+    if opts.parallelism.workers > 1 {
+        crate::durations::Durations::load(&crate::durations::Durations::path(
+            opts.workspace_root,
+            &opts.config.defaults.runs_base,
+        ))
+        .estimate(&mut plan);
+    }
     let finished = crate::scheduler::run(&plan, projects, opts, preflight)?;
     aggregate(opts, finished)
 }
@@ -98,6 +115,7 @@ pub fn execute_job(
     }
     request.env = crate::run_env::request_env(env);
     if !opts.quiet {
+        let _output = output_lock();
         println!("==> {}/{package}/{phase} ({adapter})", job.key.project);
     }
     let result = match setup {
@@ -132,6 +150,7 @@ pub fn execute_job(
     }
     let response = adapters::save(&request, response, &opts.run_dir.reports)?;
     if !opts.quiet {
+        let _output = output_lock();
         if opts.test_listing == TestListing::AfterEachPhase {
             crate::report::print_phase_results(&response.tests);
         }
