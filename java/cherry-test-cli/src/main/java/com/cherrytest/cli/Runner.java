@@ -141,7 +141,8 @@ public final class Runner {
                 planned.strict(),
                 args,
                 RunEnv.requestEnv(environment),
-                planned.options());
+                planned.options(),
+                planned.container());
         if (!options.quiet()) {
             synchronized (OUTPUT) {
                 Terminal.println("==> " + job.key().project() + "/" + packageName + "/" + phase + " (" + adapter + ")");
@@ -149,8 +150,9 @@ public final class Runner {
         }
         AdapterResponse response;
         try {
-            if (setupError != null) {
-                response = AdapterResponse.failure(setupError);
+            String failure = setupError != null ? setupError : job.containerError();
+            if (failure != null) {
+                response = AdapterResponse.failure(failure);
             } else {
                 response = Adapters.invoke(
                         adapter, options.config().adapters().get(adapter), request, options.self(), environment);

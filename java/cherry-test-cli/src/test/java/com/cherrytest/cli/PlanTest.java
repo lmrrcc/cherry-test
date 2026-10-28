@@ -99,4 +99,41 @@ class PlanTest {
                 .isInstanceOf(AnyhowError.class)
                 .hasMessage("unknown test kind smoke");
     }
+
+    @Test
+    void container_limits_set_job_resources_and_resolve_errors_fail_setup() throws IOException {
+        String yaml = """
+                defaults:
+                  execution: container
+                  container:
+                    image: rust:1
+                    cpus: "2.5"
+                    memory: 512m
+                projects:
+                  shop:
+                    packages:
+                      api:
+                        kinds: [unit, integration]
+                        integration:
+                          scope: checkout
+                        container:
+                          user: "bad user"
+                      web:
+                        runtime: node
+                        kinds: [unit]
+                        resources:
+                          cpus: 1.5
+                """;
+        Runner.RunOptions options = options(root, config(root, yaml), List.of());
+        Plan plan = Plan.plan(projects(), options, emptyPreflight());
+        Plan.Job api = plan.phases().getFirst().jobs().getFirst();
+        assertThat(api.request().container()).isNull();
+        assertThat(api.containerError()).contains("container.user");
+        Plan.Job web = plan.phases().getFirst().jobs().get(1);
+        assertThat(web.containerError()).isNull();
+        assertThat(web.request().container()).isNotNull();
+        assertThat(web.resources()).isEqualTo(new Plan.Resources(1500, 512L << 20));
+        assertThat(Plan.jobResources(null, web.request().container())).isEqualTo(new Plan.Resources(2500, 512L << 20));
+        assertThat(Plan.jobResources(null, null)).isEqualTo(Plan.Resources.PACKAGE_DEFAULT);
+    }
 }

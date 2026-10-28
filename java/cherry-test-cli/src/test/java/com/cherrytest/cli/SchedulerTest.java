@@ -197,16 +197,7 @@ class SchedulerTest {
         List<Plan.Job> planned = plan.jobs().toList();
         for (int index = 0; index < planned.size(); index++) {
             Plan.Job job = planned.get(index);
-            jobs.add(Map.entry(
-                    index,
-                    new Plan.Job(
-                            job.key(),
-                            job.adapter(),
-                            job.request(),
-                            job.scopes(),
-                            job.resources(),
-                            estimates[index],
-                            job.exclusive())));
+            jobs.add(Map.entry(index, job.withEstimate(estimates[index])));
         }
         assertThat(Scheduler.longestFirst(jobs)).containsExactly(1, 2, 0);
     }

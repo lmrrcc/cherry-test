@@ -41,7 +41,19 @@ pub fn install_cancellation() -> Result<()> {
 use anyhow::{bail, Context, Result};
 use cherry_test_common::adapter::{AdapterRequest, ExecutionMode};
 
-pub fn capture(mut command: Command, prefix: &Path, timeout: u64, group: bool) -> Result<bool> {
+pub fn capture(command: Command, prefix: &Path, timeout: u64, group: bool) -> Result<bool> {
+    capture_with(command, prefix, timeout, group, None)
+}
+
+/// Like [`capture`], and calls `stop` first when the timeout expires or the run is cancelled,
+/// so that work the process started elsewhere, such as a container, ends with it.
+pub fn capture_with(
+    mut command: Command,
+    prefix: &Path,
+    timeout: u64,
+    group: bool,
+    stop: Option<&dyn Fn()>,
+) -> Result<bool> {
     std::fs::create_dir_all(prefix.parent().context("log directory")?)?;
     command.stdout(Stdio::from(File::create(prefix.with_extension("stdout"))?));
     command.stderr(Stdio::from(File::create(prefix.with_extension("stderr"))?));
@@ -60,6 +72,9 @@ pub fn capture(mut command: Command, prefix: &Path, timeout: u64, group: bool) -
             return Ok(status.success());
         }
         if cancelled() || start.elapsed() >= Duration::from_secs(timeout) {
+            if let Some(stop) = stop {
+                stop();
+            }
             #[cfg(unix)]
             if group {
                 let status = Command::new("kill")
@@ -112,6 +127,9 @@ pub fn mapped(request: &AdapterRequest, value: &str) -> String {
 }
 
 pub fn run(request: &AdapterRequest, program: &str, args: &[String], label: &str) -> Result<bool> {
+    if let (ExecutionMode::Container, Some(spec)) = (request.execution, &request.container) {
+        return super::container::run(request, spec, program, args, label);
+    }
     let mut command = if request.execution == ExecutionMode::Container {
         let image = request
             .options
@@ -147,20 +165,8 @@ pub fn run(request: &AdapterRequest, program: &str, args: &[String], label: &str
                 .replace("localhost:", "host.docker.internal:");
             cmd.args(["-e", &format!("{key}={value}")]);
         }
-        for (prefix, volume) in [
-            ("maven:", "cherry-test-polyglot-maven:/root/.m2"),
-            (
-                "gradle:",
-                "cherry-test-polyglot-gradle:/home/gradle/.gradle",
-            ),
-            (
-                "cherry-test-rust:",
-                "cherry-test-polyglot-cargo:/usr/local/cargo/registry",
-            ),
-        ] {
-            if image.starts_with(prefix) {
-                cmd.args(["-v", volume]);
-            }
+        for cache in super::container::default_caches(image) {
+            cmd.args(["-v", &format!("{}:{}", cache.volume, cache.target)]);
         }
         cmd.arg(image).arg(mapped(request, program));
         cmd.args(args.iter().map(|arg| mapped(request, arg)));

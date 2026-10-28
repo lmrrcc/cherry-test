@@ -1,6 +1,7 @@
 package com.cherrytest.core;
 
 import com.cherrytest.common.adapter.ExecutionMode;
+import com.cherrytest.common.container.ContainerConfig;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.SortedMap;
@@ -22,13 +23,14 @@ public record PackageConfig(
         @Nullable ExternalRunner ui,
         @Nullable ExternalRunner mutation,
         @Nullable ResourcesConfig resources,
-        boolean exclusive) {
+        boolean exclusive,
+        @Nullable ContainerConfig container) {
     public PackageConfig {
         options = new TreeMap<>(options);
         kinds = List.copyOf(kinds);
     }
 
-    /** A package without {@code resources} and not {@code exclusive}. */
+    /** A package without {@code resources}, not {@code exclusive} and without a {@code container} block. */
     public PackageConfig(
             @Nullable String adapter,
             @Nullable ExecutionMode execution,
@@ -56,7 +58,8 @@ public record PackageConfig(
                 ui,
                 mutation,
                 null,
-                false);
+                false,
+                null);
     }
 
     public PackageConfig withoutExecution() {
@@ -74,6 +77,7 @@ public record PackageConfig(
                 ui,
                 mutation,
                 resources,
-                exclusive);
+                exclusive,
+                container);
     }
 }

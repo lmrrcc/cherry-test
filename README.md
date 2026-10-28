@@ -318,6 +318,55 @@ Add a `functional` or `ui` block to a package, and include that kind in its `kin
 
 Choose an adapter on each phase, such as `adapter: playwright` for browser tests. Results and screenshot attachments are imported into the browser report. The command adapter supports legacy exit-status checks in non-strict runs; strict runs require individual test results. See the [adapter guide](docs/adapters.md) for configuration and the executable protocol.
 
+### Container execution
+
+`--execution container`, or `execution: container` on a package, runs the built-in adapters' tools with `docker run` in `options.image`. Add a `container:` block to run them with restrictions: no network, a read-only checkout, all Linux capabilities dropped, and `no-new-privileges`. Directories that a job needs to write get a fresh directory for each package phase, so phases cannot see each other's files. The block can be set under `defaults` and overridden per package, field by field:
+
+```yaml
+defaults:
+  execution: container
+  container:
+    image: maven:3.9.11-eclipse-temurin-25
+    pull: never              # never | missing | always
+    network: none            # none | bridge
+    user: host               # your uid:gid with HOME=/tmp/home, or a value such as "1000:1000"
+    cap_drop: [ALL]
+    no_new_privileges: true
+    read_only_root: true
+    tmpfs: [/tmp]
+    cpus: 2
+    memory: 4g
+    pids: 1024
+    shm_size: 256m
+    timeout: 30m             # per package phase; default 1800s
+    workspace: ro            # ro | rw
+    writable:
+      - prices/generated
+      - {path: prices/.cache, seed: copy}
+    mounts:
+      - {source: ../shared-fixtures}                    # mounted at /shared-fixtures
+      - {source: ../datasets, target: /data, read_only: true}
+    caches:
+      - {volume: cherry-test-m2, target: /tmp/home/.m2}
+    env:
+      pass: [CI]
+      set: {TZ: UTC}
+
+projects:
+  shop:
+    path: .
+    packages:
+      prices:
+        adapter: maven
+        manifest: prices/pom.xml
+        kinds: [unit, integration]
+        container:
+          network: bridge    # integration tests call Compose services
+          timeout: 45m
+```
+
+Without the block, container execution behaves as before. Each container gets a name and labels for its run, job, and owning process. Cherry Test kills a container that exceeds its timeout or belongs to a cancelled run, removes the run's containers when the run ends, and removes containers left by runs that died. See [Container settings](docs/adapters.md#container-settings) for every field, its default, and how the paths are mounted.
+
 ### Discovery
 
 `cherry-test --init-only` discovers Cargo, Vitest, Maven, Gradle, and CMake packages, common Compose filenames, and scopes found in `#[cherry_test]` tests. It scans up to six directory levels and skips folders such as `.git`, `target`, and `node_modules`.

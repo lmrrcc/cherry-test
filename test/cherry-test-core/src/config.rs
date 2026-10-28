@@ -5,6 +5,7 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 pub use cherry_test_common::adapter::{AdapterConfig, ExecutionMode};
+pub use cherry_test_common::container::ContainerConfig;
 
 const CONFIG_CANDIDATES: &[&str] = &["cherry-test.yaml", "cherry-test.yml", "cherry-test.toml"];
 
@@ -35,6 +36,8 @@ pub struct Defaults {
     pub coverage_ignore: PathBuf,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parallel: Option<ParallelConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<ContainerConfig>,
 }
 
 impl Default for Defaults {
@@ -51,6 +54,7 @@ impl Default for Defaults {
             diff_base: default_diff_base(),
             coverage_ignore: default_coverage_ignore(),
             parallel: None,
+            container: None,
         }
     }
 }
@@ -331,6 +335,8 @@ pub struct PackageConfig {
     pub resources: Option<ResourcesConfig>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub exclusive: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<ContainerConfig>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -453,6 +459,18 @@ impl TestItConfig {
             }
         }
         self
+    }
+
+    /// Whether any package runs in a container with a `container:` block, so the run
+    /// names, labels and cleans up its containers.
+    pub fn container_settings_in_use(&self) -> bool {
+        self.projects
+            .values()
+            .flat_map(|project| project.packages.values())
+            .any(|package| {
+                package.execution.unwrap_or(self.defaults.execution) == ExecutionMode::Container
+                    && (package.container.is_some() || self.defaults.container.is_some())
+            })
     }
 
     pub fn load(workspace_root: &Path) -> Result<Self> {
@@ -876,6 +894,176 @@ groups:
             },
         );
         assert_eq!(cfg.diff_base_for_project("mini"), "develop");
+    }
+
+    mod container {
+        use super::*;
+        use cherry_test_common::container::{
+            NetworkMode, PullPolicy, Quantity, SeedMode, Timeout, WorkspaceAccess, WritableConfig,
+        };
+
+        fn parse(yaml: &str) -> Result<RawConfig> {
+            parse_raw_config(Path::new("cherry-test.yaml"), yaml)
+        }
+
+        fn error(yaml: &str) -> String {
+            format!("{:#}", parse(yaml).unwrap_err())
+        }
+
+        #[test]
+        fn parses_a_container_block_in_defaults_and_packages() {
+            let raw = parse(
+                r#"
+defaults:
+  execution: container
+  container:
+    image: alpine:3.20
+    pull: missing
+    network: bridge
+    user: host
+    cap_drop: [ALL]
+    no_new_privileges: true
+    read_only_root: true
+    cpus: 2
+    memory: 2g
+    pids: 256
+    shm_size: 64m
+    tmpfs: [/tmp]
+    timeout: 30m
+    workspace: ro
+    writable: [target, {path: build, seed: copy}]
+    mounts:
+      - {source: ../sibling}
+      - {source: ../data, target: /data, read_only: false}
+    caches:
+      - {volume: cherry-test-m2, target: /tmp/home/.m2}
+    env:
+      pass: [CI]
+      set: {LANG: C.UTF-8}
+packages:
+  prices:
+    container:
+      network: none
+      timeout: 90
+"#,
+            )
+            .unwrap();
+            let container = raw.defaults.container.unwrap();
+            assert_eq!(container.image.as_deref(), Some("alpine:3.20"));
+            assert_eq!(container.pull, Some(PullPolicy::Missing));
+            assert_eq!(container.network, Some(NetworkMode::Bridge));
+            assert_eq!(container.user.as_deref(), Some("host"));
+            assert_eq!(container.cpus, Some(Quantity("2".into())));
+            assert_eq!(container.memory, Some(Quantity("2g".into())));
+            assert_eq!(container.pids, Some(256));
+            assert_eq!(container.timeout, Some(Timeout(1800)));
+            assert_eq!(container.workspace, Some(WorkspaceAccess::Ro));
+            assert_eq!(
+                container.writable.unwrap()[1],
+                WritableConfig {
+                    path: "build".into(),
+                    seed: Some(SeedMode::Copy)
+                }
+            );
+            let mounts = container.mounts.unwrap();
+            assert_eq!(mounts[0].target, None);
+            assert!(mounts[0].read_only);
+            assert!(!mounts[1].read_only);
+            assert_eq!(container.caches.unwrap()[0].target, "/tmp/home/.m2");
+            assert_eq!(container.env.unwrap().pass, Some(vec!["CI".into()]));
+            let package = raw.packages["prices"].container.clone().unwrap();
+            assert_eq!(package.network, Some(NetworkMode::None));
+            assert_eq!(package.timeout, Some(Timeout(90)));
+            assert_eq!(package.image, None);
+        }
+
+        #[test]
+        fn rejects_unknown_container_keys() {
+            let message =
+                error("defaults:\n  container:\n    image: alpine\n    privileged: true\n");
+            assert!(message.contains("defaults.container: unknown field `privileged`, expected one of `image`, `pull`"), "{message}");
+            let message = error("projects:\n  demo:\n    packages:\n      api:\n        container:\n          netwrok: none\n");
+            assert!(message.contains("unknown field `netwrok`"), "{message}");
+        }
+
+        #[test]
+        fn rejects_unknown_keys_in_container_entries() {
+            for (yaml, field) in [
+                ("writable: [{path: target, mode: rw}]", "mode"),
+                ("mounts: [{source: ../data, readonly: true}]", "readonly"),
+                ("caches: [{volume: m2, target: /m2, size: 1g}]", "size"),
+                ("env: {passthrough: [CI]}", "passthrough"),
+            ] {
+                let message = error(&format!("defaults:\n  container:\n    {yaml}\n"));
+                assert!(
+                    message.contains(&format!("unknown field `{field}`")),
+                    "{message}"
+                );
+            }
+        }
+
+        #[test]
+        fn rejects_unknown_container_values() {
+            for (yaml, expected) in [
+                (
+                    "network: host",
+                    "unknown variant `host`, expected `none` or `bridge`",
+                ),
+                (
+                    "pull: sometimes",
+                    "unknown variant `sometimes`, expected one of `never`, `missing`, `always`",
+                ),
+                (
+                    "workspace: readonly",
+                    "unknown variant `readonly`, expected `ro` or `rw`",
+                ),
+                (
+                    "writable: [{path: target, seed: link}]",
+                    "unknown variant `link`, expected `copy`",
+                ),
+                ("timeout: soon", "invalid duration `soon`"),
+            ] {
+                let message = error(&format!("defaults:\n  container:\n    {yaml}\n"));
+                assert!(message.contains(expected), "{message}");
+            }
+        }
+
+        #[test]
+        fn documented_container_examples_parse() {
+            let mut examples = 0;
+            for doc in [
+                include_str!("../../../README.md"),
+                include_str!("../../../docs/adapters.md"),
+            ] {
+                for block in doc.split("```yaml\n").skip(1) {
+                    let yaml = block.split("```").next().unwrap();
+                    if !yaml.contains("  container:\n") {
+                        continue;
+                    }
+                    let raw = parse(yaml).unwrap();
+                    assert!(raw.defaults.container.is_some());
+                    examples += 1;
+                }
+            }
+            assert_eq!(examples, 2);
+        }
+
+        #[test]
+        fn container_settings_apply_only_with_container_execution() {
+            let mut cfg = TestItConfig::default();
+            cfg.projects.insert(
+                "prices".into(),
+                ProjectConfig {
+                    packages: BTreeMap::from([("api".to_string(), PackageConfig::default())]),
+                    ..Default::default()
+                },
+            );
+            assert!(!cfg.container_settings_in_use());
+            cfg.defaults.container = Some(ContainerConfig::default());
+            assert!(!cfg.container_settings_in_use());
+            let cfg = cfg.with_execution(ExecutionMode::Container);
+            assert!(cfg.container_settings_in_use());
+        }
     }
 
     mod with_execution {

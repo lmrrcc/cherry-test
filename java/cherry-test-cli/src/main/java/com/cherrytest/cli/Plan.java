@@ -1,10 +1,13 @@
 package com.cherrytest.cli;
 
+import com.cherrytest.cli.adapters.Container;
 import com.cherrytest.common.adapter.AdapterRequest;
 import com.cherrytest.common.adapter.AdapterResponse;
+import com.cherrytest.common.container.ContainerSpec;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustOrdering;
 import com.cherrytest.core.ExternalRunner;
+import com.cherrytest.core.Memory;
 import com.cherrytest.core.PackageConfig;
 import com.cherrytest.core.ResourcesConfig;
 import com.cherrytest.core.Scope;
@@ -58,9 +61,15 @@ public record Plan(List<PhasePlan> phases) {
             List<String> scopes,
             Resources resources,
             long estimateMs,
-            boolean exclusive) {
+            boolean exclusive,
+            @Nullable String containerError) {
         public Job {
             scopes = List.copyOf(scopes);
+        }
+
+        /** The same job with another estimate. */
+        public Job withEstimate(long replacement) {
+            return new Job(key, adapter, request, scopes, resources, replacement, exclusive, containerError);
         }
     }
 
@@ -159,6 +168,19 @@ public record Plan(List<PhasePlan> phases) {
                 args,
                 new TreeMap<>(RustOrdering.STRING_ORDER),
                 requestOptions);
+        ContainerSpec containerSpec = null;
+        String containerError = null;
+        try {
+            containerSpec = Container.resolve(
+                    options.config().defaults().container(),
+                    packageConfig.container(),
+                    request,
+                    options.runDir().id(),
+                    options.runDir().root());
+        } catch (RuntimeException error) {
+            containerError = AnyhowError.alternate(error);
+        }
+        request = request.withContainer(containerSpec);
         List<String> scopes = new ArrayList<>();
         if (phase.equals("integration") && Runner.discoversScopes(adapter)) {
             for (DiscoveredTest test : preflight.discovered()) {
@@ -171,20 +193,48 @@ public record Plan(List<PhasePlan> phases) {
         if (runner != null && runner.scope() != null && Scope.needsDocker(runner.scope())) {
             scopes.add(runner.scope());
         }
-        ResourcesConfig configured = packageConfig.resources();
-        Long millicpus = configured == null ? null : configured.millicpus();
-        Long memory = configured == null ? null : configured.memory();
-        Resources resources = new Resources(
-                millicpus != null ? millicpus : Resources.PACKAGE_DEFAULT.millicpus(),
-                memory != null ? memory : Resources.PACKAGE_DEFAULT.memory());
         return new Job(
                 new JobKey(projectId, member.name(), phase),
                 adapter,
                 request,
                 scopes,
-                resources,
+                jobResources(packageConfig.resources(), containerSpec),
                 0,
-                packageConfig.exclusive());
+                packageConfig.exclusive(),
+                containerError);
+    }
+
+    /** What a job reserves: the package's {@code resources}, else its container's limits, else 1 CPU and 1g. */
+    public static Resources jobResources(@Nullable ResourcesConfig configured, @Nullable ContainerSpec container) {
+        Long containerCpus = null;
+        Long containerMemory = null;
+        if (container != null && container.cpus() != null) {
+            try {
+                double cpus = Double.parseDouble(container.cpus());
+                long millicpus = Math.round(cpus * 1000.0);
+                if (Double.isFinite(cpus) && millicpus >= 1) {
+                    containerCpus = millicpus;
+                }
+            } catch (NumberFormatException notANumber) {
+                containerCpus = null;
+            }
+        }
+        if (container != null && container.memory() != null) {
+            try {
+                containerMemory = Memory.parse(container.memory());
+            } catch (AnyhowError notASize) {
+                containerMemory = null;
+            }
+        }
+        Long millicpus = configured == null ? null : configured.millicpus();
+        Long memory = configured == null ? null : configured.memory();
+        return new Resources(
+                millicpus != null
+                        ? millicpus
+                        : containerCpus != null ? containerCpus : Resources.PACKAGE_DEFAULT.millicpus(),
+                memory != null
+                        ? memory
+                        : containerMemory != null ? containerMemory : Resources.PACKAGE_DEFAULT.memory());
     }
 
     private static @Nullable ExternalRunner phaseRunner(

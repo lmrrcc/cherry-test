@@ -1,4 +1,5 @@
 pub mod builtins;
+pub mod container;
 pub mod formats;
 pub mod lcov;
 pub mod process;
@@ -127,11 +128,22 @@ pub fn invoke(
         .stdin(Stdio::from(std::fs::File::open(request_file)?))
         .current_dir(&request.root);
     let prefix = request.output.join("adapter");
-    let success = process::capture(
+    let timeout = match (config, &request.container) {
+        (Some(config), _) => config.timeout_secs,
+        (None, Some(spec)) => spec.timeout_secs,
+        (None, None) => 1800,
+    };
+    let stop = request.container.as_ref().map(|spec| {
+        command.env(container::OWNER_PID_ENV, container::owner_pid().to_string());
+        let name = spec.name.clone();
+        move || container::kill(&name)
+    });
+    let success = process::capture_with(
         command,
         &prefix,
-        config.map(|c| c.timeout_secs).unwrap_or(1800),
+        timeout,
         true,
+        stop.as_ref().map(|stop| stop as &dyn Fn()),
     )?;
     let stdout = prefix.with_extension("stdout");
     if std::fs::metadata(&stdout)?.len() > 32 * 1024 * 1024 {
@@ -337,6 +349,7 @@ mod tests {
             args: Vec::new(),
             env: Default::default(),
             options: Default::default(),
+            container: None,
         }
     }
 

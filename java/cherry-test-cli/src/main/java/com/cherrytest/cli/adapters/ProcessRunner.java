@@ -5,6 +5,8 @@ import com.cherrytest.cli.nativeos.Libc;
 import com.cherrytest.cli.nativeos.OsError;
 import com.cherrytest.common.adapter.AdapterRequest;
 import com.cherrytest.common.adapter.ExecutionMode;
+import com.cherrytest.common.container.CacheVolume;
+import com.cherrytest.common.container.ContainerSpec;
 import com.cherrytest.common.process.ExecutableLookup;
 import com.cherrytest.common.process.ProcessEnvironment;
 import com.cherrytest.common.process.SystemCommand;
@@ -75,6 +77,15 @@ public final class ProcessRunner {
     }
 
     public static boolean capture(Spec spec, Path prefix, long timeoutSeconds, boolean group) {
+        return capture(spec, prefix, timeoutSeconds, group, null);
+    }
+
+    /**
+     * Like {@link #capture(Spec, Path, long, boolean)}, and runs {@code stop} first when the timeout
+     * expires or the run is cancelled, so that work the process started elsewhere, such as a
+     * container, ends with it.
+     */
+    public static boolean capture(Spec spec, Path prefix, long timeoutSeconds, boolean group, @Nullable Runnable stop) {
         Path parent = prefix.getParent();
         if (parent == null) {
             throw new AnyhowError("log directory");
@@ -83,11 +94,12 @@ public final class ProcessRunner {
         Path stdout = RustPath.withExtension(prefix, "stdout");
         Path stderr = RustPath.withExtension(prefix, "stderr");
         return group
-                ? captureGroup(spec, prefix, stdout, stderr, timeoutSeconds)
-                : captureChild(spec, prefix, stdout, stderr, timeoutSeconds);
+                ? captureGroup(spec, prefix, stdout, stderr, timeoutSeconds, stop)
+                : captureChild(spec, prefix, stdout, stderr, timeoutSeconds, stop);
     }
 
-    private static boolean captureGroup(Spec spec, Path prefix, Path stdout, Path stderr, long timeoutSeconds) {
+    private static boolean captureGroup(
+            Spec spec, Path prefix, Path stdout, Path stderr, long timeoutSeconds, @Nullable Runnable stop) {
         Map<String, String> environment =
                 spec.environment() == null ? ProcessEnvironment.snapshot() : new LinkedHashMap<>(spec.environment());
         environment.putAll(spec.environmentOverrides());
@@ -123,6 +135,9 @@ public final class ProcessRunner {
                 return status.success();
             }
             if (cancelled() || elapsedSeconds(start) >= timeoutSeconds) {
+                if (stop != null) {
+                    stop.run();
+                }
                 signalGroup("-TERM", pid);
                 long grace = System.nanoTime();
                 while (Libc.tryWait(pid).running() && elapsedSeconds(grace) < GRACE_SECONDS) {
@@ -142,7 +157,8 @@ public final class ProcessRunner {
         }
     }
 
-    private static boolean captureChild(Spec spec, Path prefix, Path stdout, Path stderr, long timeoutSeconds) {
+    private static boolean captureChild(
+            Spec spec, Path prefix, Path stdout, Path stderr, long timeoutSeconds, @Nullable Runnable stop) {
         ProcessBuilder builder = new ProcessBuilder();
         Map<String, String> environment = builder.environment();
         if (spec.environment() == null) {
@@ -178,6 +194,9 @@ public final class ProcessRunner {
                 return exitValue(process) == 0;
             }
             if (cancelled() || elapsedSeconds(start) >= timeoutSeconds) {
+                if (stop != null) {
+                    stop.run();
+                }
                 long grace = System.nanoTime();
                 while (process.isAlive() && elapsedSeconds(grace) < GRACE_SECONDS) {
                     sleep(GRACE_POLL_MILLIS);
@@ -268,6 +287,10 @@ public final class ProcessRunner {
     }
 
     public static boolean run(AdapterRequest request, String program, List<String> arguments, String label) {
+        ContainerSpec container = request.container();
+        if (request.execution() == ExecutionMode.CONTAINER && container != null) {
+            return Container.run(request, container, program, arguments, label);
+        }
         Spec spec;
         if (request.execution() == ExecutionMode.CONTAINER) {
             String image = request.options().containsKey("image")
@@ -299,17 +322,9 @@ public final class ProcessRunner {
                 docker.add("-e");
                 docker.add(entry.getKey() + "=" + value);
             }
-            if (image.startsWith("maven:")) {
+            for (CacheVolume cache : Container.defaultCaches(image)) {
                 docker.add("-v");
-                docker.add("cherry-test-polyglot-maven:/root/.m2");
-            }
-            if (image.startsWith("gradle:")) {
-                docker.add("-v");
-                docker.add("cherry-test-polyglot-gradle:/home/gradle/.gradle");
-            }
-            if (image.startsWith("cherry-test-rust:")) {
-                docker.add("-v");
-                docker.add("cherry-test-polyglot-cargo:/usr/local/cargo/registry");
+                docker.add(cache.volume() + ":" + cache.target());
             }
             docker.add(image);
             docker.add(mapped(request, program));

@@ -113,8 +113,10 @@ Every Rust test has a Java twin with the same snake_case name, in the matching c
 | `test/cherry-test-common/src/git_diff.rs` | `cherry-test-common/.../gitdiff/GitDiffTest` |
 | `test/cherry-test-common/src/report_shell.rs` | `cherry-test-common/.../reportshell/ReportShellTest` |
 | `test/cherry-test-common/src/ignore.rs` | `cherry-test-common/.../ignore/PathIgnoreTest` |
+| `test/cherry-test-common/src/container.rs` | `cherry-test-core/.../ContainerConfigTest` (YAML parsing of the `container:` block lives in core) |
 | `test/cherry-test-core/src/*.rs` | `cherry-test-core/.../{TestItConfig,RepoRoot,Scope,Auth,TestId,Workspace}Test` |
 | `test/cherry-test-macros/src/lib.rs` | `cherry-test-processor/.../CherryTestProcessorTest` |
 | `test/cherry-test/src/**/*.rs` | `cherry-test-cli/src/test/java/**` (one class per Rust module) |
+| `test/cherry-test/tests/golden/container-argv.json` | read by `adapters::container` tests and `cherry-test-cli/.../adapters/ContainerTest`: identical `docker run` argv and `request.json` bytes |
 | `test/cherry-test/tests/adapter_contract.rs` | `cherry-test-cli/.../contract/AdapterContractIT` (Failsafe, runs the shaded jar) |
 | `test/cherry-test/tests/parallel_run.rs` | `cherry-test-cli/.../contract/ParallelRunIT` (Failsafe, runs the shaded jar) |

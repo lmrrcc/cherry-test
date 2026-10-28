@@ -68,9 +68,13 @@ fn cargo(request: &mut AdapterRequest) -> Result<AdapterResponse> {
     args.extend(process::strings(&[
         "--format", "pretty", "--color", "never",
     ]));
+    let target_dir = cargo_target_dir(request);
+    if let Some(spec) = request.container.as_mut() {
+        spec.outputs.push(target_dir.clone());
+    }
     request.env.insert(
         "CARGO_TARGET_DIR".into(),
-        cargo_target_dir(request).to_string_lossy().into(),
+        target_dir.to_string_lossy().into(),
     );
     let success = process::run(request, "cargo", &args, "tests")?;
     let output = std::fs::read_to_string(request.output.join("tests.stdout"))?;
@@ -444,6 +448,7 @@ mod tests {
             args: Vec::new(),
             env: Default::default(),
             options: Default::default(),
+            container: None,
         }
     }
 

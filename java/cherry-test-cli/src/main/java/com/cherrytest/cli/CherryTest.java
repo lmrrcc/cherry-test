@@ -1,6 +1,7 @@
 package com.cherrytest.cli;
 
 import com.cherrytest.cli.adapters.Adapters;
+import com.cherrytest.cli.adapters.Container;
 import com.cherrytest.cli.adapters.ProcessRunner;
 import com.cherrytest.cli.coverage.Coverage;
 import com.cherrytest.cli.coverage.CoverageIgnore;
@@ -136,7 +137,18 @@ public final class CherryTest {
                         plan.config().defaults().parallel(),
                         plan.config().defaults().execution(),
                         env));
-        RunOutcome outcome = Runner.runProjects(plan.projects(), options, plan.preflight());
+        boolean containers = plan.config().containerSettingsInUse();
+        if (containers) {
+            Container.startRun(runDir.id(), cli.quiet());
+        }
+        RunOutcome outcome;
+        try {
+            outcome = Runner.runProjects(plan.projects(), options, plan.preflight());
+        } finally {
+            if (containers) {
+                Container.finishRun(runDir.id());
+            }
+        }
         if (!ProcessRunner.cancelled()) {
             recordDurations(Durations.path(workspace, plan.config().defaults().runsBase()), outcome);
         }

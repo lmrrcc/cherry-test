@@ -118,6 +118,7 @@ pub fn execute_job(
         let _output = output_lock();
         println!("==> {}/{package}/{phase} ({adapter})", job.key.project);
     }
+    let setup = setup.and_then(|()| job.container_error.clone().map_or(Ok(()), Err));
     let result = match setup {
         Ok(()) => adapters::invoke(adapter, opts.config.adapters.get(adapter), &request, env)
             .map_err(|error| format!("{error:#}")),

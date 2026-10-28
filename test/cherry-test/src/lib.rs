@@ -285,7 +285,15 @@ fn run_tests_at_root(
     };
 
     let preflight = plan.preflight.clone();
-    let outcome = runner::run_projects(&plan.projects, &opts, &preflight)?;
+    let containers = plan.config.container_settings_in_use();
+    if containers {
+        adapters::container::start_run(&run_dir.id, cli.quiet);
+    }
+    let outcome = runner::run_projects(&plan.projects, &opts, &preflight);
+    if containers {
+        adapters::container::finish_run(&run_dir.id);
+    }
+    let outcome = outcome?;
     if !adapters::process::cancelled() {
         let path = durations::Durations::path(workspace, &plan.config.defaults.runs_base);
         if let Err(error) = durations::update(&path, &outcome.timings) {

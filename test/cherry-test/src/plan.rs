@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use anyhow::{bail, Result};
 use cherry_test_common::adapter::{AdapterRequest, PROTOCOL_VERSION};
+use cherry_test_common::container::ContainerSpec;
+use cherry_test_core::{Memory, ResourcesConfig};
 
 use crate::config::{ExternalRunner, TestKind};
 use crate::discover::ProjectGroup;
@@ -58,6 +60,8 @@ pub struct Job {
     pub resources: Resources,
     pub estimate_ms: u64,
     pub exclusive: bool,
+    /// Why the job's `container:` settings could not be resolved; the job then fails without starting.
+    pub container_error: Option<String>,
 }
 
 /// The jobs of one phase, in configuration order.
@@ -152,7 +156,7 @@ fn job(
     if adapter == "cargo" {
         args.extend_from_slice(opts.extra_test_args);
     }
-    let request = AdapterRequest {
+    let mut request = AdapterRequest {
         protocol: PROTOCOL_VERSION,
         project: project_id.to_string(),
         package: member.name.clone(),
@@ -167,6 +171,20 @@ fn job(
         args,
         env: BTreeMap::new(),
         options,
+        container: None,
+    };
+    let container_error = match crate::adapters::container::resolve(
+        opts.config.defaults.container.as_ref(),
+        package.container.as_ref(),
+        &request,
+        &opts.run_dir.id,
+        &opts.run_dir.root,
+    ) {
+        Ok(spec) => {
+            request.container = spec;
+            None
+        }
+        Err(error) => Some(format!("{error:#}")),
     };
     let mut scopes = Vec::new();
     if phase == "integration" && discovers_scopes(&adapter) {
@@ -186,22 +204,45 @@ fn job(
             scopes.push(scope.clone());
         }
     }
-    let configured = package.resources.as_ref();
+    let resources = job_resources(package.resources.as_ref(), request.container.as_ref());
     Job {
         key: JobKey::new(project_id, &member.name, phase),
         adapter,
         request,
         scopes,
-        resources: Resources {
-            millicpus: configured
-                .and_then(|resources| resources.cpus)
-                .map_or(Resources::PACKAGE_DEFAULT.millicpus, |cpus| cpus.0),
-            memory: configured
-                .and_then(|resources| resources.memory)
-                .map_or(Resources::PACKAGE_DEFAULT.memory, |memory| memory.0),
-        },
+        resources,
         estimate_ms: 0,
         exclusive: package.exclusive,
+        container_error,
+    }
+}
+
+/// What a job reserves: the package's `resources`, else the `cpus`/`memory` limits of its container, else 1 CPU and 1g.
+pub fn job_resources(
+    configured: Option<&ResourcesConfig>,
+    container: Option<&ContainerSpec>,
+) -> Resources {
+    let container_cpus = container
+        .and_then(|spec| spec.cpus.as_deref())
+        .and_then(|text| text.parse::<f64>().ok())
+        .map(|cpus| (cpus * 1000.0).round())
+        .filter(|millicpus| millicpus.is_finite() && *millicpus >= 1.0)
+        .map(|millicpus| millicpus as u64);
+    let container_memory = container
+        .and_then(|spec| spec.memory.as_deref())
+        .and_then(|text| Memory::parse(text).ok())
+        .map(|memory| memory.0);
+    Resources {
+        millicpus: configured
+            .and_then(|resources| resources.cpus)
+            .map(|cpus| cpus.0)
+            .or(container_cpus)
+            .unwrap_or(Resources::PACKAGE_DEFAULT.millicpus),
+        memory: configured
+            .and_then(|resources| resources.memory)
+            .map(|memory| memory.0)
+            .or(container_memory)
+            .unwrap_or(Resources::PACKAGE_DEFAULT.memory),
     }
 }
 
@@ -347,5 +388,47 @@ pub(crate) mod tests {
         let opts = options(root.path(), &run_dir, &config, &[]);
         let error = plan(&projects, &opts, &PreflightPlan::default()).unwrap_err();
         assert_eq!(error.to_string(), "unknown test kind smoke");
+    }
+
+    #[test]
+    fn container_limits_set_job_resources_and_resolve_errors_fail_setup() {
+        let (root, mut config, projects) = fixture();
+        config.defaults.execution = cherry_test_common::adapter::ExecutionMode::Container;
+        config.defaults.container =
+            Some(serde_yaml::from_str("image: rust:1\ncpus: \"2.5\"\nmemory: 512m\n").unwrap());
+        let shop = config.projects.get_mut("shop").unwrap();
+        shop.packages.get_mut("web").unwrap().resources = Some(ResourcesConfig {
+            cpus: Some(cherry_test_core::Cpus(1500)),
+            memory: None,
+        });
+        shop.packages.get_mut("api").unwrap().container =
+            Some(serde_yaml::from_str("user: \"bad user\"\n").unwrap());
+        let run_dir = RunDir::create(root.path(), std::path::Path::new("runs")).unwrap();
+        let opts = options(root.path(), &run_dir, &config, &[]);
+        let plan = plan(&projects, &opts, &PreflightPlan::default()).unwrap();
+        let api = &plan.phases[0].jobs[0];
+        assert!(api.request.container.is_none());
+        assert!(api
+            .container_error
+            .as_deref()
+            .is_some_and(|error| error.contains("container.user")));
+        let web = &plan.phases[0].jobs[1];
+        assert!(web.container_error.is_none());
+        assert!(web.request.container.is_some());
+        assert_eq!(
+            web.resources,
+            Resources {
+                millicpus: 1500,
+                memory: 512 << 20
+            }
+        );
+        assert_eq!(
+            job_resources(None, web.request.container.as_ref()),
+            Resources {
+                millicpus: 2500,
+                memory: 512 << 20
+            }
+        );
+        assert_eq!(job_resources(None, None), Resources::PACKAGE_DEFAULT);
     }
 }

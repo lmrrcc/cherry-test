@@ -140,14 +140,7 @@ public final class Durations {
             List<Plan.Job> jobs = new ArrayList<>();
             for (Plan.Job job : phase.jobs()) {
                 Entry entry = get(job.key());
-                jobs.add(new Plan.Job(
-                        job.key(),
-                        job.adapter(),
-                        job.request(),
-                        job.scopes(),
-                        job.resources(),
-                        entry == null ? fallback : entry.millis(),
-                        job.exclusive()));
+                jobs.add(job.withEstimate(entry == null ? fallback : entry.millis()));
             }
             phases.add(new Plan.PhasePlan(phase.phase(), jobs));
         }
