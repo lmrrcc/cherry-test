@@ -17,7 +17,37 @@ public record Defaults(
         String diffBase,
         Path coverageIgnore,
         @Nullable ParallelConfig parallel,
-        @Nullable ContainerConfig container) {
+        @Nullable ContainerConfig container,
+        @Nullable IsolateConfig isolate) {
+    public Defaults(
+            ExecutionMode execution,
+            boolean strict,
+            boolean coverage,
+            boolean htmlReport,
+            boolean openReport,
+            Path runsBase,
+            Path reportDir,
+            String scope,
+            String diffBase,
+            Path coverageIgnore,
+            @Nullable ParallelConfig parallel,
+            @Nullable ContainerConfig container) {
+        this(
+                execution,
+                strict,
+                coverage,
+                htmlReport,
+                openReport,
+                runsBase,
+                reportDir,
+                scope,
+                diffBase,
+                coverageIgnore,
+                parallel,
+                container,
+                null);
+    }
+
     public Defaults(
             ExecutionMode execution,
             boolean strict,
@@ -73,7 +103,8 @@ public record Defaults(
                 diffBase,
                 coverageIgnore,
                 parallel,
-                container);
+                container,
+                isolate);
     }
 
     public Defaults withStrict(boolean replacement) {
@@ -89,7 +120,8 @@ public record Defaults(
                 diffBase,
                 coverageIgnore,
                 parallel,
-                container);
+                container,
+                isolate);
     }
 
     public Defaults withContainer(@Nullable ContainerConfig replacement) {
@@ -105,6 +137,7 @@ public record Defaults(
                 diffBase,
                 coverageIgnore,
                 parallel,
-                replacement);
+                replacement,
+                isolate);
     }
 }

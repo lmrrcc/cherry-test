@@ -76,7 +76,8 @@ public final class Builtins {
                     base.args(),
                     env,
                     base.options(),
-                    container);
+                    container,
+                    base.select());
         }
     }
 

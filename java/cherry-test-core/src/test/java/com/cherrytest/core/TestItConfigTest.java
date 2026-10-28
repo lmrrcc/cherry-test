@@ -288,6 +288,25 @@ class TestItConfigTest {
         }
     }
 
+    @Test
+    void parses_isolate_defaults_and_rejects_bad_values() throws IOException {
+        assertThat(load("defaults:\n  isolate:\n    on_failure: true\n    runs: 5\n    max_tests: 2\n")
+                        .defaults()
+                        .isolate())
+                .isEqualTo(new IsolateConfig(true, 5, 2));
+        assertThat(load("defaults:\n  isolate: {on_failure: true}\n").defaults().isolate())
+                .isEqualTo(new IsolateConfig(true, 3, 10));
+        assertThat(IsolateConfig.standard().runs()).isEqualTo(3);
+        assertThat(load("defaults: {}\n").defaults().isolate()).isNull();
+        for (String yaml : List.of(
+                "defaults:\n  isolate:\n    reruns: 2\n",
+                "defaults:\n  isolate:\n    runs: 0\n",
+                "defaults:\n  isolate:\n    max_tests: -1\n",
+                "defaults:\n  isolate:\n    runs: many\n")) {
+            assertThatThrownBy(() -> load(yaml)).as(yaml).isInstanceOf(AnyhowError.class);
+        }
+    }
+
     @Nested
     class services {
         private String error(String yaml) {

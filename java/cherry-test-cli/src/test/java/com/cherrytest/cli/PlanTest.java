@@ -167,6 +167,64 @@ class PlanTest {
     }
 
     @Test
+    void rerun_jobs_get_fresh_outputs_containers_and_sidecars() throws IOException {
+        String yaml = """
+                defaults:
+                  execution: container
+                  container:
+                    image: eclipse-temurin:25-jdk
+                    writable: [build]
+                projects:
+                  shop:
+                    services:
+                      db:
+                        image: postgres:16-alpine
+                        port: 5432
+                    packages:
+                      api:
+                        kinds: [unit, integration]
+                        integration:
+                          scope: checkout
+                      web:
+                        runtime: node
+                        kinds: [unit]
+                scopes:
+                  checkout:
+                    projects: [shop]
+                """;
+        Runner.RunOptions options = options(root, config(root, yaml), List.of());
+        Plan planned = Plan.plan(projects(), options, emptyPreflight());
+        Plan.Job job = planned.phases().get(1).jobs().getFirst();
+        Path output = options.runDir().reports().resolve("isolation/shop/api/integration/2/3");
+        Plan.Job rerun = Plan.rerunJob(
+                job, new Isolation.Narrowing.Args(List.of("only_this", "--exact")), output, "isolate-2-3", options);
+        assertThat(rerun.request().output()).isEqualTo(output);
+        assertThat(rerun.request().args()).containsExactly("only_this", "--exact");
+        assertThat(rerun.request().coverage() || rerun.request().strict()).isFalse();
+        assertThat(rerun.key()).isEqualTo(job.key());
+        assertThat(rerun.provisioned()).containsExactly("checkout");
+        ContainerSpec original = Objects.requireNonNull(job.request().container());
+        ContainerSpec fresh = Objects.requireNonNull(rerun.request().container());
+        assertThat(fresh.name()).isEqualTo(original.name() + "-isolate-2-3");
+        assertThat(fresh.outputs()).containsExactly(output);
+        assertThat(fresh.writable().getFirst().source())
+                .isEqualTo(options.runDir().root().resolve("isolation/isolate-2-3/jobs/shop/api/integration/w/build"));
+        SidecarSpec sidecars = Objects.requireNonNull(fresh.sidecars());
+        assertThat(sidecars.holder()).isEqualTo(fresh.name() + "-net");
+        assertThat(sidecars.services().getFirst().name()).isEqualTo(fresh.name() + "-shop-db");
+        assertThat(sidecars.holder())
+                .isNotEqualTo(Objects.requireNonNull(original.sidecars()).holder());
+        Plan.Job select = Plan.rerunJob(
+                job,
+                new Isolation.Narrowing.Select(List.of("only_this")),
+                options.runDir().reports().resolve("isolation/x"),
+                "isolate-1-1",
+                options);
+        assertThat(select.request().select()).containsExactly("only_this");
+        assertThat(select.request().args()).isEmpty();
+    }
+
+    @Test
     void container_limits_set_job_resources_and_resolve_errors_fail_setup() throws IOException {
         String yaml = """
                 defaults:

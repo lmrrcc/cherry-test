@@ -339,7 +339,8 @@ public final class TestItConfig {
                             YamlValues.requiredString(map, "command", path),
                             YamlValues.stringList(map, "args", path),
                             YamlValues.unsignedOr(
-                                    map, "timeout_secs", path, Long.MAX_VALUE, AdapterConfig.DEFAULT_TIMEOUT_SECS)));
+                                    map, "timeout_secs", path, Long.MAX_VALUE, AdapterConfig.DEFAULT_TIMEOUT_SECS),
+                            YamlValues.boolOr(map, "isolate", path, false)));
         });
         return adapters;
     }
@@ -368,7 +369,34 @@ public final class TestItConfig {
                 YamlValues.stringOr(map, "diff_base", path, standard.diffBase()),
                 coverageIgnore == null ? standard.coverageIgnore() : coverageIgnore,
                 parseParallel(YamlValues.field(map, "parallel"), "defaults.parallel"),
-                ContainerYaml.parse(YamlValues.field(map, "container"), path + "container"));
+                ContainerYaml.parse(YamlValues.field(map, "container"), path + "container"),
+                parseIsolate(YamlValues.field(map, "isolate"), "defaults.isolate"));
+    }
+
+    private static @Nullable IsolateConfig parseIsolate(@Nullable Object value, String path) {
+        if (value == null) {
+            return null;
+        }
+        Map<String, Object> map = YamlValues.mapping(value, path);
+        rejectUnknownFields(map, path, List.of("on_failure", "runs", "max_tests"));
+        return new IsolateConfig(
+                YamlValues.boolOr(map, "on_failure", path + ".", false),
+                positiveCount(map, "runs", path, IsolateConfig.DEFAULT_RUNS),
+                positiveCount(map, "max_tests", path, IsolateConfig.DEFAULT_MAX_TESTS));
+    }
+
+    private static long positiveCount(Map<String, Object> map, String name, String path, long fallback) {
+        Object value = YamlValues.field(map, name);
+        if (value == null) {
+            return fallback;
+        }
+        if (value instanceof Number number
+                && !(value instanceof Double)
+                && number.longValue() > 0
+                && number.longValue() <= 0xFFFFFFFFL) {
+            return number.longValue();
+        }
+        throw new AnyhowError(path + "." + name + ": expected a positive number");
     }
 
     private static @Nullable ParallelConfig parseParallel(@Nullable Object value, String path) {

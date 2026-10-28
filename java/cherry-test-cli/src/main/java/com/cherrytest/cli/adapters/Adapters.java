@@ -325,19 +325,26 @@ public final class Adapters {
                 .resolve(request.project())
                 .resolve(request.packageName())
                 .resolve(request.phase());
-        createDirectories(directory);
+        writeResult(directory.resolve("result.json"), request, response);
+        return response;
+    }
+
+    /** Writes {@code result.json}: the job's project, package and phase with the adapter response. */
+    public static void writeResult(Path path, AdapterRequest request, AdapterResponse response) {
+        Path directory = path.getParent();
+        if (directory != null) {
+            createDirectories(directory);
+        }
         ObjectNode document = NODES.objectNode();
         document.put("package", request.packageName());
         document.put("phase", request.phase());
         document.put("project", request.project());
         document.set("result", AdapterJson.responseValue(response));
         try {
-            Files.writeString(
-                    directory.resolve("result.json"), SerdeJsonWriter.pretty(document), StandardCharsets.UTF_8);
+            Files.writeString(path, SerdeJsonWriter.pretty(document), StandardCharsets.UTF_8);
         } catch (IOException exception) {
             throw new AnyhowError(RustIoError.display(exception), null);
         }
-        return response;
     }
 
     public static List<ObjectNode> readRows(Path reports) {

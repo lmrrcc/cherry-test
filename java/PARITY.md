@@ -123,3 +123,6 @@ Every Rust test has a Java twin with the same snake_case name, in the matching c
 | `test/cherry-test-core/src/sidecar.rs` | `cherry-test-core/.../SidecarsTest`; the image service parsing tests of `config.rs` live in `TestItConfigTest$services` |
 | `test/cherry-test/tests/golden/sidecar-argv.json` | read by `adapters::container::sidecar_argv_matches_golden_cases` and `ContainerTest.sidecar_argv_matches_golden_cases`: identical holder, service, probe, removal and job argv, endpoint variables and `request.json` bytes |
 | `test/cherry-test/tests/sidecar_smoke.rs` | `cherry-test-cli/.../contract/SidecarSmokeIT` (Failsafe, runs the shaded jar; needs `CHERRY_TEST_DOCKER_SMOKE=1`, Rust runs it with `--ignored`) |
+| `test/cherry-test/src/isolation.rs` | `cherry-test-cli/.../IsolationTest`; the rerun-job and phases-page tests live in `PlanTest` and `report/AdapterViewTest` like their Rust modules |
+| `test/cherry-test/tests/golden/isolation.json` | read by `isolation::writes_isolation_json_and_terminal_lines` and `IsolationTest.writes_isolation_json_and_terminal_lines`: identical `reports/isolation.json` bytes |
+| `test/cherry-test/tests/isolation_run.rs` | `cherry-test-cli/.../contract/IsolationRunIT` (Failsafe, runs the shaded jar) |

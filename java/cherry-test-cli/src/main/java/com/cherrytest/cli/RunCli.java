@@ -20,6 +20,8 @@ public record RunCli(
         boolean noHtml,
         boolean noOpen,
         boolean noBanner,
+        boolean isolate,
+        boolean noIsolate,
         boolean keepGoing,
         boolean quiet,
         boolean verbose,

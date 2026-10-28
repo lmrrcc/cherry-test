@@ -101,6 +101,15 @@ public final class HtmlReport {
         StringBuilder body = new StringBuilder("<section id=\"projects_summary\"><h2>projects</h2>");
         body.append(renderProjectsTable(snapshot));
         body.append("</section><p><a href=\"phases.html\">Test phases, screenshots, logs and source coverage</a></p>");
+        if (!snapshot.isolation().isEmpty()) {
+            List<String> counts = new ArrayList<>();
+            snapshot.isolation()
+                    .forEach(count ->
+                            counts.add(count.getValue() + " " + count.getKey().wireName()));
+            body.append("<p><a href=\"phases.html#isolation\">Failed tests rerun alone: ")
+                    .append(String.join(", ", counts))
+                    .append("</a></p>");
+        }
         body.append(renderTestsSection(snapshot, jumps));
         body.append(renderProjectSections(snapshot, jumps));
         if (snapshot.crap().enabled()) {

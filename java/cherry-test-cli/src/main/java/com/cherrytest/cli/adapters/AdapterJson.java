@@ -4,6 +4,8 @@ import com.cherrytest.common.adapter.AdapterRequest;
 import com.cherrytest.common.adapter.AdapterResponse;
 import com.cherrytest.common.adapter.Attachment;
 import com.cherrytest.common.adapter.ExecutionMode;
+import com.cherrytest.common.adapter.Isolation;
+import com.cherrytest.common.adapter.IsolationClass;
 import com.cherrytest.common.adapter.TestResult;
 import com.cherrytest.common.adapter.TestStatus;
 import com.cherrytest.common.container.BindMount;
@@ -58,6 +60,11 @@ public final class AdapterJson {
         ContainerSpec container = request.container();
         if (container != null) {
             node.set("container", containerValue(container));
+        }
+        List<String> select = request.select();
+        if (select != null) {
+            ArrayNode names = node.putArray("select");
+            select.forEach(names::add);
         }
         return SerdeJsonWriter.compact(node);
     }
@@ -308,6 +315,10 @@ public final class AdapterJson {
             attachments.add(item);
         }
         node.set("duration_ms", NODES.numberNode(new java.math.BigInteger(Long.toUnsignedString(test.durationMs()))));
+        Isolation isolation = test.isolation();
+        if (isolation != null) {
+            node.set("isolation", isolationValue(isolation));
+        }
         if (test.line() == null) {
             node.putNull("line");
         } else {
@@ -326,6 +337,37 @@ public final class AdapterJson {
         }
         node.put("status", test.status().wireName());
         return node;
+    }
+
+    /** One test's {@code isolation}, with keys in the sorted order of a {@code serde_json::Value}. */
+    private static ObjectNode isolationValue(Isolation isolation) {
+        ObjectNode node = NODES.objectNode();
+        node.put("class", isolation.isolationClass().wireName());
+        ArrayNode logs = node.putArray("logs");
+        isolation.logs().forEach(logs::add);
+        node.put("passed", isolation.passed());
+        if (isolation.reason() != null) {
+            node.put("reason", isolation.reason());
+        }
+        node.put("runs", isolation.runs());
+        return node;
+    }
+
+    private static @Nullable Isolation isolationFrom(@Nullable JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new AnyhowError("invalid type: " + describe(node) + ", expected struct Isolation");
+        }
+        List<String> logs = new ArrayList<>();
+        sequence(required(node, "logs")).forEach(log -> logs.add(stringValue(log)));
+        return new Isolation(
+                IsolationClass.fromWire(stringValue(required(node, "class"))),
+                requiredU64(node, "runs", 0xFFFFFFFFL),
+                requiredU64(node, "passed", 0xFFFFFFFFL),
+                logs,
+                optionalString(node, "reason"));
     }
 
     public static AdapterResponse parseResponse(byte[] content) {
@@ -400,7 +442,8 @@ public final class AdapterJson {
                 message,
                 source == null ? null : Path.of(source),
                 line,
-                attachments);
+                attachments,
+                isolationFrom(node.get("isolation")));
     }
 
     public static AdapterRequest parseRequest(byte[] content) {
@@ -430,6 +473,14 @@ public final class AdapterJson {
             }
         }
         JsonNode containerNode = node.get("container");
+        JsonNode selectNode = node.get("select");
+        List<String> select = null;
+        if (selectNode != null && !selectNode.isNull()) {
+            select = new ArrayList<>();
+            for (JsonNode name : sequence(selectNode)) {
+                select.add(stringValue(name));
+            }
+        }
         return new AdapterRequest(
                 requiredU64(node, "protocol", 0xFFFFFFFFL),
                 stringValue(required(node, "project")),
@@ -445,7 +496,8 @@ public final class AdapterJson {
                 args,
                 env,
                 options,
-                containerNode == null || containerNode.isNull() ? null : parseContainer(containerNode));
+                containerNode == null || containerNode.isNull() ? null : parseContainer(containerNode),
+                select);
     }
 
     private static JsonNode required(JsonNode node, String field) {

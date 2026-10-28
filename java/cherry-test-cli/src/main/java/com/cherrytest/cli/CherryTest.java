@@ -136,7 +136,9 @@ public final class CherryTest {
                         cli.jobs(),
                         plan.config().defaults().parallel(),
                         plan.config().defaults().execution(),
-                        env));
+                        env),
+                Isolation.Settings.resolve(
+                        cli.isolate(), cli.noIsolate(), plan.config().defaults().isolate()));
         boolean containers =
                 plan.config().containerSettingsInUse() || plan.config().imageServicesConfigured();
         if (containers) {

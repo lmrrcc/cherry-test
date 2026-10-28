@@ -83,6 +83,36 @@ public record ContainerSpec(
                 sidecars);
     }
 
+    /** The same spec under another container name. */
+    public ContainerSpec withName(String replacement) {
+        return new ContainerSpec(
+                replacement,
+                run,
+                job,
+                image,
+                pull,
+                network,
+                user,
+                capDrop,
+                noNewPrivileges,
+                readOnlyRoot,
+                cpus,
+                memory,
+                pids,
+                shmSize,
+                tmpfs,
+                timeoutSecs,
+                workspace,
+                mountRoot,
+                outputs,
+                writable,
+                mounts,
+                caches,
+                envPass,
+                envSet,
+                sidecars);
+    }
+
     /** The same spec with the job's image services, or none. */
     public ContainerSpec withSidecars(@Nullable SidecarSpec replacement) {
         return new ContainerSpec(

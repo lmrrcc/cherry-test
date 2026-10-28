@@ -62,6 +62,8 @@ final class CommandLine {
         boolean noHtml = false;
         boolean noOpen = false;
         boolean noBanner = false;
+        boolean isolate = false;
+        boolean noIsolate = false;
         boolean keepGoing = false;
         boolean quiet = false;
         boolean verbose = false;
@@ -142,6 +144,14 @@ final class CommandLine {
                 case "--no-html" -> noHtml = true;
                 case "--no-open" -> noOpen = true;
                 case "--no-banner" -> noBanner = true;
+                case "--isolate" -> {
+                    isolate = true;
+                    noIsolate = false;
+                }
+                case "--no-isolate" -> {
+                    noIsolate = true;
+                    isolate = false;
+                }
                 case "--keep-going" -> keepGoing = true;
                 case "-q", "--quiet" -> quiet = true;
                 case "-v", "--verbose" -> verbose = true;
@@ -182,6 +192,8 @@ final class CommandLine {
                 noHtml,
                 noOpen,
                 noBanner,
+                isolate,
+                noIsolate,
                 keepGoing,
                 quiet,
                 verbose,
@@ -262,6 +274,8 @@ final class CommandLine {
                       --no-html
                       --no-open                Do not open the HTML report in a browser
                       --no-banner              Do not print the startup banner
+                      --isolate                Rerun each failed test alone to classify it as REAL, INTERFERENCE, FLAKY or INCONCLUSIVE (default: defaults.isolate.on_failure)
+                      --no-isolate             Do not rerun failed tests alone
                       --keep-going             Continue after a project failure
                   -q, --quiet
                   -v, --verbose                Print each suite and test result in the terminal

@@ -395,8 +395,7 @@ public final class Scheduler {
      * Boots the job's scopes not yet started in this phase, then runs the auth preflight once per integration phase.
      * Returns the setup error, or {@code null} when setup succeeded.
      */
-    private static @Nullable String setupJob(
-            Plan.Job job, RunState state, EnvLayers layers, Runner.RunOptions options) {
+    static @Nullable String setupJob(Plan.Job job, RunState state, EnvLayers layers, Runner.RunOptions options) {
         ContainerSpec container = job.request().container();
         boolean ownNetwork = container != null && container.sidecars() != null;
         try {

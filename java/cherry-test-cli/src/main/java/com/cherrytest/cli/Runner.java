@@ -61,11 +61,39 @@ public final class Runner {
             List<String> kinds,
             Adapters.SelfCommand self,
             Map<String, String> env,
-            Scheduler.Parallelism parallelism) {
+            Scheduler.Parallelism parallelism,
+            Isolation.@Nullable Settings isolate) {
         public RunOptions {
             SortedMap<String, String> base = new TreeMap<>(RustOrdering.STRING_ORDER);
             base.putAll(env);
             env = base;
+        }
+
+        public RunOptions(
+                Path workspaceRoot,
+                RunDir runDir,
+                TestItConfig config,
+                boolean coverage,
+                boolean quiet,
+                TestListing testListing,
+                List<String> extraTestArgs,
+                List<String> kinds,
+                Adapters.SelfCommand self,
+                Map<String, String> env,
+                Scheduler.Parallelism parallelism) {
+            this(
+                    workspaceRoot,
+                    runDir,
+                    config,
+                    coverage,
+                    quiet,
+                    testListing,
+                    extraTestArgs,
+                    kinds,
+                    self,
+                    env,
+                    parallelism,
+                    null);
         }
     }
 
@@ -92,8 +120,19 @@ public final class Runner {
                     .estimate(plan);
         }
         List<Scheduler.Finished> finished = Scheduler.run(plan, projects, options, preflight);
+        try {
+            Isolation.run(plan, projects, options, preflight);
+        } catch (RuntimeException error) {
+            Terminal.eprintln("warning: failed-test isolation stopped: " + AnyhowError.alternate(error));
+        }
         return aggregate(options, finished);
     }
+
+    /** What invoking one job's adapter produced, before coverage and reports. */
+    record Invocation(
+            AdapterRequest request,
+            AdapterResponse response,
+            @Nullable String infrastructure) {}
 
     /**
      * Runs one planned job: completes its request from the job environment, invokes the adapter and saves the
@@ -106,6 +145,58 @@ public final class Runner {
             @Nullable String setupError,
             RunOptions options) {
         long started = System.nanoTime();
+        String adapter = job.adapter();
+        String phase = job.key().phase();
+        String packageName = job.key().packageName();
+        if (!options.quiet()) {
+            synchronized (OUTPUT) {
+                Terminal.println("==> " + job.key().project() + "/" + packageName + "/" + phase + " (" + adapter + ")");
+            }
+        }
+        Invocation invocation = invokeJob(job, environment, preflight, setupError, options);
+        AdapterRequest request = invocation.request();
+        AdapterResponse response = invocation.response();
+        if (discoversScopes(adapter) && phase.equals("integration")) {
+            recordSkips(response, preflight, packageName, request.strict());
+        }
+        CoveragePaths paths = new CoveragePaths(options.runDir(), job.key().project());
+        paths.ensureDirs();
+        Path lcovFile = null;
+        if (!response.coverage().isEmpty()) {
+            Path lcov = paths.lcovDir().resolve(packageName + "-" + phase + ".lcov");
+            try {
+                normalizeCoverage(request, response.coverage(), lcov);
+                lcovFile = lcov;
+            } catch (RuntimeException error) {
+                response.success(false);
+                response.diagnostics().add("coverage import failed: " + AnyhowError.alternate(error));
+            }
+        }
+        AdapterResponse saved =
+                Adapters.save(request, response, options.runDir().reports());
+        if (!options.quiet()) {
+            synchronized (OUTPUT) {
+                if (options.testListing() == TestListing.AFTER_EACH_PHASE) {
+                    ReportOutput.printPhaseResults(saved.tests());
+                }
+                if (!saved.success()) {
+                    Terminal.eprintln("  failed: " + failureSummary(saved));
+                }
+            }
+        }
+        return new JobOutcome(job.key(), saved.success(), lcovFile, Duration.ofNanos(System.nanoTime() - started));
+    }
+
+    /**
+     * Completes the job's request from {@code environment} and invokes its adapter, with its image services when it
+     * has any. Nothing is printed, no coverage is read and no report is written.
+     */
+    static Invocation invokeJob(
+            Plan.Job job,
+            Map<String, String> environment,
+            PreflightPlan preflight,
+            @Nullable String setupError,
+            RunOptions options) {
         String adapter = job.adapter();
         String phase = job.key().phase();
         String packageName = job.key().packageName();
@@ -157,52 +248,18 @@ public final class Runner {
                 args,
                 RunEnv.requestEnv(jobEnvironment),
                 planned.options(),
-                planned.container());
-        if (!options.quiet()) {
-            synchronized (OUTPUT) {
-                Terminal.println("==> " + job.key().project() + "/" + packageName + "/" + phase + " (" + adapter + ")");
-            }
+                planned.container(),
+                planned.select());
+        String failure = setupError != null ? setupError : job.containerError();
+        if (failure != null) {
+            return new Invocation(request, AdapterResponse.failure(failure), failure);
         }
-        AdapterResponse response;
         try {
-            String failure = setupError != null ? setupError : job.containerError();
-            if (failure != null) {
-                response = AdapterResponse.failure(failure);
-            } else {
-                response = invokeWithSidecars(adapter, request, jobEnvironment, options);
-            }
+            return new Invocation(request, invokeWithSidecars(adapter, request, jobEnvironment, options), null);
         } catch (RuntimeException error) {
-            response = AdapterResponse.failure(AnyhowError.alternate(error));
+            String message = AnyhowError.alternate(error);
+            return new Invocation(request, AdapterResponse.failure(message), message);
         }
-        if (discoversScopes(adapter) && phase.equals("integration")) {
-            recordSkips(response, preflight, packageName, request.strict());
-        }
-        CoveragePaths paths = new CoveragePaths(options.runDir(), job.key().project());
-        paths.ensureDirs();
-        Path lcovFile = null;
-        if (!response.coverage().isEmpty()) {
-            Path lcov = paths.lcovDir().resolve(packageName + "-" + phase + ".lcov");
-            try {
-                normalizeCoverage(request, response.coverage(), lcov);
-                lcovFile = lcov;
-            } catch (RuntimeException error) {
-                response.success(false);
-                response.diagnostics().add("coverage import failed: " + AnyhowError.alternate(error));
-            }
-        }
-        AdapterResponse saved =
-                Adapters.save(request, response, options.runDir().reports());
-        if (!options.quiet()) {
-            synchronized (OUTPUT) {
-                if (options.testListing() == TestListing.AFTER_EACH_PHASE) {
-                    ReportOutput.printPhaseResults(saved.tests());
-                }
-                if (!saved.success()) {
-                    Terminal.eprintln("  failed: " + failureSummary(saved));
-                }
-            }
-        }
-        return new JobOutcome(job.key(), saved.success(), lcovFile, Duration.ofNanos(System.nanoTime() - started));
     }
 
     /**

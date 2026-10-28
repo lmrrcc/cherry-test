@@ -77,6 +77,18 @@ class CommandLineTest {
     }
 
     @Test
+    void cli_parses_isolate_flags() {
+        RunCli isolate = run("--isolate");
+        assertThat(isolate.isolate() && !isolate.noIsolate()).isTrue();
+        RunCli last = run("--isolate", "--no-isolate");
+        assertThat(!last.isolate() && last.noIsolate()).isTrue();
+        RunCli first = run("--no-isolate", "--isolate");
+        assertThat(first.isolate() && !first.noIsolate()).isTrue();
+        RunCli neither = run();
+        assertThat(!neither.isolate() && !neither.noIsolate()).isTrue();
+    }
+
+    @Test
     void cli_parses_jobs_and_shard() {
         RunCli cli = run("--jobs", "auto", "--shard", "2/3", "@backend");
         assertThat(cli.jobs()).isEqualTo(Jobs.AUTO);

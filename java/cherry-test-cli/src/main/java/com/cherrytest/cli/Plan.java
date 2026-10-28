@@ -3,6 +3,7 @@ package com.cherrytest.cli;
 import com.cherrytest.cli.adapters.Container;
 import com.cherrytest.common.adapter.AdapterRequest;
 import com.cherrytest.common.adapter.AdapterResponse;
+import com.cherrytest.common.container.ContainerLabels;
 import com.cherrytest.common.container.ContainerSpec;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustOrdering;
@@ -204,9 +205,7 @@ public record Plan(List<PhasePlan> phases) {
         List<String> provisioned = provisionedScopes(options.config(), scopes);
         if (containerSpec != null) {
             try {
-                List<Sidecars.ImageService> services = Sidecars.imageServices(options.config(), scopes);
-                containerSpec = containerSpec.withSidecars(Sidecars.jobSidecars(
-                        options.workspaceRoot(), containerSpec.name(), services, containerSpec.pull()));
+                containerSpec = attachSidecars(options, containerSpec, scopes);
             } catch (RuntimeException error) {
                 if (containerError == null) {
                     containerError = AnyhowError.alternate(error);
@@ -224,6 +223,68 @@ public record Plan(List<PhasePlan> phases) {
                 packageConfig.exclusive(),
                 containerError,
                 provisioned);
+    }
+
+    /** Gives a container job its private network when its scopes select image services. */
+    private static ContainerSpec attachSidecars(Runner.RunOptions options, ContainerSpec spec, List<String> scopes) {
+        List<Sidecars.ImageService> services = Sidecars.imageServices(options.config(), scopes);
+        return spec.withSidecars(Sidecars.jobSidecars(options.workspaceRoot(), spec.name(), services, spec.pull()));
+    }
+
+    /**
+     * A fresh job that reruns one test of {@code job} alone: its own output, container name, writable directories and
+     * image services, no coverage, not strict, and the narrowed selection.
+     */
+    static Job rerunJob(Job job, Isolation.Narrowing narrowing, Path output, String suffix, Runner.RunOptions options) {
+        AdapterRequest planned = job.request();
+        List<String> args = planned.args();
+        List<String> select = planned.select();
+        switch (narrowing) {
+            case Isolation.Narrowing.Args(List<String> replacement) -> args = replacement;
+            case Isolation.Narrowing.Select(List<String> names) -> select = names;
+            case Isolation.Narrowing.Unsupported ignored -> {}
+        }
+        AdapterRequest request = planned.forRerun(output, args, select);
+        String containerError = job.containerError();
+        if (planned.container() != null) {
+            PackageConfig packageConfig = options.config()
+                    .packageConfig(job.key().project(), job.key().packageName());
+            ContainerSpec spec = null;
+            try {
+                spec = Container.resolve(
+                        options.config().defaults().container(),
+                        packageConfig.container(),
+                        request.withContainer(null),
+                        options.runDir().id(),
+                        options.runDir().root().resolve("isolation").resolve(suffix));
+                if (spec != null) {
+                    spec = spec.withName(ContainerLabels.sanitizeName(spec.name() + "-" + suffix));
+                    try {
+                        spec = attachSidecars(options, spec, job.scopes());
+                    } catch (RuntimeException error) {
+                        if (containerError == null) {
+                            containerError = AnyhowError.alternate(error);
+                        }
+                    }
+                }
+            } catch (RuntimeException error) {
+                spec = null;
+                if (containerError == null) {
+                    containerError = AnyhowError.alternate(error);
+                }
+            }
+            request = request.withContainer(spec);
+        }
+        return new Job(
+                job.key(),
+                job.adapter(),
+                request,
+                job.scopes(),
+                job.resources(),
+                job.estimateMs(),
+                job.exclusive(),
+                containerError,
+                job.provisioned());
     }
 
     /** The scopes, each once and in order, that select at least one image service. */
