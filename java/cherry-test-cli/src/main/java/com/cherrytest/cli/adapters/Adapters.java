@@ -7,6 +7,7 @@ import com.cherrytest.common.adapter.AdapterResponse;
 import com.cherrytest.common.adapter.Attachment;
 import com.cherrytest.common.adapter.TestResult;
 import com.cherrytest.common.adapter.TestStatus;
+import com.cherrytest.common.container.ContainerSpec;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustIoError;
 import com.cherrytest.common.rustcompat.RustParse;
@@ -22,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -146,14 +148,24 @@ public final class Adapters {
             }
             spec = self.adapterSpec(name, request.root(), requestFile);
         }
+        ContainerSpec container = request.container();
+        if (container != null) {
+            Map<String, String> environment = new LinkedHashMap<>(spec.environmentOverrides());
+            environment.put(Container.OWNER_PID_ENV, Long.toString(Container.ownerPid()));
+            spec = new ProcessRunner.Spec(
+                    spec.program(), spec.arguments(), environment, spec.workingDirectory(), spec.stdin());
+        }
         try {
             Files.writeString(requestFile, AdapterJson.requestCompact(request), StandardCharsets.UTF_8);
         } catch (IOException exception) {
             throw new AnyhowError(RustIoError.display(exception), null);
         }
         Path prefix = request.output().resolve("adapter");
-        boolean success = ProcessRunner.capture(
-                spec, prefix, config == null ? AdapterConfig.DEFAULT_TIMEOUT_SECS : config.timeoutSecs(), true);
+        long timeout = config != null
+                ? config.timeoutSecs()
+                : container != null ? container.timeoutSecs() : AdapterConfig.DEFAULT_TIMEOUT_SECS;
+        Runnable stop = container == null ? null : () -> Container.kill(container.name());
+        boolean success = ProcessRunner.capture(spec, prefix, timeout, true, stop);
         Path stdout = RustPath.withExtension(prefix, "stdout");
         byte[] data;
         try {

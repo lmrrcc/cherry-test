@@ -2,6 +2,7 @@ package com.cherrytest.cli;
 
 import com.cherrytest.cli.adapters.Adapters;
 import com.cherrytest.cli.adapters.Builtins;
+import com.cherrytest.cli.adapters.Container;
 import com.cherrytest.cli.adapters.Formats;
 import com.cherrytest.cli.adapters.ProcessRunner;
 import com.cherrytest.cli.coverage.Coverage;
@@ -15,6 +16,7 @@ import com.cherrytest.common.adapter.AdapterResponse;
 import com.cherrytest.common.adapter.ExecutionMode;
 import com.cherrytest.common.adapter.TestResult;
 import com.cherrytest.common.adapter.TestStatus;
+import com.cherrytest.common.container.ContainerSpec;
 import com.cherrytest.common.process.EnvFile;
 import com.cherrytest.common.process.ProcessEnvironment;
 import com.cherrytest.common.rustcompat.AnyhowError;
@@ -196,7 +198,7 @@ public final class Runner {
                             env.put(key, variable.getValue());
                         }
                     }
-                    AdapterRequest request = new AdapterRequest(
+                    AdapterRequest unresolved = new AdapterRequest(
                             AdapterResponse.PROTOCOL_VERSION,
                             project.id(),
                             member.name(),
@@ -214,6 +216,19 @@ public final class Runner {
                             args,
                             env,
                             requestOptions);
+                    ContainerSpec containerSpec = null;
+                    RuntimeException containerError = null;
+                    try {
+                        containerSpec = Container.resolve(
+                                options.config().defaults().container(),
+                                packageConfig.container(),
+                                unresolved,
+                                options.runDir().id(),
+                                options.runDir().root());
+                    } catch (RuntimeException error) {
+                        containerError = error;
+                    }
+                    AdapterRequest request = unresolved.withContainer(containerSpec);
                     if (!options.quiet()) {
                         Terminal.println(
                                 "==> " + project.id() + "/" + member.name() + "/" + phase + " (" + adapter + ")");
@@ -222,6 +237,9 @@ public final class Runner {
                     try {
                         if (setupError != null) {
                             throw setupError;
+                        }
+                        if (containerError != null) {
+                            throw containerError;
                         }
                         response = Adapters.invoke(
                                 adapter, options.config().adapters().get(adapter), request, options.self());

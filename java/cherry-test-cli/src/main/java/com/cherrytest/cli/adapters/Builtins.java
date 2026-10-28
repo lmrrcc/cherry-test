@@ -8,6 +8,7 @@ import com.cherrytest.common.adapter.Attachment;
 import com.cherrytest.common.adapter.ExecutionMode;
 import com.cherrytest.common.adapter.TestResult;
 import com.cherrytest.common.adapter.TestStatus;
+import com.cherrytest.common.container.ContainerSpec;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustIoError;
 import com.cherrytest.common.rustcompat.RustOrdering;
@@ -21,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
 
 public final class Builtins {
@@ -50,10 +52,12 @@ public final class Builtins {
     private static final class MutableRequest {
         private final AdapterRequest base;
         private final SortedMap<String, String> env;
+        private @Nullable ContainerSpec container;
 
         private MutableRequest(AdapterRequest base, SortedMap<String, String> env) {
             this.base = base;
             this.env = env;
+            this.container = base.container();
         }
 
         private AdapterRequest snapshot() {
@@ -71,7 +75,8 @@ public final class Builtins {
                     base.strict(),
                     base.args(),
                     env,
-                    base.options());
+                    base.options(),
+                    container);
         }
     }
 
@@ -105,7 +110,12 @@ public final class Builtins {
         }
         args.addAll(request.args());
         args.addAll(List.of("--format", "pretty", "--color", "never"));
-        mutable.env.put("CARGO_TARGET_DIR", cargoTargetDir(request).toString());
+        Path targetDir = cargoTargetDir(request);
+        ContainerSpec container = mutable.container;
+        if (container != null) {
+            mutable.container = container.withOutput(targetDir);
+        }
+        mutable.env.put("CARGO_TARGET_DIR", targetDir.toString());
         boolean success = ProcessRunner.run(mutable.snapshot(), "cargo", args, "tests");
         String output = read(request.output().resolve("tests.stdout"));
         AdapterResponse result = new AdapterResponse(

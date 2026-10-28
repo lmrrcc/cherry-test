@@ -1,7 +1,9 @@
 package com.cherrytest.core;
 
 import com.cherrytest.common.adapter.ExecutionMode;
+import com.cherrytest.common.container.ContainerConfig;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 public record Defaults(
         ExecutionMode execution,
@@ -13,7 +15,33 @@ public record Defaults(
         Path reportDir,
         String scope,
         String diffBase,
-        Path coverageIgnore) {
+        Path coverageIgnore,
+        @Nullable ContainerConfig container) {
+    public Defaults(
+            ExecutionMode execution,
+            boolean strict,
+            boolean coverage,
+            boolean htmlReport,
+            boolean openReport,
+            Path runsBase,
+            Path reportDir,
+            String scope,
+            String diffBase,
+            Path coverageIgnore) {
+        this(
+                execution,
+                strict,
+                coverage,
+                htmlReport,
+                openReport,
+                runsBase,
+                reportDir,
+                scope,
+                diffBase,
+                coverageIgnore,
+                null);
+    }
+
     public static Defaults standard() {
         return new Defaults(
                 ExecutionMode.LOCAL,
@@ -39,7 +67,8 @@ public record Defaults(
                 reportDir,
                 scope,
                 diffBase,
-                coverageIgnore);
+                coverageIgnore,
+                container);
     }
 
     public Defaults withStrict(boolean replacement) {
@@ -53,6 +82,22 @@ public record Defaults(
                 reportDir,
                 scope,
                 diffBase,
-                coverageIgnore);
+                coverageIgnore,
+                container);
+    }
+
+    public Defaults withContainer(@Nullable ContainerConfig replacement) {
+        return new Defaults(
+                execution,
+                strict,
+                coverage,
+                htmlReport,
+                openReport,
+                runsBase,
+                reportDir,
+                scope,
+                diffBase,
+                coverageIgnore,
+                replacement);
     }
 }

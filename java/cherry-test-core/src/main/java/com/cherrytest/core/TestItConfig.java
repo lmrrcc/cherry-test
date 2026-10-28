@@ -99,6 +99,23 @@ public final class TestItConfig {
         return this;
     }
 
+    /**
+     * Whether any package runs in a container with a {@code container:} block, so the run names,
+     * labels and cleans up its containers.
+     */
+    public boolean containerSettingsInUse() {
+        for (ProjectConfig project : projects.values()) {
+            for (PackageConfig config : project.packages().values()) {
+                ExecutionMode execution = config.execution() == null ? defaults.execution() : config.execution();
+                if (execution == ExecutionMode.CONTAINER
+                        && (config.container() != null || defaults.container() != null)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public static TestItConfig load(Path workspaceRoot) {
         Path path = locateConfig(workspaceRoot);
         if (!Files.exists(path)) {
@@ -327,7 +344,8 @@ public final class TestItConfig {
                 reportDir == null ? standard.reportDir() : reportDir,
                 YamlValues.stringOr(map, "scope", path, standard.scope()),
                 YamlValues.stringOr(map, "diff_base", path, standard.diffBase()),
-                coverageIgnore == null ? standard.coverageIgnore() : coverageIgnore);
+                coverageIgnore == null ? standard.coverageIgnore() : coverageIgnore,
+                ContainerYaml.parse(YamlValues.field(map, "container"), path + "container"));
     }
 
     private static SortedMap<String, AuthProfileConfig> parseAuth(Map<String, Object> raw) {
@@ -431,7 +449,8 @@ public final class TestItConfig {
                 parseRunner(YamlValues.field(map, "unit"), path + "unit."),
                 parseRunner(YamlValues.field(map, "functional"), path + "functional."),
                 parseRunner(YamlValues.field(map, "ui"), path + "ui."),
-                parseRunner(YamlValues.field(map, "mutation"), path + "mutation."));
+                parseRunner(YamlValues.field(map, "mutation"), path + "mutation."),
+                ContainerYaml.parse(YamlValues.field(map, "container"), path + "container"));
     }
 
     private static PackageRuntime parseRuntime(String value, String path) {

@@ -1,6 +1,7 @@
 package com.cherrytest.cli;
 
 import com.cherrytest.cli.adapters.Adapters;
+import com.cherrytest.cli.adapters.Container;
 import com.cherrytest.cli.coverage.Coverage;
 import com.cherrytest.cli.coverage.CoverageIgnore;
 import com.cherrytest.cli.coverage.CoverageSummary;
@@ -116,7 +117,18 @@ public final class CherryTest {
                 cli.cargoTestArgs(),
                 cli.kinds(),
                 self);
-        RunOutcome outcome = Runner.runProjects(plan.projects(), options, plan.preflight());
+        boolean containers = plan.config().containerSettingsInUse();
+        if (containers) {
+            Container.startRun(runDir.id(), cli.quiet());
+        }
+        RunOutcome outcome;
+        try {
+            outcome = Runner.runProjects(plan.projects(), options, plan.preflight());
+        } finally {
+            if (containers) {
+                Container.finishRun(runDir.id());
+            }
+        }
         Path mergedLcov = runDir.mergedLcov();
         CoverageTotals coverageTotals = CoverageTotals.EMPTY;
         boolean htmlEnabled = plan.config().defaults().htmlReport() && !cli.noHtml();
