@@ -741,6 +741,26 @@ packages:
         }
 
         #[test]
+        fn documented_container_examples_parse() {
+            let mut examples = 0;
+            for doc in [
+                include_str!("../../../README.md"),
+                include_str!("../../../docs/adapters.md"),
+            ] {
+                for block in doc.split("```yaml\n").skip(1) {
+                    let yaml = block.split("```").next().unwrap();
+                    if !yaml.contains("  container:\n") {
+                        continue;
+                    }
+                    let raw = parse(yaml).unwrap();
+                    assert!(raw.defaults.container.is_some());
+                    examples += 1;
+                }
+            }
+            assert_eq!(examples, 2);
+        }
+
+        #[test]
         fn container_settings_apply_only_with_container_execution() {
             let mut cfg = TestItConfig::default();
             cfg.projects.insert(

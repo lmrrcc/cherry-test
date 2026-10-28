@@ -189,6 +189,26 @@ class TestItConfigTest {
         }
 
         @Test
+        void documented_container_examples_parse() throws IOException {
+            int examples = 0;
+            for (String file : List.of("../../README.md", "../../docs/adapters.md")) {
+                String doc = Files.readString(Path.of(file), StandardCharsets.UTF_8);
+                String[] blocks = doc.split("```yaml\n", -1);
+                for (int index = 1; index < blocks.length; index++) {
+                    String yaml = blocks[index].substring(0, blocks[index].indexOf("```"));
+                    if (!yaml.contains("  container:\n")) {
+                        continue;
+                    }
+                    Map<String, Object> raw = TestItConfig.parseRaw(Path.of("cherry-test.yaml"), yaml);
+                    assertThat(TestItConfig.parseDefaults(raw).container()).isNotNull();
+                    TestItConfig.parseProjects(raw);
+                    examples++;
+                }
+            }
+            assertThat(examples).isEqualTo(2);
+        }
+
+        @Test
         void container_settings_apply_only_with_container_execution() throws IOException {
             TestItConfig config = load("projects:\n  prices:\n    packages:\n      api: {}\n");
             assertThat(config.containerSettingsInUse()).isFalse();
