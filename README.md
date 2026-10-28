@@ -692,9 +692,9 @@ The built-in adapters select one test like this:
 | `maven` | `-Dtest=Class#method` (unit) or `-Dit.test=Class#method` (integration) replacing the configured one, with `-Dsurefire.failIfNoSpecifiedTests=false`; a class annotated with `@TestMethodOrder` or `@TestInstance(PER_CLASS)` reruns whole, since its methods may depend on each other |
 | `vitest` | The test file and `-t ^<full name>$` |
 
-Gradle, CMake, Playwright and command phases are classified `INCONCLUSIVE`. An adapter registered under `adapters:` opts in with `isolate: true`; its rerun requests then carry `select`, the names of the tests to run (see the [adapter guide](docs/adapters.md#executable-protocol-version-1)).
+Failed tests of Gradle, CMake, Playwright and command phases, and Maven results that do not name a `Class::method`, are classified `INCONCLUSIVE` without reruns. An adapter registered under `adapters:` opts in with `isolate: true`; its rerun requests then carry `select`, the names of the tests to run (see the [adapter guide](docs/adapters.md#executable-protocol-version-1)).
 
-Reruns never change a test's status or the exit code: the run passes or fails exactly as without them. The terminal prints one line per class after the run, the HTML report links to the classes on the phases page, each test's entry in `result.json` gains `isolation: {class, runs, passed, logs, reason}`, and `reports/isolation.json` lists them all. Each rerun keeps its request, logs and result in `reports/isolation/<project>/<package>/<phase>/<n>/<run>/`; reruns add no coverage and no integration records.
+Reruns never change a test's status or the exit code: the run passes or fails exactly as without them. After the main schedule the terminal prints one line per rerun test with its class, the HTML report links to the classes on the phases page, each test's entry in `result.json` gains `isolation: {class, runs, passed, logs, reason}`, and `reports/isolation.json` lists them all. Each rerun keeps its request, logs and result in `reports/isolation/<project>/<package>/<phase>/<n>/<run>/`; reruns add no coverage and no integration records.
 
 ## Command reference
 
