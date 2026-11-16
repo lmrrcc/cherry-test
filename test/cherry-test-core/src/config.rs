@@ -5,6 +5,8 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 pub use cherry_test_common::adapter::{AdapterConfig, ExecutionMode};
+pub use cherry_test_common::container::ContainerConfig;
+use cherry_test_common::container::{PullPolicy, Timeout};
 
 const CONFIG_CANDIDATES: &[&str] = &["cherry-test.yaml", "cherry-test.yml", "cherry-test.toml"];
 
@@ -33,6 +35,57 @@ pub struct Defaults {
     pub diff_base: String,
     #[serde(default = "default_coverage_ignore")]
     pub coverage_ignore: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parallel: Option<ParallelConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<ContainerConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isolate: Option<IsolateConfig>,
+}
+
+/// `defaults.isolate`: rerun each failed test alone to tell real failures from interference and flakiness.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct IsolateConfig {
+    #[serde(default)]
+    pub on_failure: bool,
+    #[serde(default = "default_isolate_runs", deserialize_with = "positive_count")]
+    pub runs: u32,
+    #[serde(
+        default = "default_isolate_max_tests",
+        deserialize_with = "positive_count"
+    )]
+    pub max_tests: u32,
+}
+
+impl Default for IsolateConfig {
+    fn default() -> Self {
+        Self {
+            on_failure: false,
+            runs: default_isolate_runs(),
+            max_tests: default_isolate_max_tests(),
+        }
+    }
+}
+
+fn default_isolate_runs() -> u32 {
+    3
+}
+
+fn default_isolate_max_tests() -> u32 {
+    10
+}
+
+fn positive_count<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<u32, D::Error> {
+    match ScalarValue::deserialize(deserializer)? {
+        ScalarValue::Integer(count) => u32::try_from(count)
+            .ok()
+            .filter(|count| *count > 0)
+            .ok_or_else(|| serde::de::Error::custom("expected a positive number")),
+        _ => Err(serde::de::Error::custom("expected a positive number")),
+    }
 }
 
 impl Default for Defaults {
@@ -48,8 +101,209 @@ impl Default for Defaults {
             scope: default_scope(),
             diff_base: default_diff_base(),
             coverage_ignore: default_coverage_ignore(),
+            parallel: None,
+            container: None,
+            isolate: None,
         }
     }
+}
+
+/// How many jobs run at once: a fixed number, or `auto` to follow the CPU budget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Jobs {
+    Auto,
+    Count(u32),
+}
+
+impl std::str::FromStr for Jobs {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        if value == "auto" {
+            return Ok(Jobs::Auto);
+        }
+        match value.parse::<u32>() {
+            Ok(count) if count > 0 => Ok(Jobs::Count(count)),
+            _ => Err("expected a positive number or `auto`".into()),
+        }
+    }
+}
+
+impl std::fmt::Display for Jobs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Jobs::Auto => f.write_str("auto"),
+            Jobs::Count(count) => write!(f, "{count}"),
+        }
+    }
+}
+
+impl Serialize for Jobs {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Jobs::Auto => serializer.serialize_str("auto"),
+            Jobs::Count(count) => serializer.serialize_u32(*count),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Jobs {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        match ScalarValue::deserialize(deserializer)? {
+            ScalarValue::Integer(count) => u32::try_from(count)
+                .ok()
+                .filter(|count| *count > 0)
+                .map(Jobs::Count)
+                .ok_or_else(|| serde::de::Error::custom("expected a positive number or `auto`")),
+            ScalarValue::Text(text) => text.parse().map_err(serde::de::Error::custom),
+            ScalarValue::Float(_) => Err(serde::de::Error::custom(
+                "expected a positive number or `auto`",
+            )),
+        }
+    }
+}
+
+/// A CPU amount in thousandths of a CPU; YAML gives it as a number such as `2` or `0.5`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cpus(pub u64);
+
+impl Serialize for Cpus {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_f64(self.0 as f64 / 1000.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for Cpus {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let value = match ScalarValue::deserialize(deserializer)? {
+            ScalarValue::Integer(count) => count as f64,
+            ScalarValue::Float(value) => value,
+            ScalarValue::Text(_) => {
+                return Err(serde::de::Error::custom(
+                    "expected a positive number of CPUs",
+                ))
+            }
+        };
+        let millicpus = (value * 1000.0).round();
+        if !value.is_finite() || millicpus < 1.0 {
+            return Err(serde::de::Error::custom(
+                "expected a positive number of CPUs",
+            ));
+        }
+        Ok(Cpus(millicpus as u64))
+    }
+}
+
+/// A memory amount in bytes; YAML gives it as bytes or with a binary unit such as `512m` or `8g`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Memory(pub u64);
+
+impl Memory {
+    /// Parses `8g`, `1.5G`, `512mi`, `512MiB`, `1024k` or a plain byte count; units are powers of 1024.
+    pub fn parse(value: &str) -> std::result::Result<Self, String> {
+        let error = || format!("invalid memory `{value}`; use bytes or a unit such as 512m or 8g");
+        let text = value.trim().to_ascii_lowercase();
+        let digits_end = text
+            .find(|ch: char| !ch.is_ascii_digit() && ch != '.')
+            .unwrap_or(text.len());
+        let (number, unit) = text.split_at(digits_end);
+        let unit = unit.trim();
+        let unit = unit.strip_suffix('b').unwrap_or(unit);
+        let unit = unit.strip_suffix('i').unwrap_or(unit);
+        let multiplier: u64 = match unit {
+            "" => 1,
+            "k" => 1 << 10,
+            "m" => 1 << 20,
+            "g" => 1 << 30,
+            "t" => 1 << 40,
+            _ => return Err(error()),
+        };
+        if number.is_empty() || number.starts_with('.') || number.ends_with('.') {
+            return Err(error());
+        }
+        let amount: f64 = number.parse().map_err(|_| error())?;
+        let bytes = (amount * multiplier as f64).floor();
+        if !bytes.is_finite() || bytes < 1.0 || bytes >= (1u64 << 63) as f64 {
+            return Err(error());
+        }
+        Ok(Memory(bytes as u64))
+    }
+}
+
+impl Serialize for Memory {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_u64(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for Memory {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        match ScalarValue::deserialize(deserializer)? {
+            ScalarValue::Integer(bytes) if bytes > 0 => Ok(Memory(bytes as u64)),
+            ScalarValue::Text(text) => Memory::parse(&text).map_err(serde::de::Error::custom),
+            _ => Err(serde::de::Error::custom(
+                "expected bytes or a unit such as 512m or 8g",
+            )),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ScalarValue {
+    Integer(i64),
+    Float(f64),
+    Text(String),
+}
+
+/// `defaults.parallel`: how many jobs run at once and the CPU and memory they may share.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ParallelConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jobs: Option<Jobs>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<Cpus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<Memory>,
+    #[serde(default = "default_true")]
+    pub phase_barrier: bool,
+}
+
+impl Default for ParallelConfig {
+    fn default() -> Self {
+        Self {
+            jobs: None,
+            cpus: None,
+            memory: None,
+            phase_barrier: true,
+        }
+    }
+}
+
+/// `packages.<name>.resources`: what one job of the package reserves while it runs.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ResourcesConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<Cpus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<Memory>,
 }
 
 fn default_coverage_ignore() -> PathBuf {
@@ -72,14 +326,94 @@ pub struct ExternalRunner {
     pub cwd: Option<PathBuf>,
 }
 
+/// `projects.<id>.services.<name>`: a Compose service (`service`) or a service Cherry Test starts from `image`.
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct ServiceConfig {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub service: String,
     pub port: u16,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub health: Option<String>,
+    pub health: Option<ServiceHealth>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull: Option<PullPolicy>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tmpfs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mounts: Vec<ServiceMount>,
+}
+
+impl ServiceConfig {
+    /// Whether Cherry Test starts this service from an image instead of Docker Compose.
+    pub fn is_image(&self) -> bool {
+        self.image.is_some()
+    }
+}
+
+/// A service's `health`: an HTTP path such as `/health` for a Compose service, or how an image service shows it is ready.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum ServiceHealth {
+    Path(String),
+    Probe(HealthProbe),
+}
+
+impl<'de> Deserialize<'de> for ServiceHealth {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        struct HealthVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for HealthVisitor {
+            type Value = ServiceHealth;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("an HTTP path or a map with `exec`, `tcp` and `timeout`")
+            }
+
+            fn visit_str<E: serde::de::Error>(
+                self,
+                value: &str,
+            ) -> std::result::Result<Self::Value, E> {
+                Ok(ServiceHealth::Path(value.to_string()))
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                map: A,
+            ) -> std::result::Result<Self::Value, A::Error> {
+                HealthProbe::deserialize(serde::de::value::MapAccessDeserializer::new(map))
+                    .map(ServiceHealth::Probe)
+            }
+        }
+
+        deserializer.deserialize_any(HealthVisitor)
+    }
+}
+
+/// `health` of an image service: run `exec` in the service container until it succeeds, or wait for a socket on the port.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct HealthProbe {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exec: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tcp: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<Timeout>,
+}
+
+/// A read-only bind mount into an image service: `source` relative to the configuration root, `target` absolute.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ServiceMount {
+    pub source: String,
+    pub target: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
@@ -126,6 +460,16 @@ pub struct PackageConfig {
     pub ui: Option<ExternalRunner>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mutation: Option<ExternalRunner>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resources: Option<ResourcesConfig>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub exclusive: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<ContainerConfig>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -197,6 +541,8 @@ struct RawConfig {
     packages: BTreeMap<String, PackageConfig>,
     #[serde(default)]
     scopes: BTreeMap<String, ScopeConfig>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    groups: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -209,6 +555,8 @@ pub struct TestItConfig {
     pub auth: BTreeMap<String, AuthProfileConfig>,
     pub projects: BTreeMap<String, ProjectConfig>,
     pub scopes: BTreeMap<String, ScopeConfig>,
+    /// `groups.<name>`: package names or globs that the filter `@name` selects.
+    pub groups: BTreeMap<String, Vec<String>>,
 }
 
 pub type WorkspaceConfig = TestItConfig;
@@ -224,6 +572,7 @@ impl Default for TestItConfig {
             auth: BTreeMap::new(),
             projects: BTreeMap::new(),
             scopes: BTreeMap::new(),
+            groups: BTreeMap::new(),
         }
     }
 }
@@ -239,6 +588,18 @@ impl TestItConfig {
             }
         }
         self
+    }
+
+    /// Whether any package runs in a container with a `container:` block, so the run
+    /// names, labels and cleans up its containers.
+    pub fn container_settings_in_use(&self) -> bool {
+        self.projects
+            .values()
+            .flat_map(|project| project.packages.values())
+            .any(|package| {
+                package.execution.unwrap_or(self.defaults.execution) == ExecutionMode::Container
+                    && (package.container.is_some() || self.defaults.container.is_some())
+            })
     }
 
     pub fn load(workspace_root: &Path) -> Result<Self> {
@@ -264,6 +625,7 @@ impl TestItConfig {
         let raw = parse_raw_config(&path, &contents)?;
         let mut projects = raw.projects;
         merge_legacy_packages(&mut projects, raw.packages, workspace_root);
+        validate_services(&projects)?;
 
         for (id, project) in projects.iter_mut() {
             if project.path.is_none() {
@@ -286,6 +648,7 @@ impl TestItConfig {
             auth: raw.auth,
             projects,
             scopes: raw.scopes,
+            groups: raw.groups,
         })
     }
 
@@ -394,6 +757,14 @@ impl TestItConfig {
             .unwrap_or_default()
     }
 
+    /// Whether any project declares a service Cherry Test starts from an image.
+    pub fn image_services_configured(&self) -> bool {
+        self.projects
+            .values()
+            .flat_map(|project| project.services.values())
+            .any(ServiceConfig::is_image)
+    }
+
     pub fn compose_files_for_projects(&self, project_names: &[String]) -> Result<Vec<PathBuf>> {
         let mut files = Vec::new();
         for name in project_names {
@@ -421,6 +792,7 @@ impl TestItConfig {
             projects: self.projects.clone(),
             packages: BTreeMap::new(),
             scopes: self.scopes.clone(),
+            groups: self.groups.clone(),
         };
         let yaml = serde_yaml::to_string(&raw).context("serialize cherry-test.yaml")?;
         std::fs::write(&self.config_path, yaml)
@@ -533,6 +905,86 @@ fn find_project_for_package(
     None
 }
 
+/// Checks every service: a Compose `service` or an `image`, and image settings only on image services.
+///
+/// Projects and services are checked in name order, so the first error is the same on every run.
+fn validate_services(projects: &BTreeMap<String, ProjectConfig>) -> Result<()> {
+    for (id, project) in projects {
+        let services: BTreeMap<&String, &ServiceConfig> = project.services.iter().collect();
+        for (name, service) in services {
+            validate_service(&format!("projects.{id}.services.{name}"), service)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_service(path: &str, service: &ServiceConfig) -> Result<()> {
+    let Some(image) = &service.image else {
+        if service.service.is_empty() {
+            bail!("{path}: missing field `service`");
+        }
+        let image_only = [
+            ("pull", service.pull.is_some()),
+            ("env", !service.env.is_empty()),
+            ("tmpfs", !service.tmpfs.is_empty()),
+            ("mounts", !service.mounts.is_empty()),
+            (
+                "health",
+                matches!(service.health, Some(ServiceHealth::Probe(_))),
+            ),
+        ];
+        if let Some((field, _)) = image_only.iter().find(|(_, set)| *set) {
+            bail!("{path}.{field}: applies only to a service with `image`");
+        }
+        return Ok(());
+    };
+    if !service.service.is_empty() {
+        bail!("{path}: set `service` for a Compose service or `image`, not both");
+    }
+    if image.is_empty() || image.starts_with('-') || image.chars().any(char::is_whitespace) {
+        bail!("{path}.image: invalid image `{image}`");
+    }
+    for name in service.env.keys() {
+        if !crate::sidecar::is_env_name(name) {
+            bail!("{path}.env: `{name}` is not a variable name");
+        }
+    }
+    for tmpfs in &service.tmpfs {
+        if !tmpfs.starts_with('/') || tmpfs.chars().any(char::is_whitespace) {
+            bail!("{path}.tmpfs: `{tmpfs}` is not an absolute container path");
+        }
+    }
+    for mount in &service.mounts {
+        if mount.source.is_empty() || mount.source.contains(':') {
+            bail!("{path}.mounts: invalid source `{}`", mount.source);
+        }
+        if !mount.target.starts_with('/')
+            || mount.target.contains(':')
+            || mount.target.chars().any(char::is_whitespace)
+        {
+            bail!(
+                "{path}.mounts: target `{}` is not an absolute container path",
+                mount.target
+            );
+        }
+    }
+    match &service.health {
+        Some(ServiceHealth::Path(_)) => {
+            bail!("{path}.health: an image service takes {{exec: [...]}} or {{tcp: true}}")
+        }
+        Some(ServiceHealth::Probe(probe)) => match (&probe.exec, probe.tcp) {
+            (Some(command), None) if command.is_empty() => {
+                bail!("{path}.health.exec: needs a command")
+            }
+            (Some(_), Some(_)) => bail!("{path}.health: set `exec` or `tcp`, not both"),
+            (None, Some(false)) => bail!("{path}.health: set `exec` or `tcp: true`"),
+            _ => {}
+        },
+        None => {}
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -577,6 +1029,78 @@ packages:
     }
 
     #[test]
+    fn parses_parallel_defaults_package_resources_and_groups() {
+        let yaml = r#"
+defaults:
+  parallel:
+    jobs: auto
+    cpus: 6
+    memory: 12g
+    phase_barrier: false
+packages:
+  api:
+    resources:
+      cpus: 0.5
+      memory: 512m
+    exclusive: true
+groups:
+  backend: [api, "mini-rs-*"]
+"#;
+        let raw: RawConfig = serde_yaml::from_str(yaml).unwrap();
+        let parallel = raw.defaults.parallel.unwrap();
+        assert_eq!(parallel.jobs, Some(Jobs::Auto));
+        assert_eq!(parallel.cpus, Some(Cpus(6000)));
+        assert_eq!(parallel.memory, Some(Memory(12 << 30)));
+        assert!(!parallel.phase_barrier);
+        let api = &raw.packages["api"];
+        let resources = api.resources.clone().unwrap();
+        assert_eq!(resources.cpus, Some(Cpus(500)));
+        assert_eq!(resources.memory, Some(Memory(512 << 20)));
+        assert!(api.exclusive);
+        assert_eq!(raw.groups["backend"], ["api", "mini-rs-*"]);
+        let defaults: RawConfig =
+            serde_yaml::from_str("defaults:\n  parallel:\n    jobs: 4\n").unwrap();
+        let parallel = defaults.defaults.parallel.unwrap();
+        assert_eq!(parallel.jobs, Some(Jobs::Count(4)));
+        assert!(parallel.phase_barrier);
+        assert!(serde_yaml::to_string(&Defaults::default())
+            .unwrap()
+            .lines()
+            .all(|line| !line.starts_with("parallel")));
+    }
+
+    #[test]
+    fn rejects_unknown_parallel_fields_and_invalid_amounts() {
+        for yaml in [
+            "defaults:\n  parallel:\n    workers: 2\n",
+            "packages:\n  api:\n    resources:\n      gpus: 1\n",
+            "defaults:\n  parallel:\n    jobs: 0\n",
+            "defaults:\n  parallel:\n    jobs: many\n",
+            "defaults:\n  parallel:\n    cpus: 0\n",
+            "defaults:\n  parallel:\n    memory: 8x\n",
+        ] {
+            assert!(serde_yaml::from_str::<RawConfig>(yaml).is_err(), "{yaml}");
+        }
+    }
+
+    #[test]
+    fn parses_memory_units_as_powers_of_1024() {
+        assert_eq!(Memory::parse("1024"), Ok(Memory(1024)));
+        assert_eq!(Memory::parse("1k"), Ok(Memory(1024)));
+        assert_eq!(Memory::parse("512MiB"), Ok(Memory(512 << 20)));
+        assert_eq!(Memory::parse("1.5G"), Ok(Memory(3 << 29)));
+        assert_eq!(Memory::parse(" 2 gb "), Ok(Memory(2 << 30)));
+        assert_eq!(Memory::parse("1t"), Ok(Memory(1 << 40)));
+        for invalid in ["", "g", ".5g", "5.g", "-1g", "0", "1p", "1..5g"] {
+            assert!(Memory::parse(invalid).is_err(), "{invalid}");
+        }
+        assert_eq!("auto".parse::<Jobs>(), Ok(Jobs::Auto));
+        assert_eq!("3".parse::<Jobs>(), Ok(Jobs::Count(3)));
+        assert!("0".parse::<Jobs>().is_err());
+        assert_eq!(Jobs::Count(3).to_string(), "3");
+    }
+
+    #[test]
     fn diff_base_falls_back_to_defaults() {
         let mut cfg = TestItConfig::default();
         cfg.defaults.diff_base = "main".into();
@@ -588,6 +1112,374 @@ packages:
             },
         );
         assert_eq!(cfg.diff_base_for_project("mini"), "develop");
+    }
+
+    #[test]
+    fn parses_isolate_defaults_and_rejects_bad_values() {
+        let raw: RawConfig = serde_yaml::from_str(
+            "defaults:\n  isolate:\n    on_failure: true\n    runs: 5\n    max_tests: 2\n",
+        )
+        .unwrap();
+        assert_eq!(
+            raw.defaults.isolate,
+            Some(IsolateConfig {
+                on_failure: true,
+                runs: 5,
+                max_tests: 2
+            })
+        );
+        let raw: RawConfig =
+            serde_yaml::from_str("defaults:\n  isolate: {on_failure: true}\n").unwrap();
+        assert_eq!(
+            raw.defaults.isolate,
+            Some(IsolateConfig {
+                on_failure: true,
+                runs: 3,
+                max_tests: 10
+            })
+        );
+        assert_eq!(IsolateConfig::default().runs, 3);
+        assert!(serde_yaml::from_str::<RawConfig>("defaults: {}\n")
+            .unwrap()
+            .defaults
+            .isolate
+            .is_none());
+        for yaml in [
+            "defaults:\n  isolate:\n    reruns: 2\n",
+            "defaults:\n  isolate:\n    runs: 0\n",
+            "defaults:\n  isolate:\n    max_tests: -1\n",
+            "defaults:\n  isolate:\n    runs: many\n",
+        ] {
+            assert!(serde_yaml::from_str::<RawConfig>(yaml).is_err(), "{yaml}");
+        }
+    }
+
+    mod services {
+        use super::*;
+
+        fn load(yaml: &str) -> Result<TestItConfig> {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("cherry-test.yaml"), yaml).unwrap();
+            TestItConfig::load(dir.path())
+        }
+
+        fn error(yaml: &str) -> String {
+            format!("{:#}", load(yaml).unwrap_err())
+        }
+
+        #[test]
+        fn parses_image_services_and_their_health() {
+            let config = load(
+                r#"
+projects:
+  shop:
+    compose: docker-compose.test.yml
+    services:
+      api:
+        service: shop-api
+        port: 3000
+        health: /health
+      db:
+        image: postgres:16-alpine
+        port: 5432
+        kind: postgres
+        pull: missing
+        env: {POSTGRES_PASSWORD: test}
+        tmpfs: [/var/lib/postgresql/data]
+        mounts:
+          - {source: fixtures/sql, target: /docker-entrypoint-initdb.d}
+        health:
+          exec: [pg_isready, -h, 127.0.0.1]
+          timeout: 90s
+      mock:
+        image: wiremock/wiremock:3.9.1
+        port: 8080
+        health: {tcp: true}
+scopes:
+  checkout:
+    projects: [shop]
+    services: {shop: [api, db]}
+"#,
+            )
+            .unwrap();
+            let shop = &config.projects["shop"];
+            let api = &shop.services["api"];
+            assert!(!api.is_image());
+            assert_eq!(api.health, Some(ServiceHealth::Path("/health".into())));
+            let db = &shop.services["db"];
+            assert!(db.is_image());
+            assert_eq!(db.image.as_deref(), Some("postgres:16-alpine"));
+            assert_eq!(db.pull, Some(PullPolicy::Missing));
+            assert_eq!(db.env["POSTGRES_PASSWORD"], "test");
+            assert_eq!(db.tmpfs, ["/var/lib/postgresql/data"]);
+            assert_eq!(
+                db.mounts,
+                [ServiceMount {
+                    source: "fixtures/sql".into(),
+                    target: "/docker-entrypoint-initdb.d".into()
+                }]
+            );
+            assert_eq!(
+                db.health,
+                Some(ServiceHealth::Probe(HealthProbe {
+                    exec: Some(vec!["pg_isready".into(), "-h".into(), "127.0.0.1".into()]),
+                    tcp: None,
+                    timeout: Some(Timeout(90)),
+                }))
+            );
+            assert_eq!(
+                shop.services["mock"].health,
+                Some(ServiceHealth::Probe(HealthProbe {
+                    tcp: Some(true),
+                    ..Default::default()
+                }))
+            );
+            assert!(config.image_services_configured());
+            let yaml = serde_yaml::to_string(api).unwrap();
+            assert_eq!(yaml, "service: shop-api\nport: 3000\nhealth: /health\n");
+        }
+
+        #[test]
+        fn rejects_unknown_image_service_fields() {
+            for (yaml, field) in [
+                ("health: {exec: [true], retries: 3}", "retries"),
+                (
+                    "mounts: [{source: a, target: /a, read_only: false}]",
+                    "read_only",
+                ),
+            ] {
+                let message = error(&format!(
+                    "projects:\n  shop:\n    services:\n      db:\n        image: postgres\n        port: 5432\n        {yaml}\n"
+                ));
+                assert!(
+                    message.contains(&format!("unknown field `{field}`")),
+                    "{message}"
+                );
+            }
+        }
+
+        #[test]
+        fn a_service_is_compose_or_image() {
+            let service = |body: &str| {
+                error(&format!(
+                    "projects:\n  shop:\n    services:\n      db:\n        port: 5432\n{body}"
+                ))
+            };
+            assert_eq!(
+                service(""),
+                "projects.shop.services.db: missing field `service`"
+            );
+            assert_eq!(
+                service("        service: db\n        image: postgres\n"),
+                "projects.shop.services.db: set `service` for a Compose service or `image`, not both"
+            );
+            assert_eq!(
+                service("        service: db\n        env: {A: b}\n"),
+                "projects.shop.services.db.env: applies only to a service with `image`"
+            );
+            assert_eq!(
+                service("        image: --privileged\n"),
+                "projects.shop.services.db.image: invalid image `--privileged`"
+            );
+            assert_eq!(
+                service("        image: postgres\n        health: /health\n"),
+                "projects.shop.services.db.health: an image service takes {exec: [...]} or {tcp: true}"
+            );
+            assert_eq!(
+                service("        image: postgres\n        health: {exec: []}\n"),
+                "projects.shop.services.db.health.exec: needs a command"
+            );
+            assert_eq!(
+                service("        image: postgres\n        health: {exec: [x], tcp: true}\n"),
+                "projects.shop.services.db.health: set `exec` or `tcp`, not both"
+            );
+            assert_eq!(
+                service("        image: postgres\n        health: {tcp: false}\n"),
+                "projects.shop.services.db.health: set `exec` or `tcp: true`"
+            );
+            assert_eq!(
+                service("        image: postgres\n        tmpfs: [data]\n"),
+                "projects.shop.services.db.tmpfs: `data` is not an absolute container path"
+            );
+            assert_eq!(
+                service("        image: postgres\n        env: {A-B: x}\n"),
+                "projects.shop.services.db.env: `A-B` is not a variable name"
+            );
+            assert_eq!(
+                service("        image: postgres\n        mounts: [{source: a, target: data}]\n"),
+                "projects.shop.services.db.mounts: target `data` is not an absolute container path"
+            );
+        }
+    }
+
+    mod container {
+        use super::*;
+        use cherry_test_common::container::{
+            NetworkMode, PullPolicy, Quantity, SeedMode, Timeout, WorkspaceAccess, WritableConfig,
+        };
+
+        fn parse(yaml: &str) -> Result<RawConfig> {
+            parse_raw_config(Path::new("cherry-test.yaml"), yaml)
+        }
+
+        fn error(yaml: &str) -> String {
+            format!("{:#}", parse(yaml).unwrap_err())
+        }
+
+        #[test]
+        fn parses_a_container_block_in_defaults_and_packages() {
+            let raw = parse(
+                r#"
+defaults:
+  execution: container
+  container:
+    image: alpine:3.20
+    pull: missing
+    network: bridge
+    user: host
+    cap_drop: [ALL]
+    no_new_privileges: true
+    read_only_root: true
+    cpus: 2
+    memory: 2g
+    pids: 256
+    shm_size: 64m
+    tmpfs: [/tmp]
+    timeout: 30m
+    workspace: ro
+    writable: [target, {path: build, seed: copy}]
+    mounts:
+      - {source: ../sibling}
+      - {source: ../data, target: /data, read_only: false}
+    caches:
+      - {volume: cherry-test-m2, target: /tmp/home/.m2}
+    env:
+      pass: [CI]
+      set: {LANG: C.UTF-8}
+packages:
+  prices:
+    container:
+      network: none
+      timeout: 90
+"#,
+            )
+            .unwrap();
+            let container = raw.defaults.container.unwrap();
+            assert_eq!(container.image.as_deref(), Some("alpine:3.20"));
+            assert_eq!(container.pull, Some(PullPolicy::Missing));
+            assert_eq!(container.network, Some(NetworkMode::Bridge));
+            assert_eq!(container.user.as_deref(), Some("host"));
+            assert_eq!(container.cpus, Some(Quantity("2".into())));
+            assert_eq!(container.memory, Some(Quantity("2g".into())));
+            assert_eq!(container.pids, Some(256));
+            assert_eq!(container.timeout, Some(Timeout(1800)));
+            assert_eq!(container.workspace, Some(WorkspaceAccess::Ro));
+            assert_eq!(
+                container.writable.unwrap()[1],
+                WritableConfig {
+                    path: "build".into(),
+                    seed: Some(SeedMode::Copy)
+                }
+            );
+            let mounts = container.mounts.unwrap();
+            assert_eq!(mounts[0].target, None);
+            assert!(mounts[0].read_only);
+            assert!(!mounts[1].read_only);
+            assert_eq!(container.caches.unwrap()[0].target, "/tmp/home/.m2");
+            assert_eq!(container.env.unwrap().pass, Some(vec!["CI".into()]));
+            let package = raw.packages["prices"].container.clone().unwrap();
+            assert_eq!(package.network, Some(NetworkMode::None));
+            assert_eq!(package.timeout, Some(Timeout(90)));
+            assert_eq!(package.image, None);
+        }
+
+        #[test]
+        fn rejects_unknown_container_keys() {
+            let message =
+                error("defaults:\n  container:\n    image: alpine\n    privileged: true\n");
+            assert!(message.contains("defaults.container: unknown field `privileged`, expected one of `image`, `pull`"), "{message}");
+            let message = error("projects:\n  demo:\n    packages:\n      api:\n        container:\n          netwrok: none\n");
+            assert!(message.contains("unknown field `netwrok`"), "{message}");
+        }
+
+        #[test]
+        fn rejects_unknown_keys_in_container_entries() {
+            for (yaml, field) in [
+                ("writable: [{path: target, mode: rw}]", "mode"),
+                ("mounts: [{source: ../data, readonly: true}]", "readonly"),
+                ("caches: [{volume: m2, target: /m2, size: 1g}]", "size"),
+                ("env: {passthrough: [CI]}", "passthrough"),
+            ] {
+                let message = error(&format!("defaults:\n  container:\n    {yaml}\n"));
+                assert!(
+                    message.contains(&format!("unknown field `{field}`")),
+                    "{message}"
+                );
+            }
+        }
+
+        #[test]
+        fn rejects_unknown_container_values() {
+            for (yaml, expected) in [
+                (
+                    "network: host",
+                    "unknown variant `host`, expected `none` or `bridge`",
+                ),
+                (
+                    "pull: sometimes",
+                    "unknown variant `sometimes`, expected one of `never`, `missing`, `always`",
+                ),
+                (
+                    "workspace: readonly",
+                    "unknown variant `readonly`, expected `ro` or `rw`",
+                ),
+                (
+                    "writable: [{path: target, seed: link}]",
+                    "unknown variant `link`, expected `copy`",
+                ),
+                ("timeout: soon", "invalid duration `soon`"),
+            ] {
+                let message = error(&format!("defaults:\n  container:\n    {yaml}\n"));
+                assert!(message.contains(expected), "{message}");
+            }
+        }
+
+        #[test]
+        fn documented_container_examples_parse() {
+            let mut examples = 0;
+            for doc in [
+                include_str!("../../../README.md"),
+                include_str!("../../../docs/adapters.md"),
+            ] {
+                for block in doc.split("```yaml\n").skip(1) {
+                    let yaml = block.split("```").next().unwrap();
+                    if !yaml.contains("  container:\n") {
+                        continue;
+                    }
+                    let raw = parse(yaml).unwrap();
+                    assert!(raw.defaults.container.is_some());
+                    examples += 1;
+                }
+            }
+            assert_eq!(examples, 2);
+        }
+
+        #[test]
+        fn container_settings_apply_only_with_container_execution() {
+            let mut cfg = TestItConfig::default();
+            cfg.projects.insert(
+                "prices".into(),
+                ProjectConfig {
+                    packages: BTreeMap::from([("api".to_string(), PackageConfig::default())]),
+                    ..Default::default()
+                },
+            );
+            assert!(!cfg.container_settings_in_use());
+            cfg.defaults.container = Some(ContainerConfig::default());
+            assert!(!cfg.container_settings_in_use());
+            let cfg = cfg.with_execution(ExecutionMode::Container);
+            assert!(cfg.container_settings_in_use());
+        }
     }
 
     mod with_execution {

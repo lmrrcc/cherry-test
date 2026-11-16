@@ -77,3 +77,34 @@ Each source in `jacoco-lines-v1` may carry `provenance` with `schemaVersion: 1` 
 A consumer must additionally validate its buffer hash, retained class artifacts, run completion and generation. A completed failing test run may have valid coverage; no per-test production attribution is implied. Top-level legacy `compiledIdentity: unknown` remains conservative for mixed providers. Older consumers can ignore the optional per-file object. Kotlin/ECJ/Rust and other providers without capture remain unknown; no counters are fabricated for wholly unobserved classes. This is cooperating local tool evidence, not protection against malicious build scripts.
 
 The opt-in Maven configuration and native end-to-end fixture are in TurboJ `integration-tests/fixtures/cherry-native`; its architecture document describes reproduction and remaining limits.
+
+## Parallel jobs and external JVM services (16 November 2026)
+
+Native events now share the sidecar/container scheduler. Event writes and sequence assignment are serialized; each phase retains project, module, package and runtime identity. `TERM` uses Cherry's existing cancellation handler so it can stop owned containers and flush partial results. Hosts should allow its 30-second process-group grace before forcing termination.
+
+External adapters may opt into precise server evidence by writing `coverage-evidence.json` in their invocation output directory:
+
+```json
+{
+  "schemaVersion": 1,
+  "provider": "jacoco",
+  "lcov": "/workspace/target/run/coverage.lcov",
+  "sourceRoots": ["/workspace/service/src/main/java"],
+  "classDirectories": ["/workspace/target/run/server-build/classes"],
+  "executionDirectory": "/workspace/target/run/server-coverage"
+}
+```
+
+The LCOV artifact must also be listed in the adapter response. All paths must resolve inside the workspace; LCOV and execution data must belong to this invocation's output. The host reads real `.exec` probes and original class files to regenerate instruction/branch counters. It does not sum per-process line counters. The legacy LCOV and HTML reporting interfaces remain available.
+
+The Java runner supplies `CHERRY_TEST_PROVENANCE_TOKEN`, `CHERRY_TEST_PROVENANCE_DIR`, and a non-secret `CHERRY_TEST_COVERAGE_COLLECTION` identity to external adapters when coverage is enabled. Compile into a fresh output directory with the existing javac capture plugin, and start each measured JVM with JaCoCo first, then the provenance agent. Every captured process must exit and supply both its matching execution session and completion receipt. Missing/incomplete evidence stays unknown. A manifest without compiler capture, such as the Kotlin control, preserves precise counters but cannot certify current source identity.
+
+### Probe union across phases
+
+Precision sidecars may contain `executionFiles: [{path, sha256}]`. At normal completion, the Java runner verifies these artifacts again and merges their JaCoCo probes only for identical source/class identities. It publishes an optional `coverageUnion` artifact on `run.completed`. Per-phase tests remain separate; coverage is aggregate, never per-test attribution.
+
+A merged proof keeps `collectionId` as its own UUID and lists contributing UUIDs in `collectionIds`. Every session must belong to one of those collections; class files from every compilation are retained for subsequent validation. Existing single-collection proofs are unchanged. New readers replace conflicting per-phase counters with this provider-computed union. Old readers safely retain their conservative unknown state.
+
+An individual collection may have `status: unknown, inputIdentityVerified: true` when compiler/source/process inputs and counters match but a class has no execution record in that collection. This does **not** certify current coverage on its own. A union can certify it only if the merged probes contain every required matching class identity. Missing captures, changed sources/classes, inconsistent artifacts, foreign sessions and incomplete runs never become current through this mechanism.
+
+Qualification included real mini Java/Kotlin services, shop Java's three instrumented JVMs, Rust shop, and JUG's isolated Spring/Quarkus/browser suites. Unsupported compiler provenance remains explicitly unknown. Report aggregation can group HTTP observations and collapse test names differently from the native execution inventory; the event stream preserves each package/phase execution instead of inventing line associations from report totals.

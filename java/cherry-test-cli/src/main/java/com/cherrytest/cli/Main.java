@@ -22,9 +22,10 @@ public final class Main {
         try {
             code = run(List.of(arguments));
         } catch (CommandLine.UsageError error) {
-            Terminal.ERR.print(
-                    "error: " + error.getMessage()
-                            + "\n\nUsage: cherry-test [OPTIONS] [FILTER] [-- <CARGO_TEST_ARGS>...]\n       cherry-test <COMMAND>\n\nFor more information, try '--help'.\n");
+            String usage = error.showUsage()
+                    ? "\n\nUsage: cherry-test [OPTIONS] [FILTER] [-- <CARGO_TEST_ARGS>...]\n       cherry-test <COMMAND>"
+                    : "";
+            Terminal.ERR.print("error: " + error.getMessage() + usage + "\n\nFor more information, try '--help'.\n");
             Terminal.ERR.flush();
             code = 2;
         } catch (RuntimeException error) {

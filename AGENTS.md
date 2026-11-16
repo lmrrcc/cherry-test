@@ -280,7 +280,8 @@ Init phase: load config, validate workspace members, discover integration tests,
 | `CHERRY_TEST_NO_OPEN` | Do not open HTML report |
 | `RUST_LOG` | Enable tracing diagnostics (e.g. `RUST_LOG=cherry_test=info`) |
 | `CHERRY_TEST_RUN_DIR` | Current run directory (set by Cherry Test) |
-| `CHERRY_TEST_REPORT_DIR` | Reports subdirectory (set by Cherry Test) |
+| `CHERRY_TEST_REPORT_DIR` | The job's report directory (set by Cherry Test, merged into the run `reports/` after the job) |
+| `CHERRY_TEST_SCOPE_PROVISIONED` | Scopes whose image services Cherry Test prepared for the job (set by Cherry Test; the test reads their endpoints instead of booting) |
 | `CHERRY_TEST_{PROJECT}_{SERVICE}_HOST` | Service host after Docker boot |
 | `CHERRY_TEST_{PROJECT}_{SERVICE}_PORT` | Mapped port |
 | `CHERRY_TEST_{PROJECT}_{SERVICE}_URL` | HTTP base URL |

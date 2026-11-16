@@ -93,10 +93,14 @@ final class CoverageEvidence {
             throw new IOException("Compiler or instrumented process capture is absent");
         ExecFileLoader execution = new ExecFileLoader();
         List<String> executionHashes = new ArrayList<>();
+        var executionFiles = report.putArray("executionFiles");
         for (Path file : Formats.files(build, "exec")) {
             byte[] data = bytes(file, root);
             execution.load(new ByteArrayInputStream(data));
             executionHashes.add(hash(data));
+            var artifact = executionFiles.addObject();
+            artifact.put("path", file.toRealPath().toString());
+            artifact.put("sha256", hash(data));
         }
         var sessions = execution.getSessionInfoStore().getInfos();
         if (sessions.isEmpty()) throw new IOException("No JaCoCo execution session");
@@ -127,6 +131,7 @@ final class CoverageEvidence {
             List<String> classes = new ArrayList<>();
             Set<String> generations = new TreeSet<>(), compilers = new TreeSet<>();
             String reason = "";
+            boolean missingExecution = false;
             for (Compiled item : matches) {
                 byte[] code = bytes(item.path(), root);
                 if (!item.sourceHash().equals(sourceHash)) {
@@ -149,8 +154,7 @@ final class CoverageEvidence {
                     break;
                 }
                 if (execution.getExecutionDataStore().get(identity.getId()) == null) {
-                    reason = "Class has no execution record; instrumentation scope cannot be proven";
-                    break;
+                    missingExecution = true;
                 }
                 if (execution.getExecutionDataStore().getContents().stream()
                         .anyMatch(data -> data.getName().equals(item.name()) && data.getId() != identity.getId())) {
@@ -208,7 +212,8 @@ final class CoverageEvidence {
                 artifact.put("path", item.path().toString());
                 artifact.put("sha256", item.hash());
             }
-            proof.put("status", "verified");
+            proof.put("status", missingExecution ? "unknown" : "verified");
+            proof.put("inputIdentityVerified", true);
             proof.put("sourceHash", sourceHash);
             proof.put("collectionId", token);
             proof.put(
@@ -219,7 +224,11 @@ final class CoverageEvidence {
             proof.put("processId", String.join(",", processes.values()));
             proof.put("sessionId", String.join(",", observed));
             proof.put("executionHashes", String.join(",", executionHashes));
-            proof.put("reason", "Compiler input/output and JaCoCo class IDs, counters and process sessions match");
+            proof.put(
+                    "reason",
+                    missingExecution
+                            ? "Class has no execution record; instrumentation scope cannot be proven"
+                            : "Compiler input/output and JaCoCo class IDs, counters and process sessions match");
         }
     }
 

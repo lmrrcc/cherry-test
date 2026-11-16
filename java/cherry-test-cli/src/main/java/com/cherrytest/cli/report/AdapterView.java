@@ -7,6 +7,8 @@ import com.cherrytest.cli.adapters.Json;
 import com.cherrytest.common.adapter.AdapterRequest;
 import com.cherrytest.common.adapter.AdapterResponse;
 import com.cherrytest.common.adapter.Attachment;
+import com.cherrytest.common.adapter.Isolation;
+import com.cherrytest.common.adapter.IsolationClass;
 import com.cherrytest.common.adapter.TestResult;
 import com.cherrytest.common.reportshell.ReportShell;
 import com.cherrytest.common.rustcompat.AnyhowError;
@@ -28,6 +30,7 @@ import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 final class AdapterView {
     private static final long SNIPPET_CONTEXT = 3;
@@ -181,11 +184,73 @@ final class AdapterView {
         return out.toString();
     }
 
+    /** The {@code isolation} section: every failed test that was rerun alone, its class and its reruns. */
+    static String renderIsolationSection(com.cherrytest.cli.Isolation.Report report) {
+        StringBuilder html = new StringBuilder("<section id=\"isolation\"><h2>Failed tests rerun alone</h2><p>Each"
+                + " failed test ran alone up to " + report.runs() + " " + (report.runs() == 1 ? "time" : "times")
+                + ", each time as a fresh job. Statuses below are those of the main run; the class explains the"
+                + " failure.</p><ul>");
+        for (com.cherrytest.cli.Isolation.IsolatedTest test : report.tests()) {
+            html.append("<li>")
+                    .append(isolationBadge(test.isolationClass()))
+                    .append(' ')
+                    .append(escape(test.project()))
+                    .append(" / ")
+                    .append(escape(test.packageName()))
+                    .append(" / ")
+                    .append(escape(test.phase()))
+                    .append(": ")
+                    .append(escape(test.test()))
+                    .append(isolationDetail(test.runs(), test.passed(), test.logs(), test.reason()))
+                    .append("</li>");
+        }
+        long left = Math.max(0, report.failed() - report.tests().size());
+        if (left > 0) {
+            html.append("<li>")
+                    .append(left)
+                    .append(" more failed ")
+                    .append(left == 1 ? "test" : "tests")
+                    .append(" not rerun (max_tests ")
+                    .append(report.maxTests())
+                    .append(")</li>");
+        }
+        html.append("</ul></section>");
+        return html.toString();
+    }
+
+    static String isolationBadge(IsolationClass value) {
+        return "<strong class=\"" + com.cherrytest.cli.Isolation.badgeClass(value) + "\">" + value.wireName()
+                + "</strong>";
+    }
+
+    /** {@code , 2/3 passed alone (run 1, run 2, run 3)}, with the reason when the reruns could not decide. */
+    static String isolationDetail(long runs, long passed, List<String> logs, @Nullable String reason) {
+        StringBuilder html = new StringBuilder();
+        if (runs > 0) {
+            html.append(", ").append(passed).append('/').append(runs).append(" passed alone");
+            List<String> links = new ArrayList<>();
+            for (int index = 0; index < logs.size(); index++) {
+                links.add("<a href=\"" + escape(logs.get(index)) + "/result.json\">run " + (index + 1) + "</a>");
+            }
+            if (!links.isEmpty()) {
+                html.append(" (").append(String.join(", ", links)).append(')');
+            }
+        }
+        if (reason != null) {
+            html.append(" <span class=\"muted\">").append(escape(reason)).append("</span>");
+        }
+        return html.toString();
+    }
+
     static JumpIndex write(Path reports) {
         List<PhaseSection> sections = loadPhaseSections(reports);
         JumpIndex index = indexRenderedDefinitions(sections);
         StringBuilder body = new StringBuilder(
                 "<p><a href=\"index.html\">Back to report</a></p><h1>Tests and coverage by phase</h1><p>Markers distinguish covered lines, uncovered lines, and lines with no coverage measurement. Each measured run is shown with the lines above and below it.</p>");
+        com.cherrytest.cli.Isolation.Report report = com.cherrytest.cli.Isolation.readReport(reports);
+        if (report != null && report.failed() > 0) {
+            body.append(renderIsolationSection(report));
+        }
         for (PhaseSection section : sections) {
             body.append(section.head());
             for (CoveredFile file : section.files()) {
@@ -283,6 +348,13 @@ final class AdapterView {
                         .append(" (")
                         .append(U64.toString(test.durationMs()))
                         .append(" ms)");
+                Isolation isolation = test.isolation();
+                if (isolation != null) {
+                    head.append(' ')
+                            .append(isolationBadge(isolation.isolationClass()))
+                            .append(isolationDetail(
+                                    isolation.runs(), isolation.passed(), isolation.logs(), isolation.reason()));
+                }
                 if (test.message() != null) {
                     head.append("<pre>").append(escape(test.message())).append("</pre>");
                 }

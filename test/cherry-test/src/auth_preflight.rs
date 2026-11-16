@@ -2,19 +2,24 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use anyhow::Result;
-use cherry_test_core::{auth, TestItConfig};
+use cherry_test_core::{auth, Environment, TestItConfig};
 
 use crate::preflight::{PreflightPlan, SkippedTest};
 
+/// Fetches a token for every auth profile the discovered tests use and returns the variables to export.
+///
+/// Profiles that fail mark their tests skipped; the Okta mock URL is read from `env`.
 pub fn run_auth_preflight(
     workspace_root: &Path,
     config: &TestItConfig,
     plan: &mut PreflightPlan,
     quiet: bool,
-) -> Result<()> {
+    env: &Environment,
+) -> Result<Vec<(String, String)>> {
     let profiles = auth_profiles_needed(plan);
+    let mut exports = Vec::new();
     if profiles.is_empty() {
-        return Ok(());
+        return Ok(exports);
     }
     for profile_name in profiles {
         let profile = match config.auth_profile(&profile_name) {
@@ -24,16 +29,18 @@ pub fn run_auth_preflight(
                 continue;
             }
         };
-        if let Err(e) = auth::ensure_profile_token_blocking(workspace_root, &profile_name, profile)
-        {
-            mark_auth_skip(plan, &profile_name, &format!("{e:#}"), quiet);
-            continue;
+        match auth::profile_token_env_blocking(workspace_root, &profile_name, profile, env) {
+            Ok(vars) => exports.extend(vars),
+            Err(e) => {
+                mark_auth_skip(plan, &profile_name, &format!("{e:#}"), quiet);
+                continue;
+            }
         }
         if !quiet {
             println!("auth preflight: profile `{profile_name}` ready");
         }
     }
-    Ok(())
+    Ok(exports)
 }
 
 fn auth_profiles_needed(plan: &PreflightPlan) -> BTreeSet<String> {

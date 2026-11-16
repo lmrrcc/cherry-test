@@ -1,17 +1,17 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
-use cherry_test_common::adapter::{
-    AdapterRequest, AdapterResponse, ExecutionMode, PROTOCOL_VERSION,
-};
-use cherry_test_core::PackageRuntime;
+use cherry_test_common::adapter::{AdapterRequest, AdapterResponse, ExecutionMode};
+use cherry_test_core::{Environment, PackageRuntime};
 
 use crate::adapters;
-use crate::config::{Config, ExternalRunner, PackageConfig, TestKind};
+use crate::config::{Config, ExternalRunner, PackageConfig};
 use crate::coverage::{merge_lcov_files, CoveragePaths};
 use crate::coverage_ignore::CoverageIgnore;
 use crate::discover::ProjectGroup;
+use crate::plan::{Job, JobKey};
 use crate::preflight::PreflightPlan;
 use crate::report::{package_coverage_from_paths, ProjectRunResult};
 use crate::run_dir::RunDir;
@@ -25,6 +25,11 @@ pub struct RunOptions<'a> {
     pub test_listing: TestListing,
     pub extra_test_args: &'a [String],
     pub kinds: &'a [String],
+    /// The run's base environment: the process snapshot plus the workspace and run variables.
+    pub env: Environment,
+    pub parallelism: crate::scheduler::Parallelism,
+    /// Rerun failed tests alone after the main schedule; `None` when isolation is off.
+    pub isolate: Option<crate::isolation::IsolationSettings>,
 }
 
 /// When the terminal lists individual test results.
@@ -40,7 +45,25 @@ pub struct RunOutcome {
     pub unit_lcov_files: Vec<PathBuf>,
     pub integration_lcov_files: Vec<PathBuf>,
     pub failed: bool,
-    pub ran_integration: bool,
+    pub timings: Vec<(JobKey, Duration)>,
+}
+
+/// Keeps each job's terminal block together when jobs run at once.
+static OUTPUT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn output_lock() -> std::sync::MutexGuard<'static, ()> {
+    OUTPUT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// What one finished job contributes to the run's results.
+#[derive(Debug, Clone)]
+pub struct JobOutcome {
+    pub key: JobKey,
+    pub success: bool,
+    pub lcov: Option<PathBuf>,
+    pub elapsed: Duration,
 }
 
 pub fn run_projects(
@@ -48,203 +71,261 @@ pub fn run_projects(
     opts: &RunOptions<'_>,
     preflight: &PreflightPlan,
 ) -> Result<RunOutcome> {
-    let mut preflight = preflight.clone();
+    let mut plan = crate::plan::plan(projects, opts, preflight)?;
+    if opts.parallelism.workers > 1 {
+        crate::durations::Durations::load(&crate::durations::Durations::path(
+            opts.workspace_root,
+            &opts.config.defaults.runs_base,
+        ))
+        .estimate(&mut plan);
+    }
+    let finished = crate::scheduler::run(&plan, projects, opts, preflight)?;
+    if let Err(error) = crate::isolation::run(&plan, projects, opts, preflight) {
+        eprintln!("warning: failed-test isolation stopped: {error:#}");
+    }
+    aggregate(opts, finished)
+}
+
+/// What invoking one job's adapter produced, before coverage and reports.
+pub struct Invocation {
+    pub request: AdapterRequest,
+    pub response: AdapterResponse,
+    /// Why the job did not reach its tests: a setup, container, image service or adapter error.
+    pub infrastructure: Option<String>,
+}
+
+/// Runs one planned job: completes its request from the job environment, invokes the adapter and saves the result.
+///
+/// `setup` carries the error of booting the job's scopes, which fails the job without starting its adapter.
+pub fn execute_job(
+    job: &Job,
+    env: &Environment,
+    preflight: &PreflightPlan,
+    setup: std::result::Result<(), String>,
+    opts: &RunOptions<'_>,
+) -> Result<JobOutcome> {
+    let started = Instant::now();
+    let adapter = job.adapter.as_str();
+    let phase = job.key.phase.as_str();
+    let package = job.key.package.as_str();
+    if !opts.quiet {
+        let _output = output_lock();
+        println!("==> {}/{package}/{phase} ({adapter})", job.key.project);
+    }
+    let Invocation {
+        request,
+        mut response,
+        ..
+    } = invoke_job(job, env, preflight, setup, opts)?;
+    if discovers_scopes(adapter) && phase == "integration" {
+        record_skips(&mut response, preflight, package, request.strict);
+    }
+    let cov_paths = CoveragePaths::new(opts.run_dir, &job.key.project);
+    cov_paths.ensure_dirs()?;
+    let mut lcov_file = None;
+    if !response.coverage.is_empty() {
+        let lcov = cov_paths.lcov_dir.join(format!("{package}-{phase}.lcov"));
+        if let Err(error) = normalize_coverage(&request, &response.coverage, &lcov) {
+            response.success = false;
+            response
+                .diagnostics
+                .push(format!("coverage import failed: {error:#}"));
+        } else {
+            lcov_file = Some(lcov);
+        }
+    }
+    let response = adapters::save(&request, response, &opts.run_dir.reports)?;
+    if !opts.quiet {
+        let _output = output_lock();
+        if opts.test_listing == TestListing::AfterEachPhase {
+            crate::report::print_phase_results(&response.tests);
+        }
+        if !response.success {
+            eprintln!("  failed: {}", failure_summary(&response));
+        }
+    }
+    Ok(JobOutcome {
+        key: job.key.clone(),
+        success: response.success,
+        lcov: lcov_file,
+        elapsed: started.elapsed(),
+    })
+}
+
+/// Completes the job's request from `env` and invokes its adapter, with its image services when it has any.
+///
+/// Nothing is printed, no coverage is read and no report is written.
+pub fn invoke_job(
+    job: &Job,
+    env: &Environment,
+    preflight: &PreflightPlan,
+    setup: std::result::Result<(), String>,
+    opts: &RunOptions<'_>,
+) -> Result<Invocation> {
+    let adapter = job.adapter.as_str();
+    let phase = job.key.phase.as_str();
+    let package = job.key.package.as_str();
+    let mut request = job.request.clone();
+    if adapter == "cargo" && phase == "integration" {
+        for skip in preflight.skipped.iter().filter(|s| s.package == package) {
+            request
+                .args
+                .extend(["--skip".into(), skip.function.clone()]);
+        }
+    }
+    if adapter == "maven" && phase == "integration" {
+        if let Some(excludes) = maven_skip_excludes(preflight, package) {
+            std::fs::create_dir_all(&request.output)?;
+            let file = request.output.join("cherry-test-skips.txt");
+            std::fs::write(&file, excludes)?;
+            request
+                .args
+                .push(format!("-Dfailsafe.excludesFile={}", file.display()));
+        }
+    }
+    let report_dir = job_report_dir(&request);
+    std::fs::create_dir_all(&report_dir)
+        .with_context(|| format!("create {}", report_dir.display()))?;
+    let mut env = env.clone();
+    env.insert(
+        "CHERRY_TEST_REPORT_DIR".into(),
+        report_dir.to_string_lossy().into_owned(),
+    );
+    extend_with_provisioned(&mut env, job);
+    let env = &env;
+    request.env = crate::run_env::request_env(env);
+    let setup = setup.and_then(|()| job.container_error.clone().map_or(Ok(()), Err));
+    let result = match setup {
+        Ok(()) => invoke_with_sidecars(adapter, &request, env, opts),
+        Err(message) => Err(message),
+    };
+    Ok(match result {
+        Ok(response) => Invocation {
+            request,
+            response,
+            infrastructure: None,
+        },
+        Err(message) => Invocation {
+            request,
+            response: AdapterResponse {
+                success: false,
+                diagnostics: vec![message.clone()],
+                ..Default::default()
+            },
+            infrastructure: Some(message),
+        },
+    })
+}
+
+/// Adds what the runner provides for the job's scopes: `CHERRY_TEST_SCOPE_PROVISIONED`, and the
+/// `127.0.0.1` endpoints of the image services in the job's own network.
+pub fn extend_with_provisioned(env: &mut Environment, job: &Job) {
+    if !job.provisioned.is_empty() {
+        env.insert(
+            cherry_test_core::sidecar::SCOPE_PROVISIONED_ENV.into(),
+            job.provisioned.join(","),
+        );
+    }
+    let sidecars = job
+        .request
+        .container
+        .as_ref()
+        .and_then(|spec| spec.sidecars.as_ref());
+    for service in sidecars
+        .iter()
+        .flat_map(|sidecars| sidecars.services.iter())
+    {
+        env.extend(cherry_test_core::sidecar::sidecar_env(service));
+    }
+}
+
+/// Invokes the adapter; a job with image services gets its private network first and loses it afterwards,
+/// also when the adapter fails, times out or the run is cancelled.
+///
+/// A service that does not start or become healthy fails the job before the adapter starts.
+fn invoke_with_sidecars(
+    adapter: &str,
+    request: &AdapterRequest,
+    env: &Environment,
+    opts: &RunOptions<'_>,
+) -> std::result::Result<AdapterResponse, String> {
+    let invoke = || {
+        adapters::invoke(adapter, opts.config.adapters.get(adapter), request, env)
+            .map_err(|error| format!("{error:#}"))
+    };
+    let Some((spec, sidecars)) = request
+        .container
+        .as_ref()
+        .and_then(|spec| spec.sidecars.as_ref().map(|sidecars| (spec, sidecars)))
+    else {
+        return invoke();
+    };
+    let labels = cherry_test_core::sidecar::Labels {
+        run: spec.run.clone(),
+        job: spec.job.clone(),
+        owner_pid: adapters::container::owner_pid(),
+    };
+    std::fs::create_dir_all(&request.output)
+        .map_err(|error| format!("create {}: {error}", request.output.display()))?;
+    cherry_test_core::sidecar::start_job_network(
+        env,
+        sidecars,
+        &spec.image,
+        spec.pull,
+        spec.network,
+        &labels,
+        &request.output,
+        &adapters::process::cancelled,
+    )
+    .map_err(|error| format!("image services of {} did not start: {error:#}", spec.job))?;
+    let result = invoke();
+    match cherry_test_core::sidecar::stop_job_network(env, sidecars, &request.output) {
+        Ok(()) => result,
+        Err(error) => {
+            let message = format!(
+                "could not remove the image services of {}: {error:#}",
+                spec.job
+            );
+            match result {
+                Ok(mut response) => {
+                    response.success = false;
+                    response.diagnostics.push(message);
+                    Ok(response)
+                }
+                Err(failure) => Err(format!("{failure}; {message}")),
+            }
+        }
+    }
+}
+
+/// The job's own `CHERRY_TEST_REPORT_DIR`: `report/` in its adapter output, writable in hardened containers.
+///
+/// The scheduler merges it into the run's report directory in plan order once the job has finished.
+pub fn job_report_dir(request: &AdapterRequest) -> PathBuf {
+    request.output.join("report")
+}
+
+/// Folds finished jobs, taken in plan order, into per-package results and coverage lists.
+fn aggregate(opts: &RunOptions<'_>, finished: Vec<(usize, JobOutcome)>) -> Result<RunOutcome> {
+    let mut finished = finished;
+    finished.sort_by_key(|(order, _)| *order);
     let mut statuses = BTreeMap::new();
     let mut coverage = BTreeMap::<(String, String), Vec<PathBuf>>::new();
     let mut unit = Vec::new();
     let mut integration = Vec::new();
-    let mut ran_integration = false;
-    for phase in phases_for(opts.kinds) {
-        if !opts.kinds.is_empty() && !opts.kinds.iter().any(|kind| kind == phase) {
-            continue;
-        }
-        std::env::set_var("CHERRY_TEST_PHASE", phase);
-        let mut booted = BTreeSet::new();
-        let mut auth_ready = false;
-        for project in projects {
-            apply_env_file(opts.workspace_root, &project.id);
-            for member in &project.members {
-                if adapters::process::cancelled() {
-                    break;
-                }
-                let package = &opts.config.projects[&project.id].packages[&member.name];
-                let configured = opts.config.package_kinds(&member.name, &project.id);
-                for kind in &configured {
-                    if TestKind::parse(kind).is_none() {
-                        bail!("unknown test kind {kind}");
-                    }
-                }
-                if !configured.iter().any(|kind| kind == phase) {
-                    continue;
-                }
-                let runner = match phase {
-                    "unit" => package.unit.as_ref(),
-                    "integration" => package.integration.as_ref(),
-                    "functional" => opts.config.functional_runner(&member.name, &project.id),
-                    "ui" => opts.config.ui_runner(&member.name, &project.id),
-                    "visual" => package.visual.as_ref(),
-                    "mutation" => package.mutation.as_ref(),
-                    _ => None,
-                };
-                let adapter = phase_adapter(phase, runner, package);
-                let cwd = runner
-                    .and_then(|r| r.cwd.as_ref())
-                    .map(|p| opts.workspace_root.join(p))
-                    .unwrap_or_else(|| {
-                        opts.workspace_root
-                            .join(&member.manifest_path)
-                            .parent()
-                            .unwrap_or(opts.workspace_root)
-                            .to_path_buf()
-                    });
-                let output = opts
-                    .run_dir
-                    .reports
-                    .join("adapters")
-                    .join(&project.id)
-                    .join(&member.name)
-                    .join(phase);
-                let mut options = package.options.clone();
-                if let Some(runner) = runner {
-                    options.extend(runner.options.clone());
-                    if !runner.command.is_empty() {
-                        options.insert("command".into(), runner.command.clone().into());
-                    }
-                }
-                let mut args = runner.map(|r| r.args.clone()).unwrap_or_default();
-                if adapter == "cargo" {
-                    args.extend_from_slice(opts.extra_test_args);
-                }
-                let mut request = AdapterRequest {
-                    protocol: PROTOCOL_VERSION,
-                    project: project.id.clone(),
-                    package: member.name.clone(),
-                    phase: phase.into(),
-                    root: opts.workspace_root.to_path_buf(),
-                    manifest: opts.workspace_root.join(&member.manifest_path),
-                    cwd,
-                    output,
-                    execution: phase_execution(
-                        phase,
-                        package.execution,
-                        opts.config.defaults.execution,
-                    ),
-                    coverage: phase_collects_coverage(phase, opts.coverage),
-                    strict: opts.config.defaults.strict,
-                    args,
-                    env: BTreeMap::new(),
-                    options,
-                };
-                let mut scopes = Vec::new();
-                if phase == "integration" && adapter == "cargo" {
-                    scopes.extend(
-                        preflight
-                            .discovered
-                            .iter()
-                            .filter(|t| {
-                                t.package == member.name
-                                    && preflight.scopes_to_boot.contains(&t.effective_scope)
-                            })
-                            .map(|t| t.effective_scope.clone()),
-                    );
-                }
-                if let Some(scope) = runner.and_then(|r| r.scope.as_ref()) {
-                    if cherry_test_core::needs_docker(scope) {
-                        scopes.push(scope.clone());
-                    }
-                }
-                let setup = (|| -> Result<()> {
-                    for scope in scopes {
-                        ran_integration = true;
-                        if !booted.contains(&scope) {
-                            cherry_test_core::boot_scope(&scope)?;
-                            booted.insert(scope);
-                        }
-                    }
-                    if phase == "integration" && !auth_ready && !booted.is_empty() {
-                        crate::auth_preflight::run_auth_preflight(
-                            opts.workspace_root,
-                            opts.config,
-                            &mut preflight,
-                            opts.quiet,
-                        )?;
-                        auth_ready = true;
-                    }
-                    Ok(())
-                })();
-                if adapter == "cargo" && phase == "integration" {
-                    for skip in preflight
-                        .skipped
-                        .iter()
-                        .filter(|s| s.package == member.name)
-                    {
-                        request
-                            .args
-                            .extend(["--skip".into(), skip.function.clone()]);
-                    }
-                }
-                request.env = std::env::vars()
-                    .filter(|(k, _)| {
-                        k.starts_with("CHERRY_TEST_")
-                            && !k.contains("AUTH")
-                            && !k.contains("TOKEN")
-                            && !k.contains("SECRET")
-                    })
-                    .collect();
-                if !opts.quiet {
-                    println!("==> {}/{}/{phase} ({adapter})", project.id, member.name);
-                }
-                let result = setup.and_then(|_| {
-                    adapters::invoke(adapter, opts.config.adapters.get(adapter), &request)
-                });
-                let mut response = match result {
-                    Ok(response) => response,
-                    Err(error) => AdapterResponse {
-                        success: false,
-                        diagnostics: vec![format!("{error:#}")],
-                        ..Default::default()
-                    },
-                };
-                if adapter == "cargo" && phase == "integration" {
-                    record_skips(&mut response, &preflight, &member.name, request.strict);
-                }
-                let key = (project.id.clone(), member.name.clone());
-                let cov_paths = CoveragePaths::new(opts.run_dir, &project.id);
-                cov_paths.ensure_dirs()?;
-                if !response.coverage.is_empty() {
-                    let lcov = cov_paths
-                        .lcov_dir
-                        .join(format!("{}-{phase}.lcov", member.name));
-                    if let Err(error) = normalize_coverage(&request, &response.coverage, &lcov) {
-                        response.success = false;
-                        response
-                            .diagnostics
-                            .push(format!("coverage import failed: {error:#}"));
-                    } else {
-                        coverage.entry(key.clone()).or_default().push(lcov.clone());
-                        match phase {
-                            "unit" => unit.push(lcov),
-                            "integration" => integration.push(lcov),
-                            _ => {}
-                        }
-                    }
-                }
-                let response = adapters::save(&request, response, &opts.run_dir.reports)?;
-                *statuses.entry(key).or_insert(true) &= response.success;
-                if !opts.quiet {
-                    if opts.test_listing == TestListing::AfterEachPhase {
-                        crate::report::print_phase_results(&response.tests);
-                    }
-                    if !response.success {
-                        eprintln!("  failed: {}", failure_summary(&response));
-                    }
-                }
+    let mut timings = Vec::new();
+    for (_, outcome) in finished {
+        let key = (outcome.key.project.clone(), outcome.key.package.clone());
+        if let Some(lcov) = outcome.lcov {
+            coverage.entry(key.clone()).or_default().push(lcov.clone());
+            match outcome.key.phase.as_str() {
+                "unit" => unit.push(lcov),
+                "integration" => integration.push(lcov),
+                _ => {}
             }
         }
-        cherry_test_core::teardown_scopes()?;
-        if adapters::process::cancelled() {
-            break;
-        }
+        *statuses.entry(key).or_insert(true) &= outcome.success;
+        timings.push((outcome.key, outcome.elapsed));
     }
     let ignore = CoverageIgnore::load(opts.workspace_root, opts.config);
     let mut lcov_files = Vec::new();
@@ -272,7 +353,7 @@ pub fn run_projects(
         unit_lcov_files: unit,
         integration_lcov_files: integration,
         failed,
-        ran_integration,
+        timings,
     })
 }
 
@@ -309,6 +390,23 @@ fn normalize_coverage(request: &AdapterRequest, files: &[PathBuf], output: &Path
     std::fs::write(output, result)?;
     merge_lcov_files(&[output.to_path_buf()], output)?;
     Ok(())
+}
+
+/// Adapters whose integration tests declare their scope in the source: `#[cherry_test]` (Cargo), `@CherryTest` (Maven).
+pub(crate) fn discovers_scopes(adapter: &str) -> bool {
+    adapter == "cargo" || adapter == "maven"
+}
+
+/// Failsafe exclusions for the scoped tests preflight skipped: one `Class#method` per line.
+fn maven_skip_excludes(preflight: &PreflightPlan, package: &str) -> Option<String> {
+    let lines: Vec<String> = preflight
+        .skipped
+        .iter()
+        .filter(|skip| skip.package == package)
+        .filter_map(|skip| skip.function.split_once("::"))
+        .map(|(class, method)| format!("{}#{method}\n", class.replace('.', "/")))
+        .collect();
+    (!lines.is_empty()).then(|| lines.concat())
 }
 
 fn record_skips(
@@ -356,7 +454,7 @@ fn failure_summary(response: &AdapterResponse) -> String {
     }
 }
 
-fn phases_for(kinds: &[String]) -> Vec<&'static str> {
+pub(crate) fn phases_for(kinds: &[String]) -> Vec<&'static str> {
     let mut phases = vec!["unit", "integration", "functional", "ui", "visual"];
     if kinds.iter().any(|kind| kind == "mutation") {
         phases.push("mutation");
@@ -377,7 +475,7 @@ fn default_adapter(phase: &str, runtime: PackageRuntime) -> &'static str {
     }
 }
 
-fn phase_adapter<'a>(
+pub(crate) fn phase_adapter<'a>(
     phase: &str,
     runner: Option<&'a ExternalRunner>,
     package: &'a PackageConfig,
@@ -393,7 +491,7 @@ fn phase_adapter<'a>(
         .unwrap_or(default_adapter(phase, package.runtime))
 }
 
-fn phase_execution(
+pub(crate) fn phase_execution(
     phase: &str,
     configured: Option<ExecutionMode>,
     default_mode: ExecutionMode,
@@ -405,7 +503,7 @@ fn phase_execution(
     }
 }
 
-fn phase_collects_coverage(phase: &str, requested: bool) -> bool {
+pub(crate) fn phase_collects_coverage(phase: &str, requested: bool) -> bool {
     requested && !host_command_phase(phase)
 }
 
@@ -528,34 +626,27 @@ mod tests {
         });
         record_skips(&mut response, &preflight, "api", true);
         assert!(!response.success);
+        assert!(discovers_scopes("maven"));
+        assert!(!discovers_scopes("vitest"));
+        assert!(maven_skip_excludes(&preflight, "api").is_none());
+        preflight.skipped.push(crate::preflight::SkippedTest {
+            package: "api".into(),
+            function: "com.example.WalletIT::demo_project_wallet_suite_balance_test".into(),
+            scope: "demo".into(),
+            project: "demo".into(),
+            suite: "wallet".into(),
+            test: "balance".into(),
+            reason: "no docker".into(),
+        });
+        assert_eq!(
+            maven_skip_excludes(&preflight, "api").as_deref(),
+            Some("com/example/WalletIT#demo_project_wallet_suite_balance_test\n")
+        );
         assert_eq!(response.tests.len(), 2);
         assert_eq!(
             response.tests[1].status,
             cherry_test_common::adapter::TestStatus::Skipped
         );
         assert!(response.diagnostics[0].contains("no docker"));
-    }
-}
-
-fn apply_env_file(workspace_root: &Path, project_id: &str) {
-    let local = workspace_root.join(".env.test");
-    let nested = workspace_root.join(project_id).join(".env.test");
-    let env_path = if local.is_file() {
-        local
-    } else if nested.is_file() {
-        nested
-    } else {
-        return;
-    };
-    if let Ok(content) = std::fs::read_to_string(&env_path) {
-        for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            if let Some((key, value)) = line.split_once('=') {
-                std::env::set_var(key.trim(), value.trim());
-            }
-        }
     }
 }

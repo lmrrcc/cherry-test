@@ -22,6 +22,7 @@ public final class SystemCommand {
     private final List<String> arguments = new ArrayList<>();
     private final Map<String, String> environment = new LinkedHashMap<>();
     private @Nullable Path workingDirectory;
+    private @Nullable Map<String, String> exactEnvironment;
 
     private SystemCommand(String program) {
         this.program = program;
@@ -48,6 +49,12 @@ public final class SystemCommand {
 
     public SystemCommand env(String name, String value) {
         environment.put(name, value);
+        return this;
+    }
+
+    /** Starts the program with exactly {@code variables}; the process environment is not inherited. */
+    public SystemCommand environment(Map<String, String> variables) {
+        exactEnvironment = new LinkedHashMap<>(variables);
         return this;
     }
 
@@ -98,7 +105,12 @@ public final class SystemCommand {
     public ProcessBuilder builder() {
         ProcessBuilder builder = new ProcessBuilder();
         Map<String, String> childEnvironment = builder.environment();
-        ProcessEnvironment.applyTo(childEnvironment);
+        if (exactEnvironment == null) {
+            ProcessEnvironment.applyTo(childEnvironment);
+        } else {
+            childEnvironment.clear();
+            childEnvironment.putAll(exactEnvironment);
+        }
         childEnvironment.putAll(environment);
         List<String> command = new ArrayList<>();
         command.add(ExecutableLookup.resolve(program, childEnvironment.get("PATH"), workingDirectory));

@@ -59,6 +59,8 @@ public final class NativeEvents implements AutoCloseable {
     private final @Nullable Path reportDirectory;
     private long sequence;
     private boolean finished;
+    private final List<Path> coverageInputs = new java.util.ArrayList<>();
+    private boolean collectionsComplete = true;
 
     private record Snapshot(SortedMap<String, String> hashes, List<String> errors) {}
 
@@ -141,7 +143,7 @@ public final class NativeEvents implements AutoCloseable {
         }
     }
 
-    public void phaseStarted(AdapterRequest request, String adapter, String runtime) {
+    public synchronized void phaseStarted(AdapterRequest request, String adapter, String runtime) {
         if (writer == null) {
             return;
         }
@@ -151,7 +153,7 @@ public final class NativeEvents implements AutoCloseable {
         emit(node);
     }
 
-    public void phaseCompleted(
+    public synchronized void phaseCompleted(
             AdapterRequest request,
             String adapter,
             String runtime,
@@ -161,6 +163,7 @@ public final class NativeEvents implements AutoCloseable {
             return;
         }
         ObjectNode node = phaseEvent("phase.completed", request, adapter, runtime);
+        collectionsComplete &= adapterCompleted && !ProcessRunner.cancelled();
         node.put("success", response.success());
         node.put(
                 "failureScope",
@@ -205,6 +208,9 @@ public final class NativeEvents implements AutoCloseable {
             Path sidecar = path.resolveSibling(path.getFileName() + ".native.json");
             if (Files.isRegularFile(sidecar)) {
                 addArtifact(precision, sidecar, "jacoco-lines-v1");
+                coverageInputs.add(sidecar);
+            } else {
+                coverageInputs.add(path);
             }
         }
         ArrayNode logs = node.putArray("logs");
@@ -218,7 +224,7 @@ public final class NativeEvents implements AutoCloseable {
         emit(node);
     }
 
-    public int complete(int exitCode) {
+    public synchronized int complete(int exitCode) {
         terminal(
                 ProcessRunner.cancelled() ? "cancelled" : exitCode == 0 ? "passed" : "failed",
                 !ProcessRunner.cancelled(),
@@ -226,7 +232,7 @@ public final class NativeEvents implements AutoCloseable {
         return exitCode;
     }
 
-    public void failed(String rawFailure) {
+    public synchronized void failed(String rawFailure) {
         terminal(ProcessRunner.cancelled() ? "cancelled" : "error", false, rawFailure);
     }
 
@@ -239,6 +245,18 @@ public final class NativeEvents implements AutoCloseable {
         node.put("outcome", outcome);
         Path reports = reportDirectory;
         if (reports != null) {
+            if (complete && collectionsComplete && coverageInputs.size() > 1) {
+                try {
+                    var merged = com.cherrytest.cli.adapters.CoverageUnion.merge(workspace, coverageInputs);
+                    if (!merged.path("files").isEmpty()) {
+                        Path artifact = reports.resolve("native-coverage-union.json");
+                        Files.writeString(artifact, SerdeJsonWriter.pretty(merged));
+                        addArtifact(node.putArray("coverageUnion"), artifact, "jacoco-lines-v1");
+                    }
+                } catch (IOException | RuntimeException invalid) {
+                    node.put("coverageUnionError", "Coverage union withheld: " + invalid.getMessage());
+                }
+            }
             node.put("resultDirectory", reports.toString());
             Path html = reports.resolve("index.html");
             if (Files.isRegularFile(html)) {
@@ -402,7 +420,7 @@ public final class NativeEvents implements AutoCloseable {
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
         if (writer == null) {
             return;
         }

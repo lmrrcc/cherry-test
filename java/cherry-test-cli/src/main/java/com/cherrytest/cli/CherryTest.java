@@ -1,6 +1,8 @@
 package com.cherrytest.cli;
 
 import com.cherrytest.cli.adapters.Adapters;
+import com.cherrytest.cli.adapters.Container;
+import com.cherrytest.cli.adapters.ProcessRunner;
 import com.cherrytest.cli.coverage.Coverage;
 import com.cherrytest.cli.coverage.CoverageIgnore;
 import com.cherrytest.cli.coverage.CoverageSummary;
@@ -12,16 +14,18 @@ import com.cherrytest.cli.report.ReportOutput;
 import com.cherrytest.cli.report.ReportSnapshot;
 import com.cherrytest.cli.report.Theme;
 import com.cherrytest.common.adapter.ExecutionMode;
-import com.cherrytest.common.process.ProcessEnvironment;
 import com.cherrytest.common.rustcompat.AnyhowError;
+import com.cherrytest.common.rustcompat.RustOrdering;
 import com.cherrytest.common.rustcompat.RustText;
 import com.cherrytest.core.PackageConfig;
 import com.cherrytest.core.PackageRuntime;
 import com.cherrytest.core.RepoRoot;
 import com.cherrytest.core.TestItConfig;
-import com.cherrytest.core.Workspace;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 public final class CherryTest {
@@ -37,6 +41,7 @@ public final class CherryTest {
             Terminal.println(Banner.render(Theme.colorsEnabled()));
             Terminal.println();
         }
+        SortedMap<String, String> processEnv = RunEnv.snapshot();
         List<Path> configRoots = RepoRoot.resolveConfigRoots(cli.root(), cli.filter());
         int exitCode = 0;
         boolean multi = configRoots.size() > 1;
@@ -44,7 +49,7 @@ public final class CherryTest {
             if (multi && !cli.quiet()) {
                 Terminal.println("cherry-test: config root " + configRoot);
             }
-            int code = runTestsAtRoot(cli, configRoot, self);
+            int code = runTestsAtRoot(cli, configRoot, self, processEnv);
             if (code != 0) {
                 exitCode = code;
                 if (!cli.keepGoing()) {
@@ -55,8 +60,11 @@ public final class CherryTest {
         return exitCode;
     }
 
-    private static int runTestsAtRoot(RunCli cli, Path workspace, Adapters.SelfCommand self) {
-        ProcessEnvironment.set("CHERRY_TEST_WORKSPACE_ROOT", workspace.toString());
+    private static int runTestsAtRoot(
+            RunCli cli, Path workspace, Adapters.SelfCommand self, SortedMap<String, String> processEnv) {
+        SortedMap<String, String> env = new TreeMap<>(RustOrdering.STRING_ORDER);
+        env.putAll(processEnv);
+        env.put("CHERRY_TEST_WORKSPACE_ROOT", workspace.toString());
         TestItConfig config = TestItConfig.load(workspace);
         boolean needsScaffold = Scaffold.configNeedsScaffold(config, workspace);
         if (cli.forceInit() || needsScaffold) {
@@ -75,15 +83,22 @@ public final class CherryTest {
         }
         TestPlan plan;
         try {
-            plan = Init.initializeWithConfig(workspace, config, cli.filter(), cli.quiet());
+            plan = Init.initializeWithConfig(workspace, config, cli.filter(), cli.shard(), cli.quiet());
         } catch (AnyhowError error) {
             if (AnyhowError.display(error).contains("no testable workspace members found")) {
                 Terminal.eprintln("no testable workspace members found");
                 return cli.strict() ? 1 : 0;
             }
+            if (cli.shard() != null && AnyhowError.display(error).endsWith(Init.EMPTY_SHARD)) {
+                if (!cli.quiet()) {
+                    Terminal.println("cherry-test: " + AnyhowError.display(error));
+                }
+                return 0;
+            }
             throw error;
         }
-        boolean coverageRequested = plan.config().defaults().coverage() && !cli.noCoverage() && !skipCoverageEnv();
+        boolean coverageRequested =
+                plan.config().defaults().coverage() && !cli.noCoverage() && !skipCoverageEnv(processEnv);
         boolean hasRustPackages = false;
         for (ProjectGroup project : plan.projects()) {
             for (WorkspaceMember member : project.members()) {
@@ -103,9 +118,9 @@ public final class CherryTest {
             Terminal.println("cherry-test run: " + runDir.id() + " (" + runDir.root() + ")");
             Terminal.println();
         }
-        runDir.exportEnv();
-        ProcessEnvironment.set("CHERRY_TEST_RUN_ID", runDir.id());
-        ProcessEnvironment.set("CHERRY_TEST_COMPOSE_PROJECT", "cherry-test-" + runDir.id());
+        runDir.env().forEach(variable -> env.put(variable.getKey(), variable.getValue()));
+        env.put("CHERRY_TEST_RUN_ID", runDir.id());
+        env.put("CHERRY_TEST_COMPOSE_PROJECT", "cherry-test-" + runDir.id());
         try (NativeEvents events = NativeEvents.open(
                 workspace, runDir.id(), coverageRequested, Runner.phasesFor(cli.kinds()), runDir.reports())) {
             try {
@@ -119,8 +134,34 @@ public final class CherryTest {
                         cli.cargoTestArgs(),
                         cli.kinds(),
                         self,
+                        env,
+                        Scheduler.Parallelism.resolve(
+                                cli.jobs(),
+                                plan.config().defaults().parallel(),
+                                plan.config().defaults().execution(),
+                                env),
+                        Isolation.Settings.resolve(
+                                cli.isolate(),
+                                cli.noIsolate(),
+                                plan.config().defaults().isolate()),
                         events);
-                RunOutcome outcome = Runner.runProjects(plan.projects(), options, plan.preflight());
+                boolean containers =
+                        plan.config().containerSettingsInUse() || plan.config().imageServicesConfigured();
+                if (containers) {
+                    Container.startRun(runDir.id(), cli.quiet());
+                }
+                RunOutcome outcome;
+                try {
+                    outcome = Runner.runProjects(plan.projects(), options, plan.preflight());
+                } finally {
+                    if (containers) {
+                        Container.finishRun(runDir.id());
+                    }
+                }
+                if (!ProcessRunner.cancelled()) {
+                    recordDurations(
+                            Durations.path(workspace, plan.config().defaults().runsBase()), outcome);
+                }
                 Path mergedLcov = runDir.mergedLcov();
                 CoverageTotals coverageTotals = CoverageTotals.EMPTY;
                 boolean htmlEnabled = plan.config().defaults().htmlReport() && !cli.noHtml();
@@ -179,17 +220,10 @@ public final class CherryTest {
                     }
                 }
                 ReportOutput.printAggregateReport(snapshot, !cli.quiet(), cli.verbose() && !cli.quiet());
-                if (outcome.ranIntegration()) {
-                    try {
-                        Workspace.teardownScopes();
-                    } catch (RuntimeException teardownIgnoredLikeRust) {
-                        return events.complete(outcome.failed() || reportFailed ? 1 : 0);
-                    }
-                }
                 return events.complete(outcome.failed() || reportFailed ? 1 : 0);
-            } catch (RuntimeException error) {
-                events.failed(AnyhowError.alternate(error));
-                throw error;
+            } catch (RuntimeException failure) {
+                events.failed(AnyhowError.alternate(failure));
+                throw failure;
             }
         }
     }
@@ -204,8 +238,17 @@ public final class CherryTest {
         return Coverage.summaryForLcov(merged, ignore);
     }
 
-    private static boolean skipCoverageEnv() {
-        String value = ProcessEnvironment.get("CHERRY_TEST_SKIP_COVERAGE");
+    /** Records the run's job durations; like Rust, which only traces the failure, a write error is ignored. */
+    private static void recordDurations(Path path, RunOutcome outcome) {
+        try {
+            Durations.update(path, outcome.timings());
+        } catch (RuntimeException durationsIgnoredLikeRust) {
+            return;
+        }
+    }
+
+    private static boolean skipCoverageEnv(Map<String, String> environment) {
+        String value = environment.get("CHERRY_TEST_SKIP_COVERAGE");
         return value != null
                 && (value.equals("1") || RustText.toAsciiLowercase(value).equals("true"));
     }

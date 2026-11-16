@@ -12,6 +12,7 @@ import org.jacoco.core.analysis.*;
 import org.jacoco.core.tools.ExecFileLoader;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.*;
 
 class CoverageEvidenceTest {
@@ -32,7 +33,7 @@ class CoverageEvidenceTest {
                   static int price(boolean discount) { return discount ? 80 : 100; }
                   static int untouched() { return 99; }
                   static class Nested { static int value() { return 1; } }
-                  public static void main(String[] args) { System.out.println(price(true) + Nested.value()); }
+                  public static void main(String[] args) { System.out.println(price(args.length == 0) + Nested.value()); }
                 }
                 """);
         Path module = Path.of(CompilerCapture.class
@@ -110,6 +111,145 @@ class CoverageEvidenceTest {
         } finally {
             if (process.isAlive()) process.destroyForcibly();
         }
+    }
+
+    @Test
+    void external_server_export_preserves_partial_counters_and_three_processes() throws Exception {
+        for (int i = 0; i < 2; i++)
+            launch(
+                    "java",
+                    "-javaagent:" + System.getProperty("cherrytest.jacocoAgent") + "=destfile="
+                            + root.resolve("server-" + i + ".exec"),
+                    "-javaagent:" + root.resolve("capture.jar"),
+                    "-cp",
+                    classes.toString(),
+                    "Price");
+        Files.move(captures, root.resolve("provenance"));
+        var spec = JsonNodeFactory.instance.objectNode();
+        spec.put("schemaVersion", 1);
+        spec.put("provider", "jacoco");
+        Path lcov = root.resolve("server.lcov");
+        Files.writeString(lcov, "");
+        spec.put("lcov", lcov.toString());
+        spec.put("executionDirectory", root.toString());
+        spec.putArray("sourceRoots").add(root.toString());
+        spec.putArray("classDirectories").add(classes.toString());
+        Files.writeString(root.resolve("coverage-evidence.json"), spec.toString());
+        var env = new TreeMap<String, String>();
+        env.put("CHERRY_TEST_COVERAGE_COLLECTION", token);
+        var request = new com.cherrytest.common.adapter.AdapterRequest(
+                1,
+                "sample",
+                "server",
+                "integration",
+                root,
+                root.resolve("pom.xml"),
+                root,
+                root,
+                com.cherrytest.common.adapter.ExecutionMode.LOCAL,
+                true,
+                true,
+                List.of(),
+                env,
+                new TreeMap<>());
+        var response = new com.cherrytest.common.adapter.AdapterResponse(1, true, List.of(), List.of(lcov), List.of());
+        ExternalCoverage.export(request, response);
+        var exported = Json.parse(Files.readString(root.resolve("server.lcov.native.json")));
+        var source = exported.path("files").get(0);
+        assertEquals("verified", source.path("provenance").path("status").asString());
+        assertEquals(3, source.path("provenance").path("processId").asString().split(",").length);
+        assertEquals(3, source.path("provenance").path("sessionId").asString().split(",").length);
+        assertTrue(source.path("lines")
+                .valueStream()
+                .anyMatch(line -> line.path("cb").asInt() > 0 && line.path("mb").asInt() > 0));
+        Files.delete(root.resolve("jacoco.exec"));
+        ExternalCoverage.export(request, response);
+        var incomplete = Json.parse(Files.readString(root.resolve("server.lcov.native.json")));
+        assertEquals(
+                "unknown",
+                incomplete
+                        .path("files")
+                        .get(0)
+                        .path("provenance")
+                        .path("status")
+                        .asString());
+        assertTrue(incomplete.toString().contains("did not supply execution data"));
+        spec.put("executionDirectory", Objects.requireNonNull(root.getParent()).toString());
+        Files.writeString(root.resolve("coverage-evidence.json"), spec.toString());
+        assertThrows(RuntimeException.class, () -> ExternalCoverage.export(request, response));
+    }
+
+    @Test
+    void unionUsesActualProbesAcrossTwoVerifiedGenerationsWithoutAddingCounters() throws Exception {
+        report.put("schemaVersion", 1);
+        report.put("format", "jacoco-lines-v1");
+        assertEquals("verified", verify());
+        Path one = root.resolve("one.native.json");
+        Files.writeString(one, report.toString());
+        token = UUID.randomUUID().toString();
+        captures = Files.createDirectories(root.resolve("capture-two"));
+        classes = Files.createDirectories(root.resolve("classes-two"));
+        Path executions = Files.createDirectories(root.resolve("exec-two"));
+        launch(
+                "javac",
+                "-g",
+                "-processorpath",
+                root.resolve("capture.jar").toString(),
+                "-Xplugin:CherryProvenance " + classes,
+                "-d",
+                classes.toString(),
+                source.toString());
+        launch(
+                "java",
+                "-javaagent:" + System.getProperty("cherrytest.jacocoAgent") + "=destfile="
+                        + executions.resolve("second.exec"),
+                "-javaagent:" + root.resolve("capture.jar"),
+                "-cp",
+                classes.toString(),
+                "Price",
+                "other-branch");
+        ExecFileLoader probes = new ExecFileLoader();
+        probes.load(executions.resolve("second.exec").toFile());
+        CoverageBuilder measured = new CoverageBuilder();
+        new Analyzer(probes.getExecutionDataStore(), measured).analyzeAll(classes.toFile());
+        ObjectNode second = report.deepCopy();
+        var counters = measured.getSourceFiles().iterator().next();
+        for (JsonNode row : second.path("files").get(0).path("lines")) {
+            var actual = counters.getLine(row.path("line").asInt());
+            ((ObjectNode) row).put("ci", actual.getInstructionCounter().getCoveredCount());
+            ((ObjectNode) row).put("mi", actual.getInstructionCounter().getMissedCount());
+            ((ObjectNode) row).put("cb", actual.getBranchCounter().getCoveredCount());
+            ((ObjectNode) row).put("mb", actual.getBranchCounter().getMissedCount());
+        }
+        CoverageEvidence.enrich(second, captures, executions, token, root);
+        assertEquals(
+                "verified",
+                second.path("files").get(0).path("provenance").path("status").asString());
+        Path two = root.resolve("two.native.json");
+        Files.writeString(two, second.toString());
+        var merged = CoverageUnion.merge(root, List.of(one, two));
+        var file = merged.path("files").get(0);
+        assertEquals("verified", file.path("provenance").path("status").asString());
+        assertEquals(2, file.path("provenance").path("collectionIds").size());
+        assertTrue(file.path("lines")
+                .valueStream()
+                .anyMatch(l -> l.path("line").asInt() == 2
+                        && l.path("cb").asInt() == 2
+                        && l.path("mb").asInt() == 0));
+        ((ObjectNode) second.path("files").get(0).path("provenance")).put("status", "unknown");
+        ((ObjectNode) second.path("files").get(0).path("provenance")).put("inputIdentityVerified", false);
+        Files.writeString(two, second.toString());
+        assertEquals(
+                "unknown",
+                CoverageUnion.merge(root, List.of(one, two))
+                        .path("files")
+                        .get(0)
+                        .path("provenance")
+                        .path("status")
+                        .asString());
+        Files.writeString(two, report.toString());
+        Files.write(root.resolve("jacoco.exec"), new byte[] {0});
+        assertThrows(IOException.class, () -> CoverageUnion.merge(root, List.of(one, two)));
     }
 
     String verify() {

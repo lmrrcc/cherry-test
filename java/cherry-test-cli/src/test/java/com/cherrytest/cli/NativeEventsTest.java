@@ -21,6 +21,50 @@ class NativeEventsTest {
     @TempDir
     Path temp;
 
+    @Test
+    void parallel_jobs_keep_ordered_events_and_distinct_module_identities() throws Exception {
+        Path output = temp.resolve("parallel.jsonl");
+        try (var events = NativeEvents.openAt(temp, "parallel", output);
+                var workers = java.util.concurrent.Executors.newFixedThreadPool(8)) {
+            var jobs = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+            for (int index = 0; index < 64; index++) {
+                int module = index;
+                jobs.add(workers.submit(() -> {
+                    var req = new AdapterRequest(
+                            1,
+                            "project",
+                            "module" + module,
+                            "integration",
+                            temp,
+                            temp.resolve("module" + module).resolve("pom.xml"),
+                            temp,
+                            temp.resolve("output" + module),
+                            ExecutionMode.CONTAINER,
+                            false,
+                            true,
+                            List.of(),
+                            new TreeMap<>(),
+                            new TreeMap<>());
+                    events.phaseStarted(req, "maven", "java");
+                    events.phaseCompleted(
+                            req, "maven", "java", new AdapterResponse(1, true, List.of(), List.of(), List.of()), true);
+                }));
+            }
+            for (var job : jobs) job.get();
+            events.complete(0);
+        }
+        var rows = read(output);
+        assertThat(rows).hasSize(130);
+        for (int i = 0; i < rows.size(); i++)
+            assertThat(rows.get(i).path("sequence").asLong()).isEqualTo(i);
+        assertThat(rows.stream()
+                        .filter(r -> r.path("event").asString().equals("phase.completed"))
+                        .map(r -> r.path("phaseKey").asString())
+                        .distinct()
+                        .count())
+                .isEqualTo(64);
+    }
+
     private AdapterRequest request() {
         return new AdapterRequest(
                 1,

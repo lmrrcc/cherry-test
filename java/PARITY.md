@@ -113,7 +113,16 @@ Every Rust test has a Java twin with the same snake_case name, in the matching c
 | `test/cherry-test-common/src/git_diff.rs` | `cherry-test-common/.../gitdiff/GitDiffTest` |
 | `test/cherry-test-common/src/report_shell.rs` | `cherry-test-common/.../reportshell/ReportShellTest` |
 | `test/cherry-test-common/src/ignore.rs` | `cherry-test-common/.../ignore/PathIgnoreTest` |
-| `test/cherry-test-core/src/*.rs` | `cherry-test-core/.../{TestItConfig,RepoRoot,Scope,Auth,TestId}Test` |
+| `test/cherry-test-common/src/container.rs` | `cherry-test-core/.../ContainerConfigTest` (YAML parsing of the `container:` block lives in core) |
+| `test/cherry-test-core/src/*.rs` | `cherry-test-core/.../{TestItConfig,RepoRoot,Scope,Auth,TestId,Workspace}Test` |
 | `test/cherry-test-macros/src/lib.rs` | `cherry-test-processor/.../CherryTestProcessorTest` |
 | `test/cherry-test/src/**/*.rs` | `cherry-test-cli/src/test/java/**` (one class per Rust module) |
+| `test/cherry-test/tests/golden/container-argv.json` | read by `adapters::container` tests and `cherry-test-cli/.../adapters/ContainerTest`: identical `docker run` argv and `request.json` bytes |
 | `test/cherry-test/tests/adapter_contract.rs` | `cherry-test-cli/.../contract/AdapterContractIT` (Failsafe, runs the shaded jar) |
+| `test/cherry-test/tests/parallel_run.rs` | `cherry-test-cli/.../contract/ParallelRunIT` (Failsafe, runs the shaded jar) |
+| `test/cherry-test-core/src/sidecar.rs` | `cherry-test-core/.../SidecarsTest`; the image service parsing tests of `config.rs` live in `TestItConfigTest$services` |
+| `test/cherry-test/tests/golden/sidecar-argv.json` | read by `adapters::container::sidecar_argv_matches_golden_cases` and `ContainerTest.sidecar_argv_matches_golden_cases`: identical holder, service, probe, removal and job argv, endpoint variables and `request.json` bytes |
+| `test/cherry-test/tests/sidecar_smoke.rs` | `cherry-test-cli/.../contract/SidecarSmokeIT` (Failsafe, runs the shaded jar; needs `CHERRY_TEST_DOCKER_SMOKE=1`, Rust runs it with `--ignored`) |
+| `test/cherry-test/src/isolation.rs` | `cherry-test-cli/.../IsolationTest`; the rerun-job and phases-page tests live in `PlanTest` and `report/AdapterViewTest` like their Rust modules |
+| `test/cherry-test/tests/golden/isolation.json` | read by `isolation::writes_isolation_json_and_terminal_lines` and `IsolationTest.writes_isolation_json_and_terminal_lines`: identical `reports/isolation.json` bytes |
+| `test/cherry-test/tests/isolation_run.rs` | `cherry-test-cli/.../contract/IsolationRunIT` (Failsafe, runs the shaded jar) |

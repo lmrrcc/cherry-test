@@ -1,4 +1,5 @@
 pub mod builtins;
+pub mod container;
 pub mod formats;
 pub mod lcov;
 pub mod process;
@@ -99,10 +100,12 @@ fn discover(
     Ok(())
 }
 
+/// Runs one adapter with exactly the variables in `env`; the CLI's own environment is not inherited.
 pub fn invoke(
     name: &str,
     config: Option<&AdapterConfig>,
     request: &AdapterRequest,
+    env: &cherry_test_core::Environment,
 ) -> Result<AdapterResponse> {
     std::fs::create_dir_all(&request.output)?;
     let mut command = if let Some(config) = config {
@@ -120,14 +123,27 @@ pub fn invoke(
     let request_file = request.output.join("request.json");
     std::fs::write(&request_file, serde_json::to_vec(request)?)?;
     command
+        .env_clear()
+        .envs(env)
         .stdin(Stdio::from(std::fs::File::open(request_file)?))
         .current_dir(&request.root);
     let prefix = request.output.join("adapter");
-    let success = process::capture(
+    let timeout = match (config, &request.container) {
+        (Some(config), _) => config.timeout_secs,
+        (None, Some(spec)) => spec.timeout_secs,
+        (None, None) => 1800,
+    };
+    let stop = request.container.as_ref().map(|spec| {
+        command.env(container::OWNER_PID_ENV, container::owner_pid().to_string());
+        let name = spec.name.clone();
+        move || container::kill(&name)
+    });
+    let success = process::capture_with(
         command,
         &prefix,
-        config.map(|c| c.timeout_secs).unwrap_or(1800),
+        timeout,
         true,
+        stop.as_ref().map(|stop| stop as &dyn Fn()),
     )?;
     let stdout = prefix.with_extension("stdout");
     if std::fs::metadata(&stdout)?.len() > 32 * 1024 * 1024 {
@@ -273,14 +289,26 @@ pub fn save(
         .join(&request.project)
         .join(&request.package)
         .join(&request.phase);
-    std::fs::create_dir_all(&dir)?;
+    write_result(&dir.join("result.json"), request, &response)?;
+    Ok(response)
+}
+
+/// Writes `result.json`: the job's project, package and phase with the adapter response.
+pub fn write_result(
+    path: &Path,
+    request: &AdapterRequest,
+    response: &AdapterResponse,
+) -> Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
     std::fs::write(
-        dir.join("result.json"),
+        path,
         serde_json::to_vec_pretty(
             &serde_json::json!({"project":request.project,"package":request.package,"phase":request.phase,"result":response}),
         )?,
     )?;
-    Ok(response)
+    Ok(())
 }
 
 pub fn read_rows(reports: &Path) -> Result<Vec<serde_json::Value>> {
@@ -333,6 +361,8 @@ mod tests {
             args: Vec::new(),
             env: Default::default(),
             options: Default::default(),
+            container: None,
+            select: None,
         }
     }
 

@@ -3,12 +3,21 @@ package com.cherrytest.core;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class AuthTest {
     @Test
     void env_var_name_for_okta() {
         assertThat(Auth.envVarForProfile("okta")).isEqualTo("CHERRY_TEST_AUTH_OKTA_ACCESS_TOKEN");
+    }
+
+    @Test
+    void token_env_names_the_access_token_and_its_type() {
+        assertThat(Auth.tokenEnv("okta-mock", "abc"))
+                .containsExactly(
+                        Map.entry("CHERRY_TEST_AUTH_OKTA_MOCK_ACCESS_TOKEN", "abc"),
+                        Map.entry("CHERRY_TEST_AUTH_OKTA_MOCK_TOKEN_TYPE", "Bearer"));
     }
 
     @Test

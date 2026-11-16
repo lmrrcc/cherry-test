@@ -5,16 +5,22 @@ pub mod coverage;
 pub mod coverage_ignore;
 pub mod crap;
 pub mod discover;
+pub mod durations;
 pub mod filter;
 pub mod git_diff;
 pub mod init;
+pub mod isolation;
 pub mod node_discover;
 pub mod node_runtime;
+pub mod plan;
 pub mod preflight;
 pub mod report;
 pub mod run_dir;
+pub mod run_env;
 pub mod runner;
 pub mod scaffold;
+pub mod scheduler;
+pub mod shard;
 pub mod update;
 pub mod vitest_report;
 
@@ -53,7 +59,7 @@ pub enum Command {
 
 #[derive(Debug, Parser)]
 pub struct RunCli {
-    #[arg(help = "Project group id (e.g. mini) or package name (e.g. mini-rs-api)")]
+    #[arg(help = "Project group id (e.g. mini), package name (e.g. mini-rs-api) or @group")]
     pub filter: Option<String>,
 
     #[arg(long, help = "Repo root directory (default: auto-detect from cwd)")]
@@ -88,6 +94,20 @@ pub struct RunCli {
     )]
     pub kinds: Vec<String>,
 
+    #[arg(
+        long,
+        value_name = "N|auto",
+        help = "Jobs to run at once, or auto for one per CPU (default: defaults.parallel.jobs, else 1)"
+    )]
+    pub jobs: Option<cherry_test_core::Jobs>,
+
+    #[arg(
+        long,
+        value_name = "I/N",
+        help = "Run only shard I of N; packages are spread by recorded durations"
+    )]
+    pub shard: Option<shard::Shard>,
+
     #[arg(long)]
     pub no_html: bool,
 
@@ -96,6 +116,20 @@ pub struct RunCli {
 
     #[arg(long, help = "Do not print the startup banner")]
     pub no_banner: bool,
+
+    #[arg(
+        long,
+        overrides_with = "no_isolate",
+        help = "Rerun each failed test alone to classify it as REAL, INTERFERENCE, FLAKY or INCONCLUSIVE (default: defaults.isolate.on_failure)"
+    )]
+    pub isolate: bool,
+
+    #[arg(
+        long,
+        overrides_with = "isolate",
+        help = "Do not rerun failed tests alone"
+    )]
+    pub no_isolate: bool,
 
     #[arg(long, help = "Continue after a project failure")]
     pub keep_going: bool,
@@ -128,6 +162,7 @@ fn run_tests(cli: RunCli) -> Result<i32> {
     if show_banner(&cli) {
         print_banner();
     }
+    let process_env = run_env::snapshot();
     let config_roots = discover::config_roots_from(cli.root.as_deref(), cli.filter.as_deref())?;
     let mut exit_code = 0;
     let multi = config_roots.len() > 1;
@@ -135,7 +170,7 @@ fn run_tests(cli: RunCli) -> Result<i32> {
         if multi && !cli.quiet {
             println!("{COMMAND_NAME}: config root {}", config_root.display());
         }
-        let code = run_tests_at_root(&cli, config_root)?;
+        let code = run_tests_at_root(&cli, config_root, &process_env)?;
         if code != 0 {
             exit_code = code;
             if !cli.keep_going {
@@ -146,10 +181,15 @@ fn run_tests(cli: RunCli) -> Result<i32> {
     Ok(exit_code)
 }
 
-fn run_tests_at_root(cli: &RunCli, workspace: &std::path::Path) -> Result<i32> {
-    std::env::set_var(
-        "CHERRY_TEST_WORKSPACE_ROOT",
-        workspace.to_string_lossy().as_ref(),
+fn run_tests_at_root(
+    cli: &RunCli,
+    workspace: &std::path::Path,
+    process_env: &run_env::Environment,
+) -> Result<i32> {
+    let mut env = process_env.clone();
+    env.insert(
+        "CHERRY_TEST_WORKSPACE_ROOT".into(),
+        workspace.to_string_lossy().into_owned(),
     );
 
     let mut config = TestItConfig::load(workspace)?;
@@ -176,22 +216,33 @@ fn run_tests_at_root(cli: &RunCli, workspace: &std::path::Path) -> Result<i32> {
         return Ok(0);
     }
 
-    let plan =
-        match init::initialize_with_config(workspace, config, cli.filter.as_deref(), cli.quiet) {
-            Ok(plan) => plan,
-            Err(e) => {
-                if e.to_string()
-                    .contains("no testable workspace members found")
-                {
-                    eprintln!("no testable workspace members found");
-                    return Ok(if cli.strict { 1 } else { 0 });
-                }
-                return Err(e);
+    let plan = match init::initialize_with_config(
+        workspace,
+        config,
+        cli.filter.as_deref(),
+        cli.shard,
+        cli.quiet,
+    ) {
+        Ok(plan) => plan,
+        Err(e) => {
+            if e.to_string()
+                .contains("no testable workspace members found")
+            {
+                eprintln!("no testable workspace members found");
+                return Ok(if cli.strict { 1 } else { 0 });
             }
-        };
+            if cli.shard.is_some() && e.to_string().ends_with(init::EMPTY_SHARD) {
+                if !cli.quiet {
+                    println!("{COMMAND_NAME}: {e}");
+                }
+                return Ok(0);
+            }
+            return Err(e);
+        }
+    };
 
     let coverage_requested =
-        plan.config.defaults.coverage && !cli.no_coverage && !skip_coverage_env();
+        plan.config.defaults.coverage && !cli.no_coverage && !skip_coverage_env(process_env);
     let has_rust_packages = plan.projects.iter().any(|project| {
         project.members.iter().any(|member| {
             member.runtime == cherry_test_core::PackageRuntime::Rust
@@ -219,10 +270,10 @@ fn run_tests_at_root(cli: &RunCli, workspace: &std::path::Path) -> Result<i32> {
         );
         println!();
     }
-    run_dir.export_env();
-    std::env::set_var("CHERRY_TEST_RUN_ID", &run_dir.id);
-    std::env::set_var(
-        "CHERRY_TEST_COMPOSE_PROJECT",
+    env.extend(run_dir.env());
+    env.insert("CHERRY_TEST_RUN_ID".into(), run_dir.id.clone());
+    env.insert(
+        "CHERRY_TEST_COMPOSE_PROJECT".into(),
         format!("cherry-test-{}", run_dir.id),
     );
 
@@ -239,10 +290,37 @@ fn run_tests_at_root(cli: &RunCli, workspace: &std::path::Path) -> Result<i32> {
         },
         extra_test_args: &cli.cargo_test_args,
         kinds: &cli.kinds,
+        parallelism: scheduler::Parallelism::resolve(
+            cli.jobs,
+            plan.config.defaults.parallel.as_ref(),
+            plan.config.defaults.execution,
+            &env,
+        ),
+        isolate: isolation::IsolationSettings::resolve(
+            cli.isolate,
+            cli.no_isolate,
+            plan.config.defaults.isolate.as_ref(),
+        ),
+        env,
     };
 
     let preflight = plan.preflight.clone();
-    let outcome = runner::run_projects(&plan.projects, &opts, &preflight)?;
+    let containers =
+        plan.config.container_settings_in_use() || plan.config.image_services_configured();
+    if containers {
+        adapters::container::start_run(&run_dir.id, cli.quiet);
+    }
+    let outcome = runner::run_projects(&plan.projects, &opts, &preflight);
+    if containers {
+        adapters::container::finish_run(&run_dir.id);
+    }
+    let outcome = outcome?;
+    if !adapters::process::cancelled() {
+        let path = durations::Durations::path(workspace, &plan.config.defaults.runs_base);
+        if let Err(error) = durations::update(&path, &outcome.timings) {
+            tracing::warn!(path = %path.display(), error = %format!("{error:#}"), "could not record job durations");
+        }
+    }
 
     let merged_lcov = run_dir.merged_lcov();
     let mut coverage_totals = report::CoverageTotals::default();
@@ -316,10 +394,6 @@ fn run_tests_at_root(cli: &RunCli, workspace: &std::path::Path) -> Result<i32> {
     }
 
     report::print_aggregate_report(&snapshot, !cli.quiet, cli.verbose && !cli.quiet);
-
-    if outcome.ran_integration {
-        let _ = cherry_test_core::teardown_scopes();
-    }
 
     if outcome.failed || report_failed {
         return Ok(1);
@@ -443,8 +517,8 @@ fn push_mark_run(out: &mut String, kind: char, buf: &str) {
     }
 }
 
-fn skip_coverage_env() -> bool {
-    std::env::var("CHERRY_TEST_SKIP_COVERAGE")
+fn skip_coverage_env(env: &run_env::Environment) -> bool {
+    env.get("CHERRY_TEST_SKIP_COVERAGE")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
 }
@@ -523,6 +597,51 @@ mod integration {
                 .run
                 .no_crap
         );
+    }
+
+    #[test]
+    fn cli_parses_jobs_and_shard() {
+        use cherry_test_core::Jobs;
+        let cli = Cli::try_parse_from([
+            "cherry-test",
+            "--jobs",
+            "auto",
+            "--shard",
+            "2/3",
+            "@backend",
+        ])
+        .unwrap();
+        assert_eq!(cli.run.jobs, Some(Jobs::Auto));
+        assert_eq!(cli.run.shard, Some(shard::Shard { index: 2, count: 3 }));
+        assert_eq!(cli.run.filter.as_deref(), Some("@backend"));
+        assert_eq!(
+            Cli::try_parse_from(["cherry-test", "--jobs", "4"])
+                .unwrap()
+                .run
+                .jobs,
+            Some(Jobs::Count(4))
+        );
+        let error = Cli::try_parse_from(["cherry-test", "--jobs", "0"]).unwrap_err();
+        assert!(error.to_string().contains(
+            "invalid value '0' for '--jobs <N|auto>': expected a positive number or `auto`"
+        ));
+        let error = Cli::try_parse_from(["cherry-test", "--shard", "3/2"]).unwrap_err();
+        assert!(error.to_string().contains(
+            "invalid value '3/2' for '--shard <I/N>': expected I/N with 1 <= I <= N, such as 1/4"
+        ));
+        assert_eq!(Cli::try_parse_from(["cherry-test"]).unwrap().run.jobs, None);
+    }
+
+    #[test]
+    fn cli_parses_isolate_flags() {
+        let isolate = Cli::try_parse_from(["cherry-test", "--isolate"]).unwrap();
+        assert!(isolate.run.isolate && !isolate.run.no_isolate);
+        let last = Cli::try_parse_from(["cherry-test", "--isolate", "--no-isolate"]).unwrap();
+        assert!(!last.run.isolate && last.run.no_isolate);
+        let first = Cli::try_parse_from(["cherry-test", "--no-isolate", "--isolate"]).unwrap();
+        assert!(first.run.isolate && !first.run.no_isolate);
+        let neither = Cli::try_parse_from(["cherry-test"]).unwrap();
+        assert!(!neither.run.isolate && !neither.run.no_isolate);
     }
 
     #[test]

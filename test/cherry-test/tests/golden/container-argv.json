@@ -1,0 +1,589 @@
+[
+  {
+    "argv": [
+      "run",
+      "--rm",
+      "--init",
+      "--name",
+      "ct-20261028-101500-abc123-shop-prices-unit",
+      "--label",
+      "cherry-test.run=20261028-101500-abc123",
+      "--label",
+      "cherry-test.job=shop/prices/unit",
+      "--label",
+      "cherry-test.pid=4242",
+      "--pull",
+      "never",
+      "--network",
+      "none",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "-v",
+      "/work/shop:/workspace:ro",
+      "-v",
+      "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/unit:/workspace/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/unit",
+      "-w",
+      "/workspace/prices",
+      "-e",
+      "CHERRY_TEST_PHASE=unit",
+      "alpine:3.20",
+      "sh",
+      "-c",
+      "echo ok"
+    ],
+    "call": {
+      "args": [
+        "-c",
+        "echo ok"
+      ],
+      "auth_names": [],
+      "owner_pid": 4242,
+      "program": "sh",
+      "user": null
+    },
+    "name": "defaults: no network, read-only workspace, all capabilities dropped",
+    "request": {
+      "args": [],
+      "container": {
+        "caches": [],
+        "cap_drop": [
+          "ALL"
+        ],
+        "cpus": null,
+        "env_pass": [],
+        "env_set": {},
+        "image": "alpine:3.20",
+        "job": "shop/prices/unit",
+        "memory": null,
+        "mount_root": "/work/shop",
+        "mounts": [],
+        "name": "ct-20261028-101500-abc123-shop-prices-unit",
+        "network": "none",
+        "no_new_privileges": true,
+        "outputs": [
+          "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/unit"
+        ],
+        "pids": null,
+        "pull": "never",
+        "read_only_root": false,
+        "run": "20261028-101500-abc123",
+        "shm_size": null,
+        "timeout_secs": 1800,
+        "tmpfs": [],
+        "user": null,
+        "workspace": "ro",
+        "writable": []
+      },
+      "coverage": true,
+      "cwd": "/work/shop/prices",
+      "env": {
+        "CHERRY_TEST_PHASE": "unit"
+      },
+      "execution": "container",
+      "manifest": "/work/shop/prices/pom.xml",
+      "options": {},
+      "output": "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/unit",
+      "package": "prices",
+      "phase": "unit",
+      "project": "shop",
+      "protocol": 1,
+      "root": "/work/shop",
+      "strict": false
+    },
+    "request_json": "{\"protocol\":1,\"project\":\"shop\",\"package\":\"prices\",\"phase\":\"unit\",\"root\":\"/work/shop\",\"manifest\":\"/work/shop/prices/pom.xml\",\"cwd\":\"/work/shop/prices\",\"output\":\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/unit\",\"execution\":\"container\",\"coverage\":true,\"strict\":false,\"args\":[],\"env\":{\"CHERRY_TEST_PHASE\":\"unit\"},\"options\":{},\"container\":{\"name\":\"ct-20261028-101500-abc123-shop-prices-unit\",\"run\":\"20261028-101500-abc123\",\"job\":\"shop/prices/unit\",\"image\":\"alpine:3.20\",\"pull\":\"never\",\"network\":\"none\",\"user\":null,\"cap_drop\":[\"ALL\"],\"no_new_privileges\":true,\"read_only_root\":false,\"cpus\":null,\"memory\":null,\"pids\":null,\"shm_size\":null,\"tmpfs\":[],\"timeout_secs\":1800,\"workspace\":\"ro\",\"mount_root\":\"/work/shop\",\"outputs\":[\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/unit\"],\"writable\":[],\"mounts\":[],\"caches\":[],\"env_pass\":[],\"env_set\":{}}}"
+  },
+  {
+    "argv": [
+      "run",
+      "--rm",
+      "--init",
+      "--name",
+      "ct-20261028-101500-abc123-shop-prices-integration",
+      "--label",
+      "cherry-test.run=20261028-101500-abc123",
+      "--label",
+      "cherry-test.job=shop/prices/integration",
+      "--label",
+      "cherry-test.pid=31337",
+      "--pull",
+      "missing",
+      "--network",
+      "bridge",
+      "--add-host",
+      "host.docker.internal:host-gateway",
+      "--user",
+      "501:20",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--read-only",
+      "--cpus",
+      "1.5",
+      "--memory",
+      "2g",
+      "--pids-limit",
+      "512",
+      "--shm-size",
+      "256m",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/run:rw,size=16m",
+      "-v",
+      "/work/shop:/workspace:ro",
+      "-v",
+      "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration:/workspace/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration",
+      "-v",
+      "cherry-test-polyglot-maven:/root/.m2",
+      "-w",
+      "/workspace/prices",
+      "-e",
+      "HOME=/tmp/home",
+      "-e",
+      "CHERRY_TEST_AUTH_ADMIN_TOKEN",
+      "-e",
+      "CHERRY_TEST_AUTH_USER_TOKEN",
+      "-e",
+      "CHERRY_TEST_ADAPTER_OUTPUT=/workspace/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration",
+      "-e",
+      "CHERRY_TEST_SHOP_API_URL=http://host.docker.internal:49153",
+      "-e",
+      "CHERRY_TEST_SHOP_DB_URL=postgres://host.docker.internal:5432/shop",
+      "-e",
+      "CI",
+      "-e",
+      "GITHUB_SHA",
+      "-e",
+      "LANG=C.UTF-8",
+      "-e",
+      "MAVEN_OPTS=-Xmx1g",
+      "-e",
+      "a_lower=x",
+      "maven:3.9.11-eclipse-temurin-25",
+      "mvn",
+      "-B",
+      "-Dtestit.buildDirectory=/workspace/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration/build",
+      "verify"
+    ],
+    "call": {
+      "args": [
+        "-B",
+        "-Dtestit.buildDirectory=/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration/build",
+        "verify"
+      ],
+      "auth_names": [
+        "CHERRY_TEST_AUTH_ADMIN_TOKEN",
+        "CHERRY_TEST_AUTH_USER_TOKEN"
+      ],
+      "owner_pid": 31337,
+      "program": "mvn",
+      "user": "501:20"
+    },
+    "name": "bridge network, host user, limits and environment",
+    "request": {
+      "args": [],
+      "container": {
+        "caches": [
+          {
+            "target": "/root/.m2",
+            "volume": "cherry-test-polyglot-maven"
+          }
+        ],
+        "cap_drop": [
+          "ALL"
+        ],
+        "cpus": "1.5",
+        "env_pass": [
+          "CI",
+          "GITHUB_SHA"
+        ],
+        "env_set": {
+          "LANG": "C.UTF-8",
+          "MAVEN_OPTS": "-Xmx1g",
+          "a_lower": "x"
+        },
+        "image": "maven:3.9.11-eclipse-temurin-25",
+        "job": "shop/prices/integration",
+        "memory": "2g",
+        "mount_root": "/work/shop",
+        "mounts": [],
+        "name": "ct-20261028-101500-abc123-shop-prices-integration",
+        "network": "bridge",
+        "no_new_privileges": true,
+        "outputs": [
+          "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration"
+        ],
+        "pids": 512,
+        "pull": "missing",
+        "read_only_root": true,
+        "run": "20261028-101500-abc123",
+        "shm_size": "256m",
+        "timeout_secs": 600,
+        "tmpfs": [
+          "/tmp",
+          "/run:rw,size=16m"
+        ],
+        "user": "host",
+        "workspace": "ro",
+        "writable": []
+      },
+      "coverage": true,
+      "cwd": "/work/shop/prices",
+      "env": {
+        "CHERRY_TEST_ADAPTER_OUTPUT": "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration",
+        "CHERRY_TEST_SHOP_API_URL": "http://127.0.0.1:49153",
+        "CHERRY_TEST_SHOP_DB_URL": "postgres://localhost:5432/shop"
+      },
+      "execution": "container",
+      "manifest": "/work/shop/prices/pom.xml",
+      "options": {},
+      "output": "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration",
+      "package": "prices",
+      "phase": "integration",
+      "project": "shop",
+      "protocol": 1,
+      "root": "/work/shop",
+      "strict": false
+    },
+    "request_json": "{\"protocol\":1,\"project\":\"shop\",\"package\":\"prices\",\"phase\":\"integration\",\"root\":\"/work/shop\",\"manifest\":\"/work/shop/prices/pom.xml\",\"cwd\":\"/work/shop/prices\",\"output\":\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration\",\"execution\":\"container\",\"coverage\":true,\"strict\":false,\"args\":[],\"env\":{\"CHERRY_TEST_ADAPTER_OUTPUT\":\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration\",\"CHERRY_TEST_SHOP_API_URL\":\"http://127.0.0.1:49153\",\"CHERRY_TEST_SHOP_DB_URL\":\"postgres://localhost:5432/shop\"},\"options\":{},\"container\":{\"name\":\"ct-20261028-101500-abc123-shop-prices-integration\",\"run\":\"20261028-101500-abc123\",\"job\":\"shop/prices/integration\",\"image\":\"maven:3.9.11-eclipse-temurin-25\",\"pull\":\"missing\",\"network\":\"bridge\",\"user\":\"host\",\"cap_drop\":[\"ALL\"],\"no_new_privileges\":true,\"read_only_root\":true,\"cpus\":\"1.5\",\"memory\":\"2g\",\"pids\":512,\"shm_size\":\"256m\",\"tmpfs\":[\"/tmp\",\"/run:rw,size=16m\"],\"timeout_secs\":600,\"workspace\":\"ro\",\"mount_root\":\"/work/shop\",\"outputs\":[\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices/integration\"],\"writable\":[],\"mounts\":[],\"caches\":[{\"volume\":\"cherry-test-polyglot-maven\",\"target\":\"/root/.m2\"}],\"env_pass\":[\"CI\",\"GITHUB_SHA\"],\"env_set\":{\"LANG\":\"C.UTF-8\",\"MAVEN_OPTS\":\"-Xmx1g\",\"a_lower\":\"x\"}}}"
+  },
+  {
+    "argv": [
+      "run",
+      "--rm",
+      "--init",
+      "--name",
+      "ct-20261028-101500-abc123-shop-prices-rs-unit",
+      "--label",
+      "cherry-test.run=20261028-101500-abc123",
+      "--label",
+      "cherry-test.job=shop/prices-rs/unit",
+      "--label",
+      "cherry-test.pid=7",
+      "--pull",
+      "never",
+      "--network",
+      "none",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "-v",
+      "/work/shop:/workspace:ro",
+      "-v",
+      "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices-rs/unit:/workspace/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices-rs/unit",
+      "-v",
+      "/work/shop/target/cherry-test/cargo/container:/workspace/target/cherry-test/cargo/container",
+      "-v",
+      "/work/shop/target/cherry-test/runs/20261028-101500-abc123/jobs/shop/prices-rs/unit/w/prices-rs/generated:/workspace/prices-rs/generated",
+      "-v",
+      "/work/shop/target/cherry-test/runs/20261028-101500-abc123/jobs/shop/prices-rs/unit/w/.cache:/workspace/.cache",
+      "-v",
+      "/work/sibling:/sibling:ro",
+      "-v",
+      "/data/fixtures:/fixtures",
+      "-v",
+      "cherry-test-polyglot-cargo:/usr/local/cargo/registry",
+      "-v",
+      "shop-git:/usr/local/cargo/git",
+      "-w",
+      "/workspace",
+      "-e",
+      "CARGO_TARGET_DIR=/workspace/target/cherry-test/cargo/container",
+      "cherry-test-rust:1.96.0",
+      "cargo",
+      "test",
+      "--manifest-path",
+      "/workspace/prices-rs/Cargo.toml",
+      "--package",
+      "prices-rs",
+      "--lib"
+    ],
+    "call": {
+      "args": [
+        "test",
+        "--manifest-path",
+        "/work/shop/prices-rs/Cargo.toml",
+        "--package",
+        "prices-rs",
+        "--lib"
+      ],
+      "auth_names": [],
+      "owner_pid": 7,
+      "program": "cargo",
+      "user": null
+    },
+    "name": "writable paths, extra mounts, caches and a shared build directory",
+    "request": {
+      "args": [],
+      "container": {
+        "caches": [
+          {
+            "target": "/usr/local/cargo/registry",
+            "volume": "cherry-test-polyglot-cargo"
+          },
+          {
+            "target": "/usr/local/cargo/git",
+            "volume": "shop-git"
+          }
+        ],
+        "cap_drop": [
+          "ALL"
+        ],
+        "cpus": null,
+        "env_pass": [],
+        "env_set": {},
+        "image": "cherry-test-rust:1.96.0",
+        "job": "shop/prices-rs/unit",
+        "memory": null,
+        "mount_root": "/work/shop",
+        "mounts": [
+          {
+            "read_only": true,
+            "source": "/work/sibling",
+            "target": "/sibling"
+          },
+          {
+            "read_only": false,
+            "source": "/data/fixtures",
+            "target": "/fixtures"
+          }
+        ],
+        "name": "ct-20261028-101500-abc123-shop-prices-rs-unit",
+        "network": "none",
+        "no_new_privileges": true,
+        "outputs": [
+          "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices-rs/unit",
+          "/work/shop/target/cherry-test/cargo/container"
+        ],
+        "pids": null,
+        "pull": "never",
+        "read_only_root": false,
+        "run": "20261028-101500-abc123",
+        "shm_size": null,
+        "timeout_secs": 1800,
+        "tmpfs": [],
+        "user": null,
+        "workspace": "ro",
+        "writable": [
+          {
+            "origin": "/work/shop/prices-rs/generated",
+            "seed": true,
+            "source": "/work/shop/target/cherry-test/runs/20261028-101500-abc123/jobs/shop/prices-rs/unit/w/prices-rs/generated",
+            "target": "/workspace/prices-rs/generated"
+          },
+          {
+            "origin": "/work/shop/.cache",
+            "seed": false,
+            "source": "/work/shop/target/cherry-test/runs/20261028-101500-abc123/jobs/shop/prices-rs/unit/w/.cache",
+            "target": "/workspace/.cache"
+          }
+        ]
+      },
+      "coverage": true,
+      "cwd": "/work/shop",
+      "env": {
+        "CARGO_TARGET_DIR": "/work/shop/target/cherry-test/cargo/container"
+      },
+      "execution": "container",
+      "manifest": "/work/shop/prices-rs/pom.xml",
+      "options": {},
+      "output": "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices-rs/unit",
+      "package": "prices-rs",
+      "phase": "unit",
+      "project": "shop",
+      "protocol": 1,
+      "root": "/work/shop",
+      "strict": false
+    },
+    "request_json": "{\"protocol\":1,\"project\":\"shop\",\"package\":\"prices-rs\",\"phase\":\"unit\",\"root\":\"/work/shop\",\"manifest\":\"/work/shop/prices-rs/pom.xml\",\"cwd\":\"/work/shop\",\"output\":\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices-rs/unit\",\"execution\":\"container\",\"coverage\":true,\"strict\":false,\"args\":[],\"env\":{\"CARGO_TARGET_DIR\":\"/work/shop/target/cherry-test/cargo/container\"},\"options\":{},\"container\":{\"name\":\"ct-20261028-101500-abc123-shop-prices-rs-unit\",\"run\":\"20261028-101500-abc123\",\"job\":\"shop/prices-rs/unit\",\"image\":\"cherry-test-rust:1.96.0\",\"pull\":\"never\",\"network\":\"none\",\"user\":null,\"cap_drop\":[\"ALL\"],\"no_new_privileges\":true,\"read_only_root\":false,\"cpus\":null,\"memory\":null,\"pids\":null,\"shm_size\":null,\"tmpfs\":[],\"timeout_secs\":1800,\"workspace\":\"ro\",\"mount_root\":\"/work/shop\",\"outputs\":[\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/prices-rs/unit\",\"/work/shop/target/cherry-test/cargo/container\"],\"writable\":[{\"origin\":\"/work/shop/prices-rs/generated\",\"source\":\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/jobs/shop/prices-rs/unit/w/prices-rs/generated\",\"target\":\"/workspace/prices-rs/generated\",\"seed\":true},{\"origin\":\"/work/shop/.cache\",\"source\":\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/jobs/shop/prices-rs/unit/w/.cache\",\"target\":\"/workspace/.cache\",\"seed\":false}],\"mounts\":[{\"source\":\"/work/sibling\",\"target\":\"/sibling\",\"read_only\":true},{\"source\":\"/data/fixtures\",\"target\":\"/fixtures\",\"read_only\":false}],\"caches\":[{\"volume\":\"cherry-test-polyglot-cargo\",\"target\":\"/usr/local/cargo/registry\"},{\"volume\":\"shop-git\",\"target\":\"/usr/local/cargo/git\"}],\"env_pass\":[],\"env_set\":{}}}"
+  },
+  {
+    "argv": [
+      "run",
+      "--rm",
+      "--init",
+      "--name",
+      "ct-20261028-101500-abc123-shop-web-visual",
+      "--label",
+      "cherry-test.run=20261028-101500-abc123",
+      "--label",
+      "cherry-test.job=shop/web/visual",
+      "--label",
+      "cherry-test.pid=99",
+      "--pull",
+      "always",
+      "--network",
+      "bridge",
+      "--add-host",
+      "host.docker.internal:host-gateway",
+      "--user",
+      "1000:1000",
+      "-v",
+      "/work/shop:/workspace",
+      "-v",
+      "/runs/20261028-101500-abc123/reports/adapters/shop/web/visual:/runs/20261028-101500-abc123/reports/adapters/shop/web/visual",
+      "-w",
+      "/workspace/web",
+      "node:22-bookworm",
+      "/workspace/web/node_modules/.bin/playwright",
+      "test",
+      "--output",
+      "/runs/20261028-101500-abc123/reports/adapters/shop/web/visual/out"
+    ],
+    "call": {
+      "args": [
+        "test",
+        "--output",
+        "/runs/20261028-101500-abc123/reports/adapters/shop/web/visual/out"
+      ],
+      "auth_names": [],
+      "owner_pid": 99,
+      "program": "/work/shop/web/node_modules/.bin/playwright",
+      "user": "1000:1000"
+    },
+    "name": "explicit user, writable workspace, privileges kept, output outside the workspace",
+    "request": {
+      "args": [],
+      "container": {
+        "caches": [],
+        "cap_drop": [],
+        "cpus": null,
+        "env_pass": [],
+        "env_set": {},
+        "image": "node:22-bookworm",
+        "job": "shop/web/visual",
+        "memory": null,
+        "mount_root": "/work/shop",
+        "mounts": [],
+        "name": "ct-20261028-101500-abc123-shop-web-visual",
+        "network": "bridge",
+        "no_new_privileges": false,
+        "outputs": [
+          "/runs/20261028-101500-abc123/reports/adapters/shop/web/visual"
+        ],
+        "pids": null,
+        "pull": "always",
+        "read_only_root": false,
+        "run": "20261028-101500-abc123",
+        "shm_size": null,
+        "timeout_secs": 1800,
+        "tmpfs": [],
+        "user": "1000:1000",
+        "workspace": "rw",
+        "writable": []
+      },
+      "coverage": true,
+      "cwd": "/work/shop/web",
+      "env": {},
+      "execution": "container",
+      "manifest": "/work/shop/web/pom.xml",
+      "options": {},
+      "output": "/runs/20261028-101500-abc123/reports/adapters/shop/web/visual",
+      "package": "web",
+      "phase": "visual",
+      "project": "shop",
+      "protocol": 1,
+      "root": "/work/shop",
+      "strict": false
+    },
+    "request_json": "{\"protocol\":1,\"project\":\"shop\",\"package\":\"web\",\"phase\":\"visual\",\"root\":\"/work/shop\",\"manifest\":\"/work/shop/web/pom.xml\",\"cwd\":\"/work/shop/web\",\"output\":\"/runs/20261028-101500-abc123/reports/adapters/shop/web/visual\",\"execution\":\"container\",\"coverage\":true,\"strict\":false,\"args\":[],\"env\":{},\"options\":{},\"container\":{\"name\":\"ct-20261028-101500-abc123-shop-web-visual\",\"run\":\"20261028-101500-abc123\",\"job\":\"shop/web/visual\",\"image\":\"node:22-bookworm\",\"pull\":\"always\",\"network\":\"bridge\",\"user\":\"1000:1000\",\"cap_drop\":[],\"no_new_privileges\":false,\"read_only_root\":false,\"cpus\":null,\"memory\":null,\"pids\":null,\"shm_size\":null,\"tmpfs\":[],\"timeout_secs\":1800,\"workspace\":\"rw\",\"mount_root\":\"/work/shop\",\"outputs\":[\"/runs/20261028-101500-abc123/reports/adapters/shop/web/visual\"],\"writable\":[],\"mounts\":[],\"caches\":[],\"env_pass\":[],\"env_set\":{}}}"
+  },
+  {
+    "argv": [
+      "run",
+      "--rm",
+      "--init",
+      "--name",
+      "ct-20261028-101500-abc123-shop--scope-ui-kit-unit",
+      "--label",
+      "cherry-test.run=20261028-101500-abc123",
+      "--label",
+      "cherry-test.job=shop/@scope/ui kit/unit",
+      "--label",
+      "cherry-test.pid=1",
+      "--pull",
+      "never",
+      "--network",
+      "none",
+      "--cap-drop",
+      "NET_RAW",
+      "--cap-drop",
+      "MKNOD",
+      "--security-opt",
+      "no-new-privileges",
+      "-v",
+      "/work/shop:/workspace:ro",
+      "-v",
+      "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/@scope/ui kit/unit:/workspace/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/@scope/ui kit/unit",
+      "-w",
+      "/workspace/@scope/ui kit",
+      "node:20-bookworm-slim",
+      "node",
+      "/workspace/@scope/ui kit/node_modules/vitest/vitest.mjs",
+      "run"
+    ],
+    "call": {
+      "args": [
+        "/work/shop/@scope/ui kit/node_modules/vitest/vitest.mjs",
+        "run"
+      ],
+      "auth_names": [],
+      "owner_pid": 1,
+      "program": "node",
+      "user": null
+    },
+    "name": "package with a sanitized name and capability list",
+    "request": {
+      "args": [],
+      "container": {
+        "caches": [],
+        "cap_drop": [
+          "NET_RAW",
+          "MKNOD"
+        ],
+        "cpus": null,
+        "env_pass": [],
+        "env_set": {},
+        "image": "node:20-bookworm-slim",
+        "job": "shop/@scope/ui kit/unit",
+        "memory": null,
+        "mount_root": "/work/shop",
+        "mounts": [],
+        "name": "ct-20261028-101500-abc123-shop--scope-ui-kit-unit",
+        "network": "none",
+        "no_new_privileges": true,
+        "outputs": [
+          "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/@scope/ui kit/unit"
+        ],
+        "pids": null,
+        "pull": "never",
+        "read_only_root": false,
+        "run": "20261028-101500-abc123",
+        "shm_size": null,
+        "timeout_secs": 90,
+        "tmpfs": [],
+        "user": null,
+        "workspace": "ro",
+        "writable": []
+      },
+      "coverage": true,
+      "cwd": "/work/shop/@scope/ui kit",
+      "env": {},
+      "execution": "container",
+      "manifest": "/work/shop/@scope/ui kit/pom.xml",
+      "options": {},
+      "output": "/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/@scope/ui kit/unit",
+      "package": "@scope/ui kit",
+      "phase": "unit",
+      "project": "shop",
+      "protocol": 1,
+      "root": "/work/shop",
+      "strict": false
+    },
+    "request_json": "{\"protocol\":1,\"project\":\"shop\",\"package\":\"@scope/ui kit\",\"phase\":\"unit\",\"root\":\"/work/shop\",\"manifest\":\"/work/shop/@scope/ui kit/pom.xml\",\"cwd\":\"/work/shop/@scope/ui kit\",\"output\":\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/@scope/ui kit/unit\",\"execution\":\"container\",\"coverage\":true,\"strict\":false,\"args\":[],\"env\":{},\"options\":{},\"container\":{\"name\":\"ct-20261028-101500-abc123-shop--scope-ui-kit-unit\",\"run\":\"20261028-101500-abc123\",\"job\":\"shop/@scope/ui kit/unit\",\"image\":\"node:20-bookworm-slim\",\"pull\":\"never\",\"network\":\"none\",\"user\":null,\"cap_drop\":[\"NET_RAW\",\"MKNOD\"],\"no_new_privileges\":true,\"read_only_root\":false,\"cpus\":null,\"memory\":null,\"pids\":null,\"shm_size\":null,\"tmpfs\":[],\"timeout_secs\":90,\"workspace\":\"ro\",\"mount_root\":\"/work/shop\",\"outputs\":[\"/work/shop/target/cherry-test/runs/20261028-101500-abc123/reports/adapters/shop/@scope/ui kit/unit\"],\"writable\":[],\"mounts\":[],\"caches\":[],\"env_pass\":[],\"env_set\":{}}}"
+  }
+]

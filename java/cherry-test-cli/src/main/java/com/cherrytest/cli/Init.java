@@ -29,16 +29,32 @@ import tools.jackson.databind.JsonNode;
 public final class Init {
     private Init() {}
 
+    /** The error message of a shard that has no package to run. */
+    public static final String EMPTY_SHARD = "selects no packages";
+
     public static TestPlan initializeWithConfig(
             Path workspaceRoot, TestItConfig config, @Nullable String filter, boolean quiet) {
+        return initializeWithConfig(workspaceRoot, config, filter, null, quiet);
+    }
+
+    public static TestPlan initializeWithConfig(
+            Path workspaceRoot, TestItConfig config, @Nullable String filter, @Nullable Shard shard, boolean quiet) {
         if (config.projects().isEmpty()) {
             throw new AnyhowError("no projects configured; add projects to " + config.configPath());
         }
         SortedSet<String> workspacePackages = loadWorkspacePackageNames(workspaceRoot);
-        List<ProjectGroup> projects =
-                Filter.applyFilter(resolveProjectsFromConfig(workspaceRoot, config, workspacePackages), filter);
+        List<ProjectGroup> projects = Filter.applyFilter(
+                resolveProjectsFromConfig(workspaceRoot, config, workspacePackages), filter, config.groups());
         if (projects.isEmpty()) {
             throw new AnyhowError("no testable workspace members found");
+        }
+        if (shard != null) {
+            Durations durations = Durations.load(
+                    Durations.path(workspaceRoot, config.defaults().runsBase()));
+            projects = Shard.select(projects, shard, durations);
+            if (projects.isEmpty()) {
+                throw new AnyhowError("shard " + shard + " " + EMPTY_SHARD);
+            }
         }
         PreflightPlan preflight = Preflight.buildPreflightPlan(workspaceRoot, projects, config, quiet);
         warnNodePrerequisites(projects, config, quiet);

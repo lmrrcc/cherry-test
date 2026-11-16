@@ -14,6 +14,7 @@ import com.cherrytest.core.PackageRuntime;
 import com.cherrytest.core.ProjectConfig;
 import com.cherrytest.core.ScopeConfig;
 import com.cherrytest.core.ServiceConfig;
+import com.cherrytest.core.ServiceHealth;
 import com.cherrytest.core.TestItConfig;
 import java.io.IOException;
 import java.io.StringReader;
@@ -496,14 +497,20 @@ public final class Scaffold {
             }
             String image = service.get("image") instanceof String text ? text : "";
             if (RustText.toAsciiLowercase(image).contains("postgres")) {
-                out.put("db", new ServiceConfig(serviceName, 5432, null, "postgres"));
+                out.put("db", ServiceConfig.compose(serviceName, 5432, null, "postgres"));
                 continue;
             }
             if (service.containsKey("build")) {
                 Integer port = extractComposePort(service);
                 if (port != null) {
                     String health = extractHealthPath(service);
-                    out.put("api", new ServiceConfig(serviceName, port, health == null ? "/health" : health, null));
+                    out.put(
+                            "api",
+                            ServiceConfig.compose(
+                                    serviceName,
+                                    port,
+                                    new ServiceHealth.HttpPath(health == null ? "/health" : health),
+                                    null));
                 }
             }
         }

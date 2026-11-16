@@ -89,6 +89,24 @@ class RunnerTest {
                 List.of());
         Runner.recordSkips(response, preflight, "api", true);
         assertThat(response.success()).isFalse();
+        assertThat(Runner.discoversScopes("maven")).isTrue();
+        assertThat(Runner.discoversScopes("vitest")).isFalse();
+        assertThat(Runner.mavenSkipExcludes(preflight, "api")).isNull();
+        PreflightPlan javaPreflight = new PreflightPlan(
+                false,
+                List.of(),
+                List.of(new SkippedTest(
+                        "api",
+                        "com.example.WalletIT::demo_project_wallet_suite_balance_test",
+                        "demo",
+                        "demo",
+                        "wallet",
+                        "balance",
+                        "no docker")),
+                List.of(),
+                List.of());
+        assertThat(Runner.mavenSkipExcludes(javaPreflight, "api"))
+                .isEqualTo("com/example/WalletIT#demo_project_wallet_suite_balance_test\n");
         assertThat(response.tests()).hasSize(2);
         assertThat(response.tests().get(1).status()).isEqualTo(TestStatus.SKIPPED);
         assertThat(response.diagnostics().getFirst()).contains("no docker");

@@ -47,6 +47,8 @@ The GitHub repository is [`lmrrcc/cherry-test`](https://github.com/lmrrcc/cherry
 - [Review AI-written code in CI/CD](#review-ai-written-code-in-cicd)
 - [Mutation testing](#mutation-testing)
 - [CRAP score](#crap-score)
+- [Parallel runs, groups, and shards](#parallel-runs-groups-and-shards)
+- [Isolate failures](#isolate-failures)
 - [Command reference](#command-reference)
 - [Run files and environment variables](#run-files-and-environment-variables)
 - [Current limits](#current-limits)
@@ -275,9 +277,14 @@ The package names must match their Cargo or npm manifests. The Compose service n
 | `defaults.diff_base` | Git reference to compare against; default is `main` |
 | `defaults.scope` | Default integration scope: `global`, `none`, a project ID, or a named scope |
 | `defaults.coverage_ignore` | Coverage exclusion file; default is `.coverageignore` |
+| `defaults.parallel` | Jobs at once and the CPU and memory they share; see [parallel runs](#parallel-runs-groups-and-shards) |
+| `defaults.isolate` | Rerun failed tests alone after the run; see [isolate failures](#isolate-failures) |
 | `projects.<id>.diff_base` | Override the Git base for one project |
 | `projects.<id>.packages.<name>.kinds` | Test kinds: `unit`, `integration`, `functional`, `visual`, `ui`, or `mutation` |
+| `projects.<id>.packages.<name>.resources` | CPU and memory one job of the package reserves; default is the `container:` `cpus`/`memory` limits, else `{cpus: 1, memory: 1g}` |
+| `projects.<id>.packages.<name>.exclusive` | Run the package's jobs alone; default is `false` |
 | `scopes.<name>.projects` | Projects whose Compose stacks a scope needs |
+| `groups.<name>` | Package names or `*`/`?` globs that the filter `@name` selects |
 
 `cherry-test.yml` and `cherry-test.toml` are also accepted.
 
@@ -312,6 +319,55 @@ Merge these settings into your existing configuration. Keep any environment, plu
 Add a `functional` or `ui` block to a package, and include that kind in its `kinds` list. These blocks use `command`, `args`, and `cwd`, like the `unit` block above.
 
 Choose an adapter on each phase, such as `adapter: playwright` for browser tests. Results and screenshot attachments are imported into the browser report. The command adapter supports legacy exit-status checks in non-strict runs; strict runs require individual test results. See the [adapter guide](docs/adapters.md) for configuration and the executable protocol.
+
+### Container execution
+
+`--execution container`, or `execution: container` on a package, runs the built-in adapters' tools with `docker run` in `options.image`. Add a `container:` block to run them with restrictions: no network, a read-only checkout, all Linux capabilities dropped, and `no-new-privileges`. Directories that a job needs to write get a fresh directory for each package phase, so phases cannot see each other's files. The block can be set under `defaults` and overridden per package, field by field:
+
+```yaml
+defaults:
+  execution: container
+  container:
+    image: maven:3.9.11-eclipse-temurin-25
+    pull: never              # never | missing | always
+    network: none            # none | bridge
+    user: host               # your uid:gid with HOME=/tmp/home, or a value such as "1000:1000"
+    cap_drop: [ALL]
+    no_new_privileges: true
+    read_only_root: true
+    tmpfs: [/tmp]
+    cpus: 2
+    memory: 4g
+    pids: 1024
+    shm_size: 256m
+    timeout: 30m             # per package phase; default 1800s
+    workspace: ro            # ro | rw
+    writable:
+      - prices/generated
+      - {path: prices/.cache, seed: copy}
+    mounts:
+      - {source: ../shared-fixtures}                    # mounted at /shared-fixtures
+      - {source: ../datasets, target: /data, read_only: true}
+    caches:
+      - {volume: cherry-test-m2, target: /tmp/home/.m2}
+    env:
+      pass: [CI]
+      set: {TZ: UTC}
+
+projects:
+  shop:
+    path: .
+    packages:
+      prices:
+        adapter: maven
+        manifest: prices/pom.xml
+        kinds: [unit, integration]
+        container:
+          network: bridge    # integration tests call Compose services
+          timeout: 45m
+```
+
+Without the block, container execution behaves as before. Each container gets a name and labels for its run, job, and owning process. Cherry Test kills a container that exceeds its timeout or belongs to a cancelled run, removes the run's containers when the run ends, and removes containers left by runs that died. Jobs whose scopes use [services from images](#services-from-images) get a private network with their own copy of each service. See [Container settings](docs/adapters.md#container-settings) for every field, its default, and how the paths are mounted.
 
 ### Discovery
 
@@ -373,6 +429,47 @@ The macro requires an async function with one `env: TestEnv` argument and no dec
 ```
 
 The project segment must identify a configured project. These tests are marked ignored for ordinary Cargo runs; Cherry Test selects them during its integration phase.
+
+Java tests declare their scope the same way with `@CherryTest(scope = "...")` from `cherry-test-junit`, on a method named by the same contract and taking a `TestEnv`. For a Maven package, Cherry Test reads `src/test/java` of its module, keeps the classes and methods its integration phase selects (`-Dit.test`, otherwise the Failsafe default includes), and boots their scopes before the phase, as it does for `#[cherry_test]`. Without Docker, the scoped Java tests are excluded from Failsafe and recorded as skipped. A scope set on the phase in `cherry-test.yaml` still applies to any adapter.
+
+### Services from images
+
+A service can also come from an image instead of a Compose file. Give it `image` in place of `service`; a scope selects it like any other service of its projects:
+
+```yaml
+projects:
+  shop:
+    path: .
+    services:
+      db:
+        image: postgres:16-alpine
+        port: 5432
+        kind: postgres
+        pull: never                       # never (default) | missing | always
+        env: {POSTGRES_PASSWORD: test}
+        tmpfs: [/var/lib/postgresql/data]
+        mounts:
+          - {source: fixtures/sql, target: /docker-entrypoint-initdb.d}   # read-only
+        health:
+          exec: [pg_isready, -h, 127.0.0.1, -p, "5432"]                  # or tcp: true
+          timeout: 60s
+    packages:
+      orders-api:
+        kinds: [unit, integration]
+
+scopes:
+  checkout:
+    projects: [shop]
+```
+
+Tests never start containers. `#[cherry_test(scope = "checkout")]`, `@CherryTest(scope = "checkout")` or `scope: checkout` on a phase declares the need, and Cherry Test prepares the services before the job starts:
+
+- **Hardened container jobs** (a `container:` block) get their own copy of every image service. Cherry Test starts a holder container from the job image with no network of its own (`network: bridge` gives it the bridge), starts each service in the holder's network namespace, waits until each is healthy, and runs the job in the same namespace. The test reaches the service at `127.0.0.1:<port>`, so parallel jobs can all use port 5432 without seeing each other. The holder and the services are removed with their anonymous volumes when the job ends, also on timeout or cancellation.
+- **Local execution** starts the scope's image services once per phase with the port published on a random `127.0.0.1` port, next to the scope's Compose services, and removes them when the phase ends.
+
+Both export the usual `CHERRY_TEST_{PROJECT}_{SERVICE}_HOST`, `_PORT` and `_URL` (`_URL` only for `kind: http`, the default) and list the scopes in `CHERRY_TEST_SCOPE_PROVISIONED`; `TestEnv` and `env.project(...).db(...)` read them, and the test process starts nothing for those scopes. A test run outside Cherry Test starts the image services itself, with published ports, as it starts Compose stacks.
+
+`health.exec` runs in the service container until it exits with status 0; `tcp: true`, the default, waits for a socket listening on the port. A service that does not start, stops, or is not healthy within `timeout` (default 60s) fails the job before its tests run, with the reason in the job's diagnostics and the service's output in `sidecar-<project>-<service>.log` beside the job's logs. Unknown keys are rejected; `env`, `tmpfs`, `mounts`, `pull` and a health probe apply only to services with `image`.
 
 ### Mocks and real dependencies
 
@@ -508,6 +605,97 @@ cherry-test --root app/mini --no-open
 cherry-test --root app/mini --no-crap --no-open
 ```
 
+## Parallel runs, groups, and shards
+
+A run executes one job per package and phase. By default jobs run one at a time, in configuration order, exactly as before. `--jobs` runs several at once:
+
+```bash
+cherry-test --jobs 4 --no-open
+cherry-test --jobs auto --no-open
+```
+
+`auto` starts one job per CPU in the budget. The same settings can live in the configuration; the command line wins:
+
+```yaml
+defaults:
+  parallel:
+    jobs: auto          # or a number; default 1
+    cpus: 8             # budget; default: docker info with container execution, else the host's CPUs
+    memory: 16g         # budget; default: docker info with container execution, else no limit
+    phase_barrier: true # default; unit jobs finish before integration jobs start
+projects:
+  shop:
+    packages:
+      orders-api:
+        resources: {cpus: 2, memory: 4g}   # default: the container's cpus/memory limits, else 1 CPU and 1g
+      storefront:
+        exclusive: true                    # runs with nothing else
+```
+
+Jobs start longest first, using the moving averages Cherry Test writes to `durations.json` beside the runs directory (`target/cherry-test/durations.json` by default) after every run. Jobs without a record count as the 75th percentile of recorded ones. When the next job does not fit in the remaining CPU and memory, a smaller one starts in its place; after three such skips the waiting job reserves the next free capacity. A job larger than the whole budget runs alone.
+
+Scopes still boot once per phase, one after another. With one job at a time they boot right before the first job that needs them, as before; with more, every scope the phase needs boots before its jobs start. Scopes stop at the end of the phase. With `phase_barrier: false` all phases form one pool that shares one boot and teardown. Each job's adapter receives its own environment: the variables Cherry Test started with, plus the run, phase, `.env.test`, service and auth variables. The run never changes its own environment.
+
+Every job writes its test evidence (HTTP records, screenshots) to its own `CHERRY_TEST_REPORT_DIR`, so jobs never append to the same file; after each job the directory is merged into the run's `reports/` in configuration order. Terminal lines of different jobs can interleave. Reports cannot: results, coverage and HTML are assembled in configuration order, so a run with `--jobs 4` writes the same report files as one with `--jobs 1`.
+
+**Groups** name sets of packages. The filter `@name` selects them:
+
+```yaml
+groups:
+  backend: [orders-api, "payments-*"]
+```
+
+```bash
+cherry-test @backend --jobs auto --no-open
+```
+
+An unknown group, a name that matches no configured package, or a group that selects nothing stops the run with an error.
+
+**Shards** split the selected packages across CI machines. `--shard 2/4` runs the second of four shards:
+
+```bash
+cherry-test --shard 2/4 --strict --no-open
+```
+
+Packages, with all their phases, are assigned by longest-processing-time packing on the totals in `durations.json`; without any record they are dealt round-robin in configuration order. The assignment is deterministic, so every shard must read the same `durations.json`, for example a cached copy from the main branch. A shard without packages exits successfully.
+
+## Isolate failures
+
+A test that fails next to other tests may be broken, may depend on what ran before it, or may fail at random. Cherry Test can tell these apart by rerunning each failed test alone after the run:
+
+```bash
+cherry-test --isolate --no-open
+```
+
+```yaml
+defaults:
+  isolate:
+    on_failure: true   # default false; --isolate and --no-isolate override it
+    runs: 3            # reruns per failed test; default 3
+    max_tests: 10      # failed tests to rerun, in configuration order; default 10
+```
+
+Each rerun is a fresh job of the same package phase that selects only that test: a new process, and with container execution a new container and new [image services](#services-from-images). Its scopes boot for the rerun and stop after it. Every failed test gets one class:
+
+| Class | Meaning |
+| --- | --- |
+| `REAL` | Failed in every rerun alone |
+| `INTERFERENCE` | Passed in every rerun alone: it fails only together with the rest of its package |
+| `FLAKY` | Passed in some reruns and failed in others |
+| `INCONCLUSIVE` | A rerun hit an infrastructure error, or the adapter cannot run one test |
+
+The built-in adapters select one test like this:
+
+| Adapter | Selection |
+| --- | --- |
+| `cargo` | `<test name> --exact` after the phase's arguments |
+| `maven` | `-Dtest=Class#method` (unit) or `-Dit.test=Class#method` (integration) replacing the configured one, with `-Dsurefire.failIfNoSpecifiedTests=false`; a class annotated with `@TestMethodOrder` or `@TestInstance(PER_CLASS)` reruns whole, since its methods may depend on each other |
+| `vitest` | The test file and `-t ^<full name>$` |
+
+Failed tests of Gradle, CMake, Playwright and command phases, and Maven results that do not name a `Class::method`, are classified `INCONCLUSIVE` without reruns. An adapter registered under `adapters:` opts in with `isolate: true`; its rerun requests then carry `select`, the names of the tests to run (see the [adapter guide](docs/adapters.md#executable-protocol-version-1)).
+
+Reruns never change a test's status or the exit code: the run passes or fails exactly as without them. After the main schedule the terminal prints one line per rerun test with its class, the HTML report links to the classes on the phases page, each test's entry in `result.json` gains `isolation: {class, runs, passed, logs, reason}`, and `reports/isolation.json` lists them all. Each rerun keeps its request, logs and result in `reports/isolation/<project>/<package>/<phase>/<n>/<run>/`; reruns add no coverage and no integration records.
+
 ## Command reference
 
 ```bash
@@ -521,12 +709,15 @@ cherry-test -- --nocapture
 
 | Option | Purpose |
 | --- | --- |
-| `<filter>` | Select a project ID or package name |
+| `<filter>` | Select a project ID, a package name, or `@group` |
 | `--root <path>` | Select a configuration root explicitly |
 | `--init-only` | Create or load the configuration, then exit without running tests |
 | `--force-init` | Regenerate `cherry-test.yaml` from discovery |
 | `--no-coverage` | Run without collecting coverage |
 | `--kinds <list>` | Run only these phases. `mutation` runs only when it is named |
+| `--jobs <N\|auto>` | Run up to N jobs at once; `auto` uses one per budgeted CPU; default `defaults.parallel.jobs` or 1 |
+| `--shard <I/N>` | Run only the packages of shard I of N |
+| `--isolate`, `--no-isolate` | Rerun failed tests alone to classify them, or do not; default `defaults.isolate.on_failure` |
 | `--no-crap` | Skip cyclomatic complexity and the CRAP report |
 | `--no-html` | Skip HTML generation |
 | `--no-open` | Write the report without opening a browser |
@@ -552,12 +743,14 @@ target/cherry-test/
     reports/
       index.html
       phases.html
+      isolation.json
       integration/*.jsonl
       adapters/<project>/<package>/<phase>/
         request.json
         result.json
         coverage.lcov
         ...logs, screenshots, and build output
+      isolation/<project>/<package>/<phase>/<n>/<run>/
     env.json
 ```
 
@@ -577,7 +770,8 @@ The `latest` symlink is available on Unix. On other systems, use the run path pr
 | `CHERRY_TEST_{PROJECT}_{SERVICE}_PORT` | Mapped service port exported after startup |
 | `CHERRY_TEST_{PROJECT}_{SERVICE}_URL` | HTTP service URL exported after startup |
 | `CHERRY_TEST_RUN_DIR` | Current run directory, set by Cherry Test |
-| `CHERRY_TEST_REPORT_DIR` | Current report directory, set by Cherry Test |
+| `CHERRY_TEST_REPORT_DIR` | The job's own report directory, `report/` in its adapter output; after the job Cherry Test merges it into the run's `reports/` in configuration order, appending `*.jsonl` files and copying the others |
+| `CHERRY_TEST_SCOPE_PROVISIONED` | Comma-separated scopes Cherry Test prepared for the job because they use [services from images](#services-from-images); the test process reads their endpoints instead of starting them |
 | `VITEST_JSON_REPORT` | JSON output path passed to Vitest |
 | `VITEST_COVERAGE_DIR` | Coverage output directory passed to Vitest |
 | `RUST_LOG` | Tracing filter, such as `cherry_test=info` |

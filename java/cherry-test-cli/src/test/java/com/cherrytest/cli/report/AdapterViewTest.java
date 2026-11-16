@@ -3,6 +3,8 @@ package com.cherrytest.cli.report;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.cherrytest.cli.Isolation;
+import com.cherrytest.common.adapter.IsolationClass;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -35,6 +37,40 @@ class AdapterViewTest {
         Path inside = reports.resolve("actual image.png");
         Files.writeString(inside, "image", StandardCharsets.UTF_8);
         assertThat(AdapterView.relativeLink(reports, inside)).isEqualTo("actual%20image.png");
+    }
+
+    @Test
+    void phases_page_marks_isolated_tests_and_lists_them() {
+        Isolation.Report report = new Isolation.Report(
+                3,
+                1,
+                2,
+                List.of(new Isolation.IsolatedTest(
+                        "shop",
+                        "prices",
+                        "unit",
+                        "rounds <half>",
+                        IsolationClass.FLAKY,
+                        3,
+                        2,
+                        List.of(
+                                "isolation/shop/prices/unit/1/1",
+                                "isolation/shop/prices/unit/1/2",
+                                "isolation/shop/prices/unit/1/3"),
+                        null)));
+        assertThat(AdapterView.renderIsolationSection(report))
+                .isEqualTo("<section id=\"isolation\"><h2>Failed tests rerun alone</h2><p>Each failed test ran alone up"
+                        + " to 3 times, each time as a fresh job. Statuses below are those of the main run; the class"
+                        + " explains the failure.</p><ul><li><strong class=\"isolation skip\">FLAKY</strong> shop /"
+                        + " prices / unit: rounds &lt;half&gt;, 2/3 passed alone (<a"
+                        + " href=\"isolation/shop/prices/unit/1/1/result.json\">run 1</a>, <a"
+                        + " href=\"isolation/shop/prices/unit/1/2/result.json\">run 2</a>, <a"
+                        + " href=\"isolation/shop/prices/unit/1/3/result.json\">run 3</a>)</li><li>1 more failed test"
+                        + " not rerun (max_tests 1)</li></ul></section>");
+        assertThat(AdapterView.isolationDetail(0, 0, List.of(), "adapter `gradle` cannot run a single test"))
+                .isEqualTo(" <span class=\"muted\">adapter `gradle` cannot run a single test</span>");
+        assertThat(AdapterView.isolationBadge(IsolationClass.REAL))
+                .isEqualTo("<strong class=\"isolation fail\">REAL</strong>");
     }
 
     @Test

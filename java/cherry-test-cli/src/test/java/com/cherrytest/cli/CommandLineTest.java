@@ -3,6 +3,7 @@ package com.cherrytest.cli;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.cherrytest.core.Jobs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -73,6 +74,34 @@ class CommandLineTest {
                 .isInstanceOf(CommandLine.UsageError.class);
         assertThat(run().noCrap()).isFalse();
         assertThat(run("--no-crap").noCrap()).isTrue();
+    }
+
+    @Test
+    void cli_parses_isolate_flags() {
+        RunCli isolate = run("--isolate");
+        assertThat(isolate.isolate() && !isolate.noIsolate()).isTrue();
+        RunCli last = run("--isolate", "--no-isolate");
+        assertThat(!last.isolate() && last.noIsolate()).isTrue();
+        RunCli first = run("--no-isolate", "--isolate");
+        assertThat(first.isolate() && !first.noIsolate()).isTrue();
+        RunCli neither = run();
+        assertThat(!neither.isolate() && !neither.noIsolate()).isTrue();
+    }
+
+    @Test
+    void cli_parses_jobs_and_shard() {
+        RunCli cli = run("--jobs", "auto", "--shard", "2/3", "@backend");
+        assertThat(cli.jobs()).isEqualTo(Jobs.AUTO);
+        assertThat(cli.shard()).isEqualTo(new Shard(2, 3));
+        assertThat(cli.filter()).isEqualTo("@backend");
+        assertThat(run("--jobs", "4").jobs()).isEqualTo(Jobs.count(4));
+        assertThatThrownBy(() -> CommandLine.parse(List.of("--jobs", "0")))
+                .isInstanceOf(CommandLine.UsageError.class)
+                .hasMessage("invalid value '0' for '--jobs <N|auto>': expected a positive number or `auto`");
+        assertThatThrownBy(() -> CommandLine.parse(List.of("--shard", "3/2")))
+                .isInstanceOf(CommandLine.UsageError.class)
+                .hasMessage("invalid value '3/2' for '--shard <I/N>': expected I/N with 1 <= I <= N, such as 1/4");
+        assertThat(run().jobs()).isNull();
     }
 
     @Test

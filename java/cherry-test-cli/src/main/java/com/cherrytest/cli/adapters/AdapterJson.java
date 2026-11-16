@@ -4,8 +4,20 @@ import com.cherrytest.common.adapter.AdapterRequest;
 import com.cherrytest.common.adapter.AdapterResponse;
 import com.cherrytest.common.adapter.Attachment;
 import com.cherrytest.common.adapter.ExecutionMode;
+import com.cherrytest.common.adapter.Isolation;
+import com.cherrytest.common.adapter.IsolationClass;
 import com.cherrytest.common.adapter.TestResult;
 import com.cherrytest.common.adapter.TestStatus;
+import com.cherrytest.common.container.BindMount;
+import com.cherrytest.common.container.CacheVolume;
+import com.cherrytest.common.container.ContainerSpec;
+import com.cherrytest.common.container.HealthCheck;
+import com.cherrytest.common.container.NetworkMode;
+import com.cherrytest.common.container.PullPolicy;
+import com.cherrytest.common.container.SidecarService;
+import com.cherrytest.common.container.SidecarSpec;
+import com.cherrytest.common.container.WorkspaceAccess;
+import com.cherrytest.common.container.WritableMount;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustOrdering;
 import com.cherrytest.common.rustcompat.SerdeJsonWriter;
@@ -45,7 +57,238 @@ public final class AdapterJson {
         request.env().forEach(env::put);
         ObjectNode options = node.putObject("options");
         request.options().forEach((key, value) -> options.set(key, SerdeJsonWriter.withSortedKeys(value)));
+        ContainerSpec container = request.container();
+        if (container != null) {
+            node.set("container", containerValue(container));
+        }
+        List<String> select = request.select();
+        if (select != null) {
+            ArrayNode names = node.putArray("select");
+            select.forEach(names::add);
+        }
         return SerdeJsonWriter.compact(node);
+    }
+
+    /** The resolved container settings in the field order of the Rust struct. */
+    public static ObjectNode containerValue(ContainerSpec spec) {
+        ObjectNode node = NODES.objectNode();
+        node.put("name", spec.name());
+        node.put("run", spec.run());
+        node.put("job", spec.job());
+        node.put("image", spec.image());
+        node.put("pull", spec.pull().wireName());
+        node.put("network", spec.network().wireName());
+        putNullable(node, "user", spec.user());
+        ArrayNode capDrop = node.putArray("cap_drop");
+        spec.capDrop().forEach(capDrop::add);
+        node.put("no_new_privileges", spec.noNewPrivileges());
+        node.put("read_only_root", spec.readOnlyRoot());
+        putNullable(node, "cpus", spec.cpus());
+        putNullable(node, "memory", spec.memory());
+        Long pids = spec.pids();
+        if (pids == null) {
+            node.putNull("pids");
+        } else {
+            node.put("pids", pids);
+        }
+        putNullable(node, "shm_size", spec.shmSize());
+        ArrayNode tmpfs = node.putArray("tmpfs");
+        spec.tmpfs().forEach(tmpfs::add);
+        node.put("timeout_secs", spec.timeoutSecs());
+        node.put("workspace", spec.workspace().wireName());
+        node.put("mount_root", spec.mountRoot().toString());
+        ArrayNode outputs = node.putArray("outputs");
+        spec.outputs().forEach(path -> outputs.add(path.toString()));
+        ArrayNode writable = node.putArray("writable");
+        for (WritableMount mount : spec.writable()) {
+            ObjectNode entry = writable.addObject();
+            entry.put("origin", mount.origin().toString());
+            entry.put("source", mount.source().toString());
+            entry.put("target", mount.target());
+            entry.put("seed", mount.seed());
+        }
+        ArrayNode mounts = node.putArray("mounts");
+        for (BindMount mount : spec.mounts()) {
+            ObjectNode entry = mounts.addObject();
+            entry.put("source", mount.source().toString());
+            entry.put("target", mount.target());
+            entry.put("read_only", mount.readOnly());
+        }
+        ArrayNode caches = node.putArray("caches");
+        for (CacheVolume cache : spec.caches()) {
+            ObjectNode entry = caches.addObject();
+            entry.put("volume", cache.volume());
+            entry.put("target", cache.target());
+        }
+        ArrayNode envPass = node.putArray("env_pass");
+        spec.envPass().forEach(envPass::add);
+        ObjectNode envSet = node.putObject("env_set");
+        spec.envSet().forEach(envSet::put);
+        SidecarSpec sidecars = spec.sidecars();
+        if (sidecars != null) {
+            node.set("sidecars", sidecarsValue(sidecars));
+        }
+        return node;
+    }
+
+    private static ObjectNode sidecarsValue(SidecarSpec sidecars) {
+        ObjectNode node = NODES.objectNode();
+        node.put("holder", sidecars.holder());
+        ArrayNode services = node.putArray("services");
+        for (SidecarService service : sidecars.services()) {
+            ObjectNode entry = services.addObject();
+            entry.put("project", service.project());
+            entry.put("service", service.service());
+            entry.put("name", service.name());
+            entry.put("image", service.image());
+            entry.put("pull", service.pull().wireName());
+            entry.put("port", service.port());
+            entry.put("kind", service.kind());
+            ObjectNode env = entry.putObject("env");
+            service.env().forEach(env::put);
+            ArrayNode tmpfs = entry.putArray("tmpfs");
+            service.tmpfs().forEach(tmpfs::add);
+            ArrayNode mounts = entry.putArray("mounts");
+            for (BindMount mount : service.mounts()) {
+                ObjectNode item = mounts.addObject();
+                item.put("source", mount.source().toString());
+                item.put("target", mount.target());
+                item.put("read_only", mount.readOnly());
+            }
+            ObjectNode health = entry.putObject("health");
+            ArrayNode exec = health.putArray("exec");
+            service.health().exec().forEach(exec::add);
+            health.put("timeout_secs", service.health().timeoutSecs());
+        }
+        return node;
+    }
+
+    private static @Nullable SidecarSpec parseSidecars(@Nullable JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new AnyhowError("invalid type: " + describe(node) + ", expected struct SidecarSpec");
+        }
+        List<SidecarService> services = new ArrayList<>();
+        for (JsonNode entry : sequence(required(node, "services"))) {
+            if (!entry.isObject()) {
+                throw new AnyhowError("invalid type: " + describe(entry) + ", expected struct SidecarService");
+            }
+            SortedMap<String, String> env = new TreeMap<>(RustOrdering.STRING_ORDER);
+            JsonNode envNode = required(entry, "env");
+            if (!envNode.isObject()) {
+                throw new AnyhowError("invalid type: " + describe(envNode) + ", expected a map");
+            }
+            for (Map.Entry<String, JsonNode> variable : envNode.properties()) {
+                env.put(variable.getKey(), stringValue(variable.getValue()));
+            }
+            List<String> tmpfs = new ArrayList<>();
+            sequence(required(entry, "tmpfs")).forEach(value -> tmpfs.add(stringValue(value)));
+            List<BindMount> mounts = new ArrayList<>();
+            for (JsonNode mount : sequence(required(entry, "mounts"))) {
+                mounts.add(new BindMount(
+                        Path.of(stringValue(required(mount, "source"))),
+                        stringValue(required(mount, "target")),
+                        requiredBool(mount, "read_only")));
+            }
+            JsonNode health = required(entry, "health");
+            if (!health.isObject()) {
+                throw new AnyhowError("invalid type: " + describe(health) + ", expected struct HealthCheck");
+            }
+            List<String> exec = new ArrayList<>();
+            sequence(required(health, "exec")).forEach(value -> exec.add(stringValue(value)));
+            services.add(new SidecarService(
+                    stringValue(required(entry, "project")),
+                    stringValue(required(entry, "service")),
+                    stringValue(required(entry, "name")),
+                    stringValue(required(entry, "image")),
+                    PullPolicy.fromWire(stringValue(required(entry, "pull"))),
+                    (int) requiredU64(entry, "port", 0xFFFFL),
+                    stringValue(required(entry, "kind")),
+                    env,
+                    tmpfs,
+                    mounts,
+                    new HealthCheck(exec, requiredU64(health, "timeout_secs", -1L))));
+        }
+        return new SidecarSpec(stringValue(required(node, "holder")), services);
+    }
+
+    private static void putNullable(ObjectNode node, String field, @Nullable String value) {
+        if (value == null) {
+            node.putNull(field);
+        } else {
+            node.put(field, value);
+        }
+    }
+
+    /** Reads the {@code container} field of a request, as serde reads {@code ContainerSpec}. */
+    public static ContainerSpec parseContainer(JsonNode node) {
+        if (!node.isObject()) {
+            throw new AnyhowError("invalid type: " + describe(node) + ", expected struct ContainerSpec");
+        }
+        List<String> capDrop = new ArrayList<>();
+        sequence(required(node, "cap_drop")).forEach(value -> capDrop.add(stringValue(value)));
+        List<String> tmpfs = new ArrayList<>();
+        sequence(required(node, "tmpfs")).forEach(value -> tmpfs.add(stringValue(value)));
+        List<Path> outputs = new ArrayList<>();
+        sequence(required(node, "outputs")).forEach(value -> outputs.add(Path.of(stringValue(value))));
+        List<WritableMount> writable = new ArrayList<>();
+        for (JsonNode entry : sequence(required(node, "writable"))) {
+            writable.add(new WritableMount(
+                    Path.of(stringValue(required(entry, "origin"))),
+                    Path.of(stringValue(required(entry, "source"))),
+                    stringValue(required(entry, "target")),
+                    requiredBool(entry, "seed")));
+        }
+        List<BindMount> mounts = new ArrayList<>();
+        for (JsonNode entry : sequence(required(node, "mounts"))) {
+            mounts.add(new BindMount(
+                    Path.of(stringValue(required(entry, "source"))),
+                    stringValue(required(entry, "target")),
+                    requiredBool(entry, "read_only")));
+        }
+        List<CacheVolume> caches = new ArrayList<>();
+        for (JsonNode entry : sequence(required(node, "caches"))) {
+            caches.add(new CacheVolume(stringValue(required(entry, "volume")), stringValue(required(entry, "target"))));
+        }
+        List<String> envPass = new ArrayList<>();
+        sequence(required(node, "env_pass")).forEach(value -> envPass.add(stringValue(value)));
+        SortedMap<String, String> envSet = new TreeMap<>(RustOrdering.STRING_ORDER);
+        JsonNode envSetNode = required(node, "env_set");
+        if (!envSetNode.isObject()) {
+            throw new AnyhowError("invalid type: " + describe(envSetNode) + ", expected a map");
+        }
+        for (Map.Entry<String, JsonNode> entry : envSetNode.properties()) {
+            envSet.put(entry.getKey(), stringValue(entry.getValue()));
+        }
+        JsonNode pidsNode = node.get("pids");
+        return new ContainerSpec(
+                stringValue(required(node, "name")),
+                stringValue(required(node, "run")),
+                stringValue(required(node, "job")),
+                stringValue(required(node, "image")),
+                PullPolicy.fromWire(stringValue(required(node, "pull"))),
+                NetworkMode.fromWire(stringValue(required(node, "network"))),
+                optionalString(node, "user"),
+                capDrop,
+                requiredBool(node, "no_new_privileges"),
+                requiredBool(node, "read_only_root"),
+                optionalString(node, "cpus"),
+                optionalString(node, "memory"),
+                pidsNode == null || pidsNode.isNull() ? null : u64(pidsNode, -1L),
+                optionalString(node, "shm_size"),
+                tmpfs,
+                requiredU64(node, "timeout_secs", -1L),
+                WorkspaceAccess.fromWire(stringValue(required(node, "workspace"))),
+                Path.of(stringValue(required(node, "mount_root"))),
+                outputs,
+                writable,
+                mounts,
+                caches,
+                envPass,
+                envSet,
+                parseSidecars(node.get("sidecars")));
     }
 
     public static ObjectNode responseValue(AdapterResponse response) {
@@ -72,6 +315,10 @@ public final class AdapterJson {
             attachments.add(item);
         }
         node.set("duration_ms", NODES.numberNode(new java.math.BigInteger(Long.toUnsignedString(test.durationMs()))));
+        Isolation isolation = test.isolation();
+        if (isolation != null) {
+            node.set("isolation", isolationValue(isolation));
+        }
         if (test.line() == null) {
             node.putNull("line");
         } else {
@@ -90,6 +337,37 @@ public final class AdapterJson {
         }
         node.put("status", test.status().wireName());
         return node;
+    }
+
+    /** One test's {@code isolation}, with keys in the sorted order of a {@code serde_json::Value}. */
+    private static ObjectNode isolationValue(Isolation isolation) {
+        ObjectNode node = NODES.objectNode();
+        node.put("class", isolation.isolationClass().wireName());
+        ArrayNode logs = node.putArray("logs");
+        isolation.logs().forEach(logs::add);
+        node.put("passed", isolation.passed());
+        if (isolation.reason() != null) {
+            node.put("reason", isolation.reason());
+        }
+        node.put("runs", isolation.runs());
+        return node;
+    }
+
+    private static @Nullable Isolation isolationFrom(@Nullable JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new AnyhowError("invalid type: " + describe(node) + ", expected struct Isolation");
+        }
+        List<String> logs = new ArrayList<>();
+        sequence(required(node, "logs")).forEach(log -> logs.add(stringValue(log)));
+        return new Isolation(
+                IsolationClass.fromWire(stringValue(required(node, "class"))),
+                requiredU64(node, "runs", 0xFFFFFFFFL),
+                requiredU64(node, "passed", 0xFFFFFFFFL),
+                logs,
+                optionalString(node, "reason"));
     }
 
     public static AdapterResponse parseResponse(byte[] content) {
@@ -164,7 +442,8 @@ public final class AdapterJson {
                 message,
                 source == null ? null : Path.of(source),
                 line,
-                attachments);
+                attachments,
+                isolationFrom(node.get("isolation")));
     }
 
     public static AdapterRequest parseRequest(byte[] content) {
@@ -193,6 +472,15 @@ public final class AdapterJson {
                 args.add(stringValue(argument));
             }
         }
+        JsonNode containerNode = node.get("container");
+        JsonNode selectNode = node.get("select");
+        List<String> select = null;
+        if (selectNode != null && !selectNode.isNull()) {
+            select = new ArrayList<>();
+            for (JsonNode name : sequence(selectNode)) {
+                select.add(stringValue(name));
+            }
+        }
         return new AdapterRequest(
                 requiredU64(node, "protocol", 0xFFFFFFFFL),
                 stringValue(required(node, "project")),
@@ -207,7 +495,9 @@ public final class AdapterJson {
                 requiredBool(node, "strict"),
                 args,
                 env,
-                options);
+                options,
+                containerNode == null || containerNode.isNull() ? null : parseContainer(containerNode),
+                select);
     }
 
     private static JsonNode required(JsonNode node, String field) {

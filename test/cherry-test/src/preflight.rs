@@ -54,6 +54,14 @@ pub fn build_preflight_plan(
             let kinds = config.package_kinds(&member.name, &project.id);
             if kinds.iter().any(|k| k == "integration") {
                 discovered.extend(discover_package_tests(workspace_root, &member, config)?);
+                if let Some(selection) = java_selection(config, &member.name, &project.id) {
+                    discovered.extend(discover_java_package_tests(
+                        workspace_root,
+                        member,
+                        config,
+                        &selection,
+                    )?);
+                }
             }
             if config.package_runtime(&member.name, &project.id) == PackageRuntime::Node
                 && kinds.iter().any(|k| k == "unit")
@@ -147,6 +155,10 @@ fn discover_package_tests(
 }
 
 fn walk_rs_files(dir: &Path) -> Result<Vec<PathBuf>> {
+    walk_files(dir, "rs")
+}
+
+fn walk_files(dir: &Path, extension: &str) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     if !dir.is_dir() {
         return Ok(files);
@@ -155,12 +167,278 @@ fn walk_rs_files(dir: &Path) -> Result<Vec<PathBuf>> {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
-            files.extend(walk_rs_files(&path)?);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            files.extend(walk_files(&path, extension)?);
+        } else if path.extension().and_then(|e| e.to_str()) == Some(extension) {
             files.push(path);
         }
     }
     Ok(files)
+}
+
+/// Classes and methods a Maven integration phase runs: `-Dit.test` / `-Dtest` from the package arguments,
+/// otherwise the Failsafe default includes.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct JavaSelection {
+    includes: Vec<JavaPattern>,
+    excludes: Vec<JavaPattern>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct JavaPattern {
+    class: String,
+    methods: Vec<String>,
+}
+
+pub(crate) fn java_selection(
+    config: &TestItConfig,
+    package: &str,
+    project_id: &str,
+) -> Option<JavaSelection> {
+    let pkg = config.projects.get(project_id)?.packages.get(package)?;
+    let runner = pkg.integration.as_ref();
+    let adapter = runner
+        .and_then(|r| r.adapter.as_deref())
+        .or(pkg.adapter.as_deref())?;
+    if adapter != "maven" {
+        return None;
+    }
+    let args = runner.map(|r| r.args.clone()).unwrap_or_default();
+    Some(parse_java_selection(&args))
+}
+
+fn parse_java_selection(args: &[String]) -> JavaSelection {
+    let value = args.iter().rev().find_map(|arg| {
+        arg.strip_prefix("-Dit.test=")
+            .or_else(|| arg.strip_prefix("-Dtest="))
+            .map(str::to_string)
+    });
+    let Some(value) = value else {
+        return JavaSelection {
+            includes: ["IT*", "*IT", "*ITCase"]
+                .iter()
+                .map(|class| JavaPattern {
+                    class: (*class).into(),
+                    methods: Vec::new(),
+                })
+                .collect(),
+            excludes: Vec::new(),
+        };
+    };
+    let mut selection = JavaSelection {
+        includes: Vec::new(),
+        excludes: Vec::new(),
+    };
+    for token in value.split(',').map(str::trim).filter(|t| !t.is_empty()) {
+        let (exclude, token) = match token.strip_prefix('!') {
+            Some(rest) => (true, rest),
+            None => (false, token),
+        };
+        let (class, methods) = match token.split_once('#') {
+            Some((class, methods)) => (
+                class,
+                methods
+                    .split('+')
+                    .filter(|m| !m.is_empty())
+                    .map(str::to_string)
+                    .collect(),
+            ),
+            None => (token, Vec::new()),
+        };
+        let class = class
+            .trim_start_matches("**/")
+            .trim_end_matches(".java")
+            .trim_end_matches(".class")
+            .to_string();
+        let pattern = JavaPattern { class, methods };
+        if exclude {
+            selection.excludes.push(pattern);
+        } else {
+            selection.includes.push(pattern);
+        }
+    }
+    selection
+}
+
+impl JavaSelection {
+    fn selects(&self, class_path: &str, method: &str) -> bool {
+        let matches = |pattern: &JavaPattern| {
+            let name = if pattern.class.contains('/') || pattern.class.contains('.') {
+                class_path.to_string()
+            } else {
+                class_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(class_path)
+                    .to_string()
+            };
+            let class = pattern.class.replace('.', "/");
+            glob_matches(&class, &name.replace('.', "/"))
+                && (pattern.methods.is_empty()
+                    || pattern.methods.iter().any(|m| glob_matches(m, method)))
+        };
+        self.includes.iter().any(matches) && !self.excludes.iter().any(matches)
+    }
+
+    fn selects_class(&self, class_path: &str) -> bool {
+        let simple = class_path.rsplit('/').next().unwrap_or(class_path);
+        self.includes.iter().any(|pattern| {
+            let target = if pattern.class.contains('/') || pattern.class.contains('.') {
+                class_path
+            } else {
+                simple
+            };
+            glob_matches(&pattern.class.replace('.', "/"), target)
+        })
+    }
+}
+
+pub(crate) fn glob_matches(pattern: &str, text: &str) -> bool {
+    fn matches(pattern: &[char], text: &[char]) -> bool {
+        match pattern.first() {
+            None => text.is_empty(),
+            Some('*') => (0..=text.len()).any(|skip| matches(&pattern[1..], &text[skip..])),
+            Some('?') => !text.is_empty() && matches(&pattern[1..], &text[1..]),
+            Some(c) => text.first() == Some(c) && matches(&pattern[1..], &text[1..]),
+        }
+    }
+    let pattern: Vec<char> = pattern.chars().collect();
+    let text: Vec<char> = text.chars().collect();
+    matches(&pattern, &text)
+}
+
+fn discover_java_package_tests(
+    workspace_root: &Path,
+    member: &WorkspaceMember,
+    config: &TestItConfig,
+    selection: &JavaSelection,
+) -> Result<Vec<DiscoveredTest>> {
+    let package_dir = workspace_root.join(
+        member
+            .manifest_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from(".")),
+    );
+    let sources = package_dir.join("src").join("test").join("java");
+    let mut out = Vec::new();
+    let mut entries = walk_files(&sources, "java")?;
+    entries.sort();
+    for entry in entries {
+        let class_path = entry
+            .strip_prefix(&sources)
+            .unwrap_or(&entry)
+            .with_extension("")
+            .to_string_lossy()
+            .replace('\\', "/");
+        if !selection.selects_class(&class_path) {
+            continue;
+        }
+        let rel = entry
+            .strip_prefix(workspace_root)
+            .unwrap_or(&entry)
+            .to_path_buf();
+        let content = std::fs::read_to_string(&entry)?;
+        let class = class_path.replace('/', ".");
+        out.extend(
+            parse_java_test_sources(&member.name, &class, &rel, &content, config)?
+                .into_iter()
+                .filter(|test| {
+                    let method = test.function.rsplit("::").next().unwrap_or(&test.function);
+                    selection.selects(&class_path, method)
+                }),
+        );
+    }
+    Ok(out)
+}
+
+/// `@CherryTest(scope = "...", auth = "...")` methods of a JUnit source, the Java form of `#[cherry_test]`. A test is
+/// named `<class>::<method>`, as the Maven and Gradle adapters report it.
+fn parse_java_test_sources(
+    package: &str,
+    class: &str,
+    source_path: &Path,
+    content: &str,
+    config: &TestItConfig,
+) -> Result<Vec<DiscoveredTest>> {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i].trim();
+        let annotation = line
+            .strip_prefix("@CherryTest")
+            .or_else(|| line.strip_prefix("@com.cherrytest.junit.CherryTest"));
+        let is_annotation = annotation
+            .map(|rest| rest.is_empty() || rest.starts_with('(') || rest.starts_with(' '))
+            .unwrap_or(false);
+        if is_annotation {
+            let mut attr = line.to_string();
+            while attr.contains('(') && !attr.contains(')') && i + 1 < lines.len() {
+                i += 1;
+                attr.push(' ');
+                attr.push_str(lines[i].trim());
+            }
+            let attr = normalize_java_attr(&attr);
+            let attr_scope = parse_scope_attr(&attr);
+            let attr_auth = parse_auth_attr(&attr);
+            i += 1;
+            while i < lines.len() {
+                let next = lines[i].trim();
+                if next.starts_with("@CherryTest")
+                    || next.contains(" class ")
+                    || next.starts_with("class ")
+                {
+                    break;
+                }
+                if !next.starts_with('@') && !next.starts_with("//") && next.contains('(') {
+                    if let Some(name) = parse_java_method_name(next) {
+                        if let Ok(test_id) = parse_test_name(&name) {
+                            let effective = effective_scope(config, attr_scope.as_deref());
+                            out.push(DiscoveredTest {
+                                package: package.to_string(),
+                                function: format!("{class}::{name}"),
+                                attr_scope,
+                                attr_auth: attr_auth.clone(),
+                                effective_scope: effective,
+                                project: test_id.project,
+                                suite: test_id.suite,
+                                test: test_id.test,
+                                source_path: source_path.to_path_buf(),
+                                fn_line: i + 1,
+                            });
+                        }
+                    }
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+        i += 1;
+    }
+    Ok(out)
+}
+
+/// Writes `key="v"`, `key ="v"` and `key= "v"` as `key = "v"`, the form the shared attribute parser reads.
+fn normalize_java_attr(attr: &str) -> String {
+    let mut compact = attr.to_string();
+    loop {
+        let next = compact.replace(" =", "=").replace("= ", "=");
+        if next == compact {
+            break;
+        }
+        compact = next;
+    }
+    compact.replace("=\"", " = \"")
+}
+
+fn parse_java_method_name(line: &str) -> Option<String> {
+    let before = line.split('(').next()?.trim();
+    let name = before.rsplit(char::is_whitespace).next()?.trim();
+    if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return None;
+    }
+    Some(name.to_string())
 }
 
 fn parse_test_sources(
@@ -272,5 +550,70 @@ async fn mini_project_wallet_suite_offline_test(env: TestEnv) {}
         assert_eq!(tests.len(), 1);
         assert_eq!(tests[0].effective_scope, "none");
         assert_eq!(tests[0].fn_line, 3);
+    }
+
+    #[test]
+    fn discovers_java_cherry_test_methods_with_scope_and_auth() {
+        let src = r#"
+package com.example.wallet;
+
+class WalletIT {
+    @CherryTest(scope = "mini_wallet")
+    void mini_project_wallet_suite_balance_test(TestEnv env) {}
+
+    @CherryTest(
+            scope="mini_auth",
+            auth = "okta")
+    @DisplayName("token")
+    public void mini_project_auth_suite_token_test(TestEnv env) {}
+
+    @Test
+    void plainUnitTest() {}
+
+    @CherryTest
+    void notFollowingTheNamingContract(TestEnv env) {}
+}
+"#;
+        let cfg = TestItConfig::default();
+        let tests = parse_java_test_sources(
+            "mini-java-api",
+            "com.example.wallet.WalletIT",
+            Path::new("mini-java-api/src/test/java/com/example/wallet/WalletIT.java"),
+            src,
+            &cfg,
+        )
+        .unwrap();
+        assert_eq!(tests.len(), 2);
+        assert_eq!(
+            tests[0].function,
+            "com.example.wallet.WalletIT::mini_project_wallet_suite_balance_test"
+        );
+        assert_eq!(tests[0].effective_scope, "mini_wallet");
+        assert_eq!(tests[0].fn_line, 6);
+        assert_eq!(tests[0].suite, "wallet");
+        assert_eq!(tests[1].attr_scope.as_deref(), Some("mini_auth"));
+        assert_eq!(tests[1].attr_auth.as_deref(), Some("okta"));
+        assert_eq!(tests[1].fn_line, 12);
+    }
+
+    #[test]
+    fn java_selection_follows_failsafe_filters() {
+        let args = |value: &str| vec!["-o".to_string(), value.to_string()];
+        let filtered =
+            parse_java_selection(&args("-Dit.test=WalletIT,Stack*IT#jug_*,!StackLegacyIT"));
+        assert!(filtered.selects("com/example/WalletIT", "anything"));
+        assert!(filtered.selects("com/example/StackReferenceIT", "jug_project_a_suite_b_test"));
+        assert!(!filtered.selects("com/example/StackReferenceIT", "other"));
+        assert!(!filtered.selects("com/example/StackLegacyIT", "jug_project_a_suite_b_test"));
+        assert!(!filtered.selects("com/example/ShopIT", "anything"));
+        assert!(filtered.selects_class("com/example/StackReferenceIT"));
+        assert!(!filtered.selects_class("com/example/ShopIT"));
+        let defaults = parse_java_selection(&["-o".to_string()]);
+        assert!(defaults.selects("com/example/WalletIT", "m"));
+        assert!(defaults.selects("com/example/ITWallet", "m"));
+        assert!(!defaults.selects("com/example/WalletTest", "m"));
+        let qualified = parse_java_selection(&args("-Dit.test=com.example.WalletIT"));
+        assert!(qualified.selects("com/example/WalletIT", "m"));
+        assert!(!qualified.selects("org/other/WalletIT", "m"));
     }
 }

@@ -17,6 +17,7 @@ pub fn case(
         source: None,
         line: None,
         attachments: Vec::new(),
+        isolation: None,
     }
 }
 

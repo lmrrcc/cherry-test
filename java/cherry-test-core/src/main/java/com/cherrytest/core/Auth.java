@@ -33,37 +33,45 @@ public final class Auth {
         return "CHERRY_TEST_AUTH_" + RustText.toUppercase(profile).replace('-', '_') + "_ACCESS_TOKEN";
     }
 
+    /** Ensures a token for the current process and exports it to the process environment. */
     public static void ensureProfileToken(Path workspaceRoot, String profileName, AuthProfileConfig profile) {
+        profileTokenEnv(workspaceRoot, profileName, profile, ProcessEnvironment.snapshot())
+                .forEach(variable -> ProcessEnvironment.set(variable.getKey(), variable.getValue()));
+    }
+
+    /**
+     * Fetches or refreshes the token of one profile and returns its {@code CHERRY_TEST_AUTH_*} variables. The Okta
+     * mock URL is read from {@code environment}; nothing global changes.
+     */
+    public static List<Map.Entry<String, String>> profileTokenEnv(
+            Path workspaceRoot, String profileName, AuthProfileConfig profile, Map<String, String> environment) {
         Path cachePath = resolveCachePath(workspaceRoot, profile);
         HttpClient client = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
-        String tokenUrl = resolveTokenUrl(profile);
-        boolean dockerOkta = serviceTokenUrl(profile) != null;
+        String tokenUrl = resolveTokenUrl(profile, environment);
+        boolean dockerOkta = serviceTokenUrl(profile, environment) != null;
         if (dockerOkta) {
             OAuthCache fresh = cherryTestGrant(client, tokenUrl, profile);
             writeCache(cachePath, fresh);
-            exportToken(profileName, fresh.accessToken());
-            return;
+            return tokenEnv(profileName, fresh.accessToken());
         }
         OAuthCache cache = readCache(cachePath);
         if (cache != null) {
             if (nowSecs() < saturatingSub(cache.accessExpiresAt(), 30)) {
-                exportToken(profileName, cache.accessToken());
-                return;
+                return tokenEnv(profileName, cache.accessToken());
             }
             if (nowSecs() < saturatingSub(cache.refreshExpiresAt(), 30)) {
                 OAuthCache updated = tryRefresh(client, tokenUrl, profile, cache.refreshToken());
                 if (updated != null) {
                     writeCache(cachePath, updated);
-                    exportToken(profileName, updated.accessToken());
-                    return;
+                    return tokenEnv(profileName, updated.accessToken());
                 }
             }
         }
         OAuthCache fresh = cherryTestGrant(client, tokenUrl, profile);
         writeCache(cachePath, fresh);
-        exportToken(profileName, fresh.accessToken());
+        return tokenEnv(profileName, fresh.accessToken());
     }
 
     private static @Nullable OAuthCache tryRefresh(
@@ -79,10 +87,13 @@ public final class Auth {
         return value < amount ? 0 : value - amount;
     }
 
-    private static void exportToken(String profile, String accessToken) {
-        ProcessEnvironment.set(envVarForProfile(profile), accessToken);
-        ProcessEnvironment.set(
-                "CHERRY_TEST_AUTH_" + RustText.toUppercase(profile).replace('-', '_') + "_TOKEN_TYPE", "Bearer");
+    /** The access token and token type variables of one profile, in export order. */
+    static List<Map.Entry<String, String>> tokenEnv(String profile, String accessToken) {
+        return List.of(
+                Map.entry(envVarForProfile(profile), accessToken),
+                Map.entry(
+                        "CHERRY_TEST_AUTH_" + RustText.toUppercase(profile).replace('-', '_') + "_TOKEN_TYPE",
+                        "Bearer"));
     }
 
     private static Path resolveCachePath(Path workspaceRoot, AuthProfileConfig profile) {
@@ -90,8 +101,8 @@ public final class Auth {
         return path.isAbsolute() ? path : workspaceRoot.resolve(path);
     }
 
-    private static String resolveTokenUrl(AuthProfileConfig profile) {
-        String dynamic = serviceTokenUrl(profile);
+    private static String resolveTokenUrl(AuthProfileConfig profile, Map<String, String> environment) {
+        String dynamic = serviceTokenUrl(profile, environment);
         if (dynamic != null) {
             return dynamic;
         }
@@ -101,11 +112,11 @@ public final class Auth {
         return profile.tokenUrl();
     }
 
-    private static @Nullable String serviceTokenUrl(AuthProfileConfig profile) {
+    private static @Nullable String serviceTokenUrl(AuthProfileConfig profile, Map<String, String> environment) {
         String project = profile.oktaApiProject() == null ? "mini" : profile.oktaApiProject();
         String service = profile.oktaApiService() == null ? "okta_api" : profile.oktaApiService();
         String prefix = "CHERRY_TEST_" + RustText.toUppercase(project) + "_" + RustText.toUppercase(service);
-        String base = ProcessEnvironment.get(prefix + "_URL");
+        String base = environment.get(prefix + "_URL");
         if (base == null) {
             return null;
         }

@@ -1,6 +1,7 @@
 package com.cherrytest.cli.report;
 
 import com.cherrytest.cli.ChangedFiles;
+import com.cherrytest.cli.Isolation;
 import com.cherrytest.cli.PreflightPlan;
 import com.cherrytest.cli.ProjectGroup;
 import com.cherrytest.cli.RunDir;
@@ -19,6 +20,7 @@ import com.cherrytest.cli.crap.Crap;
 import com.cherrytest.cli.crap.CrapChange;
 import com.cherrytest.cli.crap.CrapProjectRoot;
 import com.cherrytest.cli.crap.CrapReport;
+import com.cherrytest.common.adapter.IsolationClass;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustOrdering;
 import com.cherrytest.common.rustcompat.RustText;
@@ -137,7 +139,13 @@ public final class ReportModel {
                 integrationRows,
                 testsReport,
                 crapReport(workspaceRoot, runDir, coverageIgnore, reportCrap, config, uniqueDiffPaths, addedLines),
+                isolationCounts(runDir),
                 runDir.reportHtml());
+    }
+
+    private static List<Map.Entry<IsolationClass, Long>> isolationCounts(RunDir runDir) {
+        Isolation.Report report = Isolation.readReport(runDir.reports());
+        return report == null ? List.of() : report.counts();
     }
 
     private static CrapReport crapReport(

@@ -7,6 +7,7 @@ import com.cherrytest.common.adapter.AdapterResponse;
 import com.cherrytest.common.adapter.Attachment;
 import com.cherrytest.common.adapter.TestResult;
 import com.cherrytest.common.adapter.TestStatus;
+import com.cherrytest.common.container.ContainerSpec;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustIoError;
 import com.cherrytest.common.rustcompat.RustParse;
@@ -22,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -131,8 +133,13 @@ public final class Adapters {
         }
     }
 
+    /** Runs one adapter with exactly the variables in {@code environment}; the CLI's environment is not inherited. */
     public static AdapterResponse invoke(
-            String name, @Nullable AdapterConfig config, AdapterRequest request, SelfCommand self) {
+            String name,
+            @Nullable AdapterConfig config,
+            AdapterRequest request,
+            SelfCommand self,
+            Map<String, String> environment) {
         createDirectories(request.output());
         ProcessRunner.Spec spec;
         Path requestFile = request.output().resolve("request.json");
@@ -146,14 +153,24 @@ public final class Adapters {
             }
             spec = self.adapterSpec(name, request.root(), requestFile);
         }
+        ContainerSpec container = request.container();
+        if (container != null) {
+            Map<String, String> overrides = new LinkedHashMap<>(spec.environmentOverrides());
+            overrides.put(Container.OWNER_PID_ENV, Long.toString(Container.ownerPid()));
+            spec = new ProcessRunner.Spec(
+                    spec.program(), spec.arguments(), overrides, spec.workingDirectory(), spec.stdin());
+        }
         try {
             Files.writeString(requestFile, AdapterJson.requestCompact(request), StandardCharsets.UTF_8);
         } catch (IOException exception) {
             throw new AnyhowError(RustIoError.display(exception), null);
         }
         Path prefix = request.output().resolve("adapter");
-        boolean success = ProcessRunner.capture(
-                spec, prefix, config == null ? AdapterConfig.DEFAULT_TIMEOUT_SECS : config.timeoutSecs(), true);
+        long timeout = config != null
+                ? config.timeoutSecs()
+                : container != null ? container.timeoutSecs() : AdapterConfig.DEFAULT_TIMEOUT_SECS;
+        Runnable stop = container == null ? null : () -> Container.kill(container.name());
+        boolean success = ProcessRunner.capture(spec.withEnvironment(environment), prefix, timeout, true, stop);
         Path stdout = RustPath.withExtension(prefix, "stdout");
         byte[] data;
         try {
@@ -308,19 +325,26 @@ public final class Adapters {
                 .resolve(request.project())
                 .resolve(request.packageName())
                 .resolve(request.phase());
-        createDirectories(directory);
+        writeResult(directory.resolve("result.json"), request, response);
+        return response;
+    }
+
+    /** Writes {@code result.json}: the job's project, package and phase with the adapter response. */
+    public static void writeResult(Path path, AdapterRequest request, AdapterResponse response) {
+        Path directory = path.getParent();
+        if (directory != null) {
+            createDirectories(directory);
+        }
         ObjectNode document = NODES.objectNode();
         document.put("package", request.packageName());
         document.put("phase", request.phase());
         document.put("project", request.project());
         document.set("result", AdapterJson.responseValue(response));
         try {
-            Files.writeString(
-                    directory.resolve("result.json"), SerdeJsonWriter.pretty(document), StandardCharsets.UTF_8);
+            Files.writeString(path, SerdeJsonWriter.pretty(document), StandardCharsets.UTF_8);
         } catch (IOException exception) {
             throw new AnyhowError(RustIoError.display(exception), null);
         }
-        return response;
     }
 
     public static List<ObjectNode> readRows(Path reports) {

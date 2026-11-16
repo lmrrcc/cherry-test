@@ -5,6 +5,7 @@ import com.cherrytest.common.adapter.ExecutionMode;
 import com.cherrytest.common.rustcompat.AnyhowError;
 import com.cherrytest.common.rustcompat.RustIoError;
 import com.cherrytest.common.rustcompat.RustOrdering;
+import com.cherrytest.common.rustcompat.RustText;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -28,6 +29,7 @@ public final class TestItConfig {
     private final SortedMap<String, AuthProfileConfig> auth;
     private final SortedMap<String, ProjectConfig> projects;
     private final SortedMap<String, ScopeConfig> scopes;
+    private final SortedMap<String, List<String>> groups;
 
     public TestItConfig(
             SortedMap<String, AdapterConfig> adapters,
@@ -37,6 +39,18 @@ public final class TestItConfig {
             SortedMap<String, AuthProfileConfig> auth,
             SortedMap<String, ProjectConfig> projects,
             SortedMap<String, ScopeConfig> scopes) {
+        this(adapters, workspaceRoot, configPath, defaults, auth, projects, scopes, new TreeMap<>());
+    }
+
+    public TestItConfig(
+            SortedMap<String, AdapterConfig> adapters,
+            Path workspaceRoot,
+            Path configPath,
+            Defaults defaults,
+            SortedMap<String, AuthProfileConfig> auth,
+            SortedMap<String, ProjectConfig> projects,
+            SortedMap<String, ScopeConfig> scopes,
+            SortedMap<String, List<String>> groups) {
         this.adapters = sorted(adapters);
         this.workspaceRoot = workspaceRoot;
         this.configPath = configPath;
@@ -44,6 +58,7 @@ public final class TestItConfig {
         this.auth = sorted(auth);
         this.projects = sorted(projects);
         this.scopes = sorted(scopes);
+        this.groups = sorted(groups);
     }
 
     public static TestItConfig empty(Path workspaceRoot) {
@@ -89,6 +104,11 @@ public final class TestItConfig {
         return scopes;
     }
 
+    /** {@code groups.<name>}: package names or globs that the filter {@code @name} selects. */
+    public SortedMap<String, List<String>> groups() {
+        return groups;
+    }
+
     public TestItConfig withExecution(ExecutionMode execution) {
         defaults = defaults.withExecution(execution);
         for (Map.Entry<String, ProjectConfig> project : projects.entrySet()) {
@@ -97,6 +117,23 @@ public final class TestItConfig {
             project.setValue(project.getValue().withPackages(packages));
         }
         return this;
+    }
+
+    /**
+     * Whether any package runs in a container with a {@code container:} block, so the run names,
+     * labels and cleans up its containers.
+     */
+    public boolean containerSettingsInUse() {
+        for (ProjectConfig project : projects.values()) {
+            for (PackageConfig config : project.packages().values()) {
+                ExecutionMode execution = config.execution() == null ? defaults.execution() : config.execution();
+                if (execution == ExecutionMode.CONTAINER
+                        && (config.container() != null || defaults.container() != null)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public static TestItConfig load(Path workspaceRoot) {
@@ -118,6 +155,7 @@ public final class TestItConfig {
         }
         SortedMap<String, ProjectConfig> projects = parseProjects(raw);
         mergeLegacyPackages(projects, parsePackages(YamlValues.field(raw, "packages"), "packages."), workspaceRoot);
+        validateServices(projects);
         for (Map.Entry<String, ProjectConfig> project : projects.entrySet()) {
             if (project.getValue().path() == null) {
                 project.setValue(project.getValue().withPath(project.getKey()));
@@ -134,7 +172,8 @@ public final class TestItConfig {
                 parseDefaults(raw),
                 parseAuth(raw),
                 projects,
-                parseScopes(raw));
+                parseScopes(raw),
+                parseGroups(raw));
     }
 
     static Map<String, Object> parseRaw(Path path, String contents) {
@@ -300,7 +339,8 @@ public final class TestItConfig {
                             YamlValues.requiredString(map, "command", path),
                             YamlValues.stringList(map, "args", path),
                             YamlValues.unsignedOr(
-                                    map, "timeout_secs", path, Long.MAX_VALUE, AdapterConfig.DEFAULT_TIMEOUT_SECS)));
+                                    map, "timeout_secs", path, Long.MAX_VALUE, AdapterConfig.DEFAULT_TIMEOUT_SECS),
+                            YamlValues.boolOr(map, "isolate", path, false)));
         });
         return adapters;
     }
@@ -327,7 +367,138 @@ public final class TestItConfig {
                 reportDir == null ? standard.reportDir() : reportDir,
                 YamlValues.stringOr(map, "scope", path, standard.scope()),
                 YamlValues.stringOr(map, "diff_base", path, standard.diffBase()),
-                coverageIgnore == null ? standard.coverageIgnore() : coverageIgnore);
+                coverageIgnore == null ? standard.coverageIgnore() : coverageIgnore,
+                parseParallel(YamlValues.field(map, "parallel"), "defaults.parallel"),
+                ContainerYaml.parse(YamlValues.field(map, "container"), path + "container"),
+                parseIsolate(YamlValues.field(map, "isolate"), "defaults.isolate"));
+    }
+
+    private static @Nullable IsolateConfig parseIsolate(@Nullable Object value, String path) {
+        if (value == null) {
+            return null;
+        }
+        Map<String, Object> map = YamlValues.mapping(value, path);
+        rejectUnknownFields(map, path, List.of("on_failure", "runs", "max_tests"));
+        return new IsolateConfig(
+                YamlValues.boolOr(map, "on_failure", path + ".", false),
+                positiveCount(map, "runs", path, IsolateConfig.DEFAULT_RUNS),
+                positiveCount(map, "max_tests", path, IsolateConfig.DEFAULT_MAX_TESTS));
+    }
+
+    private static long positiveCount(Map<String, Object> map, String name, String path, long fallback) {
+        Object value = YamlValues.field(map, name);
+        if (value == null) {
+            return fallback;
+        }
+        if (value instanceof Number number
+                && !(value instanceof Double)
+                && number.longValue() > 0
+                && number.longValue() <= 0xFFFFFFFFL) {
+            return number.longValue();
+        }
+        throw new AnyhowError(path + "." + name + ": expected a positive number");
+    }
+
+    private static @Nullable ParallelConfig parseParallel(@Nullable Object value, String path) {
+        if (value == null) {
+            return null;
+        }
+        Map<String, Object> map = YamlValues.mapping(value, path);
+        rejectUnknownFields(map, path, List.of("jobs", "cpus", "memory", "phase_barrier"));
+        Object jobs = YamlValues.field(map, "jobs");
+        return new ParallelConfig(
+                jobs == null ? null : parseJobs(jobs, path + ".jobs"),
+                optionalCpus(map, path),
+                optionalMemory(map, path),
+                YamlValues.boolOr(map, "phase_barrier", path + ".", true));
+    }
+
+    private static @Nullable ResourcesConfig parseResources(@Nullable Object value, String path) {
+        if (value == null) {
+            return null;
+        }
+        Map<String, Object> map = YamlValues.mapping(value, path);
+        rejectUnknownFields(map, path, List.of("cpus", "memory"));
+        return new ResourcesConfig(optionalCpus(map, path), optionalMemory(map, path));
+    }
+
+    private static void rejectUnknownFields(Map<String, Object> map, String path, List<String> known) {
+        for (String key : map.keySet()) {
+            if (!known.contains(key)) {
+                StringBuilder expected = new StringBuilder();
+                for (int index = 0; index < known.size(); index++) {
+                    expected.append(index == 0 ? "" : ", ")
+                            .append('`')
+                            .append(known.get(index))
+                            .append('`');
+                }
+                throw new AnyhowError(path + ": unknown field `" + key + "`, expected one of " + expected);
+            }
+        }
+    }
+
+    private static Jobs parseJobs(Object value, String path) {
+        try {
+            return switch (value) {
+                case String text -> Jobs.parse(text);
+                case Double ignored -> throw new IllegalArgumentException(Jobs.EXPECTED);
+                case Number number -> Jobs.parse(number.toString());
+                default -> throw new IllegalArgumentException(Jobs.EXPECTED);
+            };
+        } catch (IllegalArgumentException invalid) {
+            throw new AnyhowError(path + ": " + Jobs.EXPECTED, invalid);
+        }
+    }
+
+    private static @Nullable Long optionalCpus(Map<String, Object> map, String path) {
+        Object value = YamlValues.field(map, "cpus");
+        if (value == null) {
+            return null;
+        }
+        String error = path + ".cpus: expected a positive number of CPUs";
+        if (!(value instanceof Number number)) {
+            throw new AnyhowError(error);
+        }
+        double cpus = number.doubleValue();
+        if (!Double.isFinite(cpus)) {
+            throw new AnyhowError(error);
+        }
+        long millicpus = Math.round(cpus * 1000.0);
+        if (millicpus < 1) {
+            throw new AnyhowError(error);
+        }
+        return millicpus;
+    }
+
+    private static @Nullable Long optionalMemory(Map<String, Object> map, String path) {
+        Object value = YamlValues.field(map, "memory");
+        if (value == null) {
+            return null;
+        }
+        return switch (value) {
+            case String text -> {
+                try {
+                    yield Memory.parse(text);
+                } catch (AnyhowError invalid) {
+                    throw AnyhowError.context(path + ".memory", invalid);
+                }
+            }
+            case Double ignored -> throw new AnyhowError(path + ".memory: expected bytes or a unit such as 512m or 8g");
+            case Number number when number.longValue() > 0 -> number.longValue();
+            default -> throw new AnyhowError(path + ".memory: expected bytes or a unit such as 512m or 8g");
+        };
+    }
+
+    private static SortedMap<String, List<String>> parseGroups(Map<String, Object> raw) {
+        SortedMap<String, List<String>> groups = new TreeMap<>(RustOrdering.STRING_ORDER);
+        Object value = YamlValues.field(raw, "groups");
+        if (value == null) {
+            return groups;
+        }
+        YamlValues.mapping(value, "groups")
+                .forEach((name, entry) ->
+                        groups.put(name, YamlValues.stringList(Map.of("value", entry), "value", "groups." + name)));
+        return groups;
     }
 
     private static SortedMap<String, AuthProfileConfig> parseAuth(Map<String, Object> raw) {
@@ -387,22 +558,101 @@ public final class TestItConfig {
         if (value == null) {
             return services;
         }
-        YamlValues.mapping(value, path).forEach((name, entry) -> {
-            String servicePath = path + name + ".";
-            Map<String, Object> map = YamlValues.mapping(entry, path + name);
-            Object port = YamlValues.field(map, "port");
-            if (port == null) {
-                throw new AnyhowError(servicePath + ": missing field `port`");
-            }
-            services.put(
-                    name,
-                    new ServiceConfig(
-                            YamlValues.requiredString(map, "service", servicePath),
-                            (int) YamlValues.unsigned(port, servicePath + "port", 0xFFFFL),
-                            YamlValues.optionalString(map, "health", servicePath),
-                            YamlValues.optionalString(map, "kind", servicePath)));
-        });
+        YamlValues.mapping(value, path)
+                .forEach((name, entry) -> services.put(name, ServiceYaml.parse(entry, path + name)));
         return services;
+    }
+
+    /**
+     * Checks every service: a Compose {@code service} or an {@code image}, and image settings only on image services.
+     * Projects and services are checked in name order, so the first error is the same on every run.
+     */
+    private static void validateServices(SortedMap<String, ProjectConfig> projects) {
+        for (Map.Entry<String, ProjectConfig> project : projects.entrySet()) {
+            TreeMap<String, ServiceConfig> services = new TreeMap<>(RustOrdering.STRING_ORDER);
+            services.putAll(project.getValue().services());
+            for (Map.Entry<String, ServiceConfig> service : services.entrySet()) {
+                validateService("projects." + project.getKey() + ".services." + service.getKey(), service.getValue());
+            }
+        }
+    }
+
+    private static void validateService(String path, ServiceConfig service) {
+        String image = service.image();
+        if (image == null) {
+            if (service.service().isEmpty()) {
+                throw new AnyhowError(path + ": missing field `service`");
+            }
+            Map<String, Boolean> imageOnly = new LinkedHashMap<>();
+            imageOnly.put("pull", service.pull() != null);
+            imageOnly.put("env", !service.env().isEmpty());
+            imageOnly.put("tmpfs", !service.tmpfs().isEmpty());
+            imageOnly.put("mounts", !service.mounts().isEmpty());
+            imageOnly.put("health", service.health() instanceof ServiceHealth.Probe);
+            for (Map.Entry<String, Boolean> field : imageOnly.entrySet()) {
+                if (field.getValue()) {
+                    throw new AnyhowError(path + "." + field.getKey() + ": applies only to a service with `image`");
+                }
+            }
+            return;
+        }
+        if (!service.service().isEmpty()) {
+            throw new AnyhowError(path + ": set `service` for a Compose service or `image`, not both");
+        }
+        if (image.isEmpty() || image.startsWith("-") || image.codePoints().anyMatch(RustText::isWhitespace)) {
+            throw new AnyhowError(path + ".image: invalid image `" + image + "`");
+        }
+        for (String name : service.env().keySet()) {
+            if (!Sidecars.isEnvName(name)) {
+                throw new AnyhowError(path + ".env: `" + name + "` is not a variable name");
+            }
+        }
+        for (String tmpfs : service.tmpfs()) {
+            if (!tmpfs.startsWith("/") || tmpfs.codePoints().anyMatch(RustText::isWhitespace)) {
+                throw new AnyhowError(path + ".tmpfs: `" + tmpfs + "` is not an absolute container path");
+            }
+        }
+        for (ServiceMount mount : service.mounts()) {
+            if (mount.source().isEmpty() || mount.source().contains(":")) {
+                throw new AnyhowError(path + ".mounts: invalid source `" + mount.source() + "`");
+            }
+            if (!mount.target().startsWith("/")
+                    || mount.target().contains(":")
+                    || mount.target().codePoints().anyMatch(RustText::isWhitespace)) {
+                throw new AnyhowError(
+                        path + ".mounts: target `" + mount.target() + "` is not an absolute container path");
+            }
+        }
+        switch (service.health()) {
+            case ServiceHealth.HttpPath ignored ->
+                throw new AnyhowError(path + ".health: an image service takes {exec: [...]} or {tcp: true}");
+            case ServiceHealth.Probe(HealthProbe probe) -> {
+                List<String> exec = probe.exec();
+                Boolean tcp = probe.tcp();
+                if (exec != null && tcp == null && exec.isEmpty()) {
+                    throw new AnyhowError(path + ".health.exec: needs a command");
+                }
+                if (exec != null && tcp != null) {
+                    throw new AnyhowError(path + ".health: set `exec` or `tcp`, not both");
+                }
+                if (exec == null && Boolean.FALSE.equals(tcp)) {
+                    throw new AnyhowError(path + ".health: set `exec` or `tcp: true`");
+                }
+            }
+            case null -> {}
+        }
+    }
+
+    /** Whether any project declares a service Cherry Test starts from an image. */
+    public boolean imageServicesConfigured() {
+        for (ProjectConfig project : projects.values()) {
+            for (ServiceConfig service : project.services().values()) {
+                if (service.isImage()) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     static SortedMap<String, PackageConfig> parsePackages(@Nullable Object value, String path) {
@@ -431,7 +681,10 @@ public final class TestItConfig {
                 parseRunner(YamlValues.field(map, "unit"), path + "unit."),
                 parseRunner(YamlValues.field(map, "functional"), path + "functional."),
                 parseRunner(YamlValues.field(map, "ui"), path + "ui."),
-                parseRunner(YamlValues.field(map, "mutation"), path + "mutation."));
+                parseRunner(YamlValues.field(map, "mutation"), path + "mutation."),
+                parseResources(YamlValues.field(map, "resources"), path + "resources"),
+                YamlValues.boolOr(map, "exclusive", path, false),
+                ContainerYaml.parse(YamlValues.field(map, "container"), path + "container"));
     }
 
     private static PackageRuntime parseRuntime(String value, String path) {
