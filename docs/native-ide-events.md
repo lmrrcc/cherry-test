@@ -99,6 +99,8 @@ The LCOV artifact must also be listed in the adapter response. All paths must re
 
 The Java runner supplies `CHERRY_TEST_PROVENANCE_TOKEN`, `CHERRY_TEST_PROVENANCE_DIR`, and a non-secret `CHERRY_TEST_COVERAGE_COLLECTION` identity to external adapters when coverage is enabled. Compile into a fresh output directory with the existing javac capture plugin, and start each measured JVM with JaCoCo first, then the provenance agent. Every captured process must exit and supply both its matching execution session and completion receipt. Missing/incomplete evidence stays unknown. A manifest without compiler capture, such as the Kotlin control, preserves precise counters but cannot certify current source identity.
 
+The mini and shop-java samples activate their optional Maven provenance profile only when `CHERRY_TEST_IDE_EVENTS` requests native results. The capture token alone does not activate it, so standalone coverage runs retain their existing dependencies. Install the companion provenance artifact before opting into native results. Effective-model checks cover both environments; actual standalone mini unit tests and native mini/server executions verify the distinction.
+
 ### Probe union across phases
 
 Precision sidecars may contain `executionFiles: [{path, sha256}]`. At normal completion, the Java runner verifies these artifacts again and merges their JaCoCo probes only for identical source/class identities. It publishes an optional `coverageUnion` artifact on `run.completed`. Per-phase tests remain separate; coverage is aggregate, never per-test attribution.
