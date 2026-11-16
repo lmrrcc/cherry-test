@@ -120,7 +120,9 @@ final class AdapterView {
             return "";
         }
         HighlightLang lang = Highlight.highlightLangForPath(file.relative());
-        StringBuilder html = new StringBuilder("<div class=\"diff\">");
+        StringBuilder html = new StringBuilder("<div class=\"diff\" data-phase-outcome=\"")
+                .append(file.failed() ? "failed" : "passed")
+                .append("\">");
         html.append(ReportShell.diffRowHtml("column-labels", "old", "new", "±", "code"));
         for (MarkedLine line : marked) {
             if (line.mark() == LineMark.GAP) {
@@ -129,7 +131,7 @@ final class AdapterView {
             }
             String cssClass = switch (line.mark()) {
                 case COVERED -> "ctx covered";
-                case UNCOVERED -> file.failed() ? "ctx uncovered fail-line" : "ctx uncovered";
+                case UNCOVERED -> "ctx uncovered";
                 case CONTEXT, GAP -> "ctx";
             };
             String number = Long.toString(line.number());

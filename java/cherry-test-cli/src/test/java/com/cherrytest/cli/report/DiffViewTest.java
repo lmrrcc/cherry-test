@@ -57,11 +57,11 @@ class DiffViewTest {
     }
 
     @Test
-    void build_file_diff_section_counts_fail_lines() {
+    void package_failure_does_not_attribute_failure_to_uncovered_lines() {
         String diff = "@@ -1,1 +1,3 @@\n fn main() {\n+    let x = 1;\n+    let y = 2;\n }\n";
         FileDiffSection section =
                 DiffView.buildFileDiffSection("src/lib.rs", diff, coverage(Map.of(2L, false, 3L, false)), true);
-        assertThat(section.failLines()).isEqualTo(2);
+        assertThat(section.failLines()).isZero();
         assertThat(section.hasUncovered()).isTrue();
     }
 
@@ -111,10 +111,10 @@ class DiffViewTest {
     }
 
     @Test
-    void uncovered_becomes_fail_when_project_failed() {
+    void uncovered_stays_uncovered_when_package_failed() {
         SortedMap<Long, Boolean> lineCoverage = coverage(Map.of(2L, false));
         assertThat(DiffView.coverageForLine(2L, DiffTag.ADD, lineCoverage, true))
-                .isEqualTo(LineCov.FAIL);
+                .isEqualTo(LineCov.UNCOVERED);
         assertThat(DiffView.coverageForLine(2L, DiffTag.ADD, lineCoverage, false))
                 .isEqualTo(LineCov.UNCOVERED);
     }

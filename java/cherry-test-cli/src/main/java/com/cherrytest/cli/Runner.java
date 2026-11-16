@@ -59,7 +59,21 @@ public final class Runner {
             TestListing testListing,
             List<String> extraTestArgs,
             List<String> kinds,
-            Adapters.SelfCommand self) {}
+            Adapters.SelfCommand self,
+            @Nullable NativeEvents nativeEvents) {
+        public RunOptions(
+                Path workspaceRoot,
+                RunDir runDir,
+                TestItConfig config,
+                boolean coverage,
+                boolean quiet,
+                TestListing testListing,
+                List<String> extraTestArgs,
+                List<String> kinds,
+                Adapters.SelfCommand self) {
+            this(workspaceRoot, runDir, config, coverage, quiet, testListing, extraTestArgs, kinds, self, null);
+        }
+    }
 
     private record PackageKey(String project, String packageName) implements Comparable<PackageKey> {
         @Override
@@ -177,6 +191,7 @@ public final class Runner {
                             ProcessEnvironment.snapshot().entrySet()) {
                         String key = variable.getKey();
                         if (key.startsWith("CHERRY_TEST_")
+                                && !key.equals("CHERRY_TEST_IDE_EVENTS")
                                 && !key.contains("AUTH")
                                 && !key.contains("TOKEN")
                                 && !key.contains("SECRET")) {
@@ -205,13 +220,19 @@ public final class Runner {
                         Terminal.println(
                                 "==> " + project.id() + "/" + member.name() + "/" + phase + " (" + adapter + ")");
                     }
+                    NativeEvents events = options.nativeEvents();
+                    if (events != null) {
+                        events.phaseStarted(request, adapter, member.runtime().name());
+                    }
                     AdapterResponse response;
+                    boolean adapterCompleted = false;
                     try {
                         if (setupError != null) {
                             throw setupError;
                         }
                         response = Adapters.invoke(
                                 adapter, options.config().adapters().get(adapter), request, options.self());
+                        adapterCompleted = true;
                     } catch (RuntimeException error) {
                         response = AdapterResponse.failure(AnyhowError.alternate(error));
                     }
@@ -239,6 +260,9 @@ public final class Runner {
                     }
                     AdapterResponse saved =
                             Adapters.save(request, response, options.runDir().reports());
+                    if (events != null) {
+                        events.phaseCompleted(request, adapter, member.runtime().name(), response, adapterCompleted);
+                    }
                     statuses.merge(key, saved.success(), (existing, incoming) -> existing && incoming);
                     if (!options.quiet()) {
                         if (options.testListing() == TestListing.AFTER_EACH_PHASE) {

@@ -117,7 +117,10 @@ fn render_coverage_snippets(file: &CoveredFile, phase: &str, index: &JumpIndex) 
         return String::new();
     }
     let lang = highlight_lang_for_path(&file.relative);
-    let mut html = String::from("<div class=\"diff\">");
+    let mut html = format!(
+        "<div class=\"diff\" data-phase-outcome=\"{}\">",
+        if file.failed { "failed" } else { "passed" }
+    );
     html.push_str(&diff_row_html("column-labels", "old", "new", "±", "code"));
     for line in marked {
         if line.mark == LineMark::Gap {
@@ -126,7 +129,6 @@ fn render_coverage_snippets(file: &CoveredFile, phase: &str, index: &JumpIndex) 
         }
         let class = match line.mark {
             LineMark::Covered => "ctx covered",
-            LineMark::Uncovered if file.failed => "ctx uncovered fail-line",
             LineMark::Uncovered => "ctx uncovered",
             LineMark::Context | LineMark::Gap => "ctx",
         };
@@ -416,8 +418,10 @@ mod tests {
         failed.hits.insert(3, 0);
         failed.failed = true;
         let failed = render_coverage_snippets(&failed, "unit", &JumpIndex::default());
-        assert!(failed.contains("class=\"row ctx uncovered fail-line\""));
-        assert!(failed.contains("aria-label=\"failed line\">!</button>"));
+        assert!(failed.contains("data-phase-outcome=\"failed\""));
+        assert!(failed.contains("class=\"row ctx uncovered\""));
+        assert!(!failed.contains("fail-line"));
+        assert!(!failed.contains("aria-label=\"failed line\""));
     }
 
     fn covered_file(relative: &str, source: &str, failed: bool) -> CoveredFile {

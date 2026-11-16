@@ -21,6 +21,9 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Element;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 public final class Formats {
     private Formats() {}
@@ -111,7 +114,13 @@ public final class Formats {
         return cases;
     }
 
+    public record JacocoReport(String lcov, ObjectNode nativeCoverage) {}
+
     public static String jacoco(String content, List<Path> sourceRoots) {
+        return jacocoReport(content, sourceRoots).lcov();
+    }
+
+    public static JacocoReport jacocoReport(String content, List<Path> sourceRoots) {
         String source = content;
         int start = content.indexOf("<!DOCTYPE");
         if (start >= 0) {
@@ -132,6 +141,12 @@ public final class Formats {
             throw AnyhowError.context("parse JaCoCo XML", error);
         }
         StringBuilder out = new StringBuilder();
+        ObjectNode nativeCoverage = JsonNodeFactory.instance.objectNode();
+        nativeCoverage.put("schemaVersion", 1);
+        nativeCoverage.put("format", "jacoco-lines-v1");
+        nativeCoverage.put("perTestAttribution", false);
+        nativeCoverage.put("compiledIdentity", "unknown");
+        ArrayNode files = nativeCoverage.putArray("files");
         for (Element packageNode : XmlNodes.descendants(root, "package")) {
             String packageName = XmlNodes.attribute(packageNode, "name");
             if (packageName == null) {
@@ -160,6 +175,11 @@ public final class Formats {
                     throw new AnyhowError("JaCoCo source " + relative + " must resolve uniquely");
                 }
                 out.append("SF:").append(matches.getFirst()).append('\n');
+                ObjectNode fileData = files.addObject();
+                fileData.put(
+                        "source",
+                        matches.getFirst().toAbsolutePath().normalize().toString());
+                ArrayNode lineData = fileData.putArray("lines");
                 for (Element line : XmlNodes.children(sourceFile, "line")) {
                     String numberText = XmlNodes.attribute(line, "nr");
                     if (numberText == null) {
@@ -174,6 +194,16 @@ public final class Formats {
                     if (number == 0) {
                         throw new AnyhowError("invalid JaCoCo line zero");
                     }
+                    ObjectNode counters = lineData.addObject();
+                    counters.put("line", number);
+                    for (String counter : List.of("ci", "mi", "cb", "mb")) {
+                        String value = XmlNodes.attribute(line, counter);
+                        if (value == null) {
+                            counters.putNull(counter);
+                        } else {
+                            counters.put(counter, new java.math.BigInteger(U64.toString(RustParse.u64(value))));
+                        }
+                    }
                     out.append("DA:")
                             .append(number)
                             .append(',')
@@ -183,7 +213,7 @@ public final class Formats {
                 out.append("end_of_record\n");
             }
         }
-        return out.toString();
+        return new JacocoReport(out.toString(), nativeCoverage);
     }
 
     public static List<TestResult> rustTests(String output) {

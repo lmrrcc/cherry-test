@@ -1,0 +1,7 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>
+<parent><groupId>com.cherrytest</groupId><artifactId>cherry-test-parent</artifactId><version>0.3.16</version></parent>
+<artifactId>cherry-test-provenance</artifactId>
+<properties><maven.compiler.release>21</maven.compiler.release></properties>
+<build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId>
+<configuration><archive><manifestEntries><Premain-Class>com.cherrytest.provenance.ProcessCapture</Premain-Class></manifestEntries></archive></configuration>
+</plugin></plugins></build></project>

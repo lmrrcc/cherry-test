@@ -449,7 +449,7 @@ fn coverage_for_line(
     new_no: Option<u32>,
     tag: DiffTag,
     line_cov: &BTreeMap<u32, bool>,
-    project_failed: bool,
+    _project_failed: bool,
 ) -> LineCov {
     if tag == DiffTag::Del {
         return LineCov::Na;
@@ -459,7 +459,6 @@ fn coverage_for_line(
     };
     match line_cov.get(&no) {
         Some(true) => LineCov::Covered,
-        Some(false) if project_failed => LineCov::Fail,
         Some(false) => LineCov::Uncovered,
         None => LineCov::Na,
     }
@@ -577,7 +576,7 @@ diff --git a/src/lib.rs b/src/lib.rs
     }
 
     #[test]
-    fn build_file_diff_section_counts_fail_lines() {
+    fn package_failure_does_not_attribute_failure_to_uncovered_lines() {
         let diff = "\
 @@ -1,1 +1,3 @@
  fn main() {
@@ -589,7 +588,7 @@ diff --git a/src/lib.rs b/src/lib.rs
         cov.insert(2, false);
         cov.insert(3, false);
         let section = build_file_diff_section("src/lib.rs", diff, &cov, true);
-        assert_eq!(section.fail_lines, 2);
+        assert_eq!(section.fail_lines, 0);
         assert!(section.has_uncovered);
     }
 
@@ -703,11 +702,11 @@ diff --git a/src/lib.rs b/src/lib.rs
     }
 
     #[test]
-    fn uncovered_becomes_fail_when_project_failed() {
+    fn uncovered_stays_uncovered_when_package_failed() {
         let mut cov = BTreeMap::new();
         cov.insert(2, false);
         let line = coverage_for_line(Some(2), DiffTag::Add, &cov, true);
-        assert_eq!(line, LineCov::Fail);
+        assert_eq!(line, LineCov::Uncovered);
         let line = coverage_for_line(Some(2), DiffTag::Add, &cov, false);
         assert_eq!(line, LineCov::Uncovered);
     }

@@ -229,6 +229,12 @@ public final class Builtins {
     private static AdapterResponse jvm(MutableRequest mutable, String adapter) {
         AdapterRequest request = mutable.base;
         Path build = request.output().resolve("build");
+        String captureToken = java.util.UUID.randomUUID().toString();
+        Path captureDirectory = request.output().resolve("provenance");
+        if (request.coverage()) {
+            mutable.env.put("CHERRY_TEST_PROVENANCE_TOKEN", captureToken);
+            mutable.env.put("CHERRY_TEST_PROVENANCE_DIR", captureDirectory.toString());
+        }
         String task = switch (request.phase()) {
             case "unit" -> "test";
             case "integration" -> "integrationTest";
@@ -279,7 +285,12 @@ public final class Builtins {
                     continue;
                 }
                 Path lcov = request.output().resolve(result.coverage().size() + ".lcov");
-                write(lcov, Formats.jacoco(read(file), roots));
+                Formats.JacocoReport jacoco = Formats.jacocoReport(read(file), roots);
+                CoverageEvidence.enrich(jacoco.nativeCoverage(), captureDirectory, build, captureToken, request.root());
+                write(lcov, jacoco.lcov());
+                write(
+                        lcov.resolveSibling(lcov.getFileName() + ".native.json"),
+                        com.cherrytest.common.rustcompat.SerdeJsonWriter.pretty(jacoco.nativeCoverage()));
                 result.coverage().add(lcov);
             }
         }

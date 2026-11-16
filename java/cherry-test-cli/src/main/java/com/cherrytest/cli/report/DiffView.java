@@ -346,7 +346,7 @@ public final class DiffView {
         if (covered) {
             return LineCov.COVERED;
         }
-        return projectFailed ? LineCov.FAIL : LineCov.UNCOVERED;
+        return LineCov.UNCOVERED;
     }
 
     private static long[] parseHunkHeader(String line) {

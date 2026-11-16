@@ -94,3 +94,7 @@ The only normalisations are documented in `PARITY.md`: the run id inside recorde
 `docker compose port` calls that follow one `up` (the Rust CLI iterates a `HashMap`), and the shim directory in
 `PATH`.
 
+
+## Native IDE events
+
+The Java CLI optionally emits versioned JSONL events via `CHERRY_TEST_IDE_EVENTS`, alongside unchanged adapter protocol-v1 and LCOV interfaces. See [the native IDE reporting contract](../docs/native-ide-events.md) for lifecycle, precise JaCoCo sidecars, source-hash evidence, explicit unknown compilation identity, and the isolated two-test reproduction fixture.

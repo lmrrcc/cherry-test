@@ -103,6 +103,28 @@ class FormatsTest {
     }
 
     @Test
+    void jacoco_native_counters_preserve_partial_instructions_and_branches(@TempDir Path temp) throws IOException {
+        Files.writeString(temp.resolve("Price.java"), "class Price {}\n");
+        String xml = "<report><package name=\"\"><sourcefile name=\"Price.java\">"
+                + "<line nr=\"1\" ci=\"3\" mi=\"2\" cb=\"1\" mb=\"1\"/>"
+                + "<line nr=\"2\" ci=\"0\" mi=\"4\" cb=\"0\" mb=\"2\"/>"
+                + "<line nr=\"3\" ci=\"1\"/></sourcefile></package></report>";
+        Formats.JacocoReport report = Formats.jacocoReport(xml, List.of(temp));
+        assertThat(report.lcov()).contains("DA:1,1\nDA:2,0\nDA:3,1");
+        var lines = report.nativeCoverage().path("files").get(0).path("lines");
+        assertThat(lines.get(0).path("ci").asLong()).isEqualTo(3);
+        assertThat(lines.get(0).path("mi").asLong()).isEqualTo(2);
+        assertThat(lines.get(0).path("cb").asLong()).isEqualTo(1);
+        assertThat(lines.get(0).path("mb").asLong()).isEqualTo(1);
+        assertThat(lines.get(2).path("mi").isNull()).isTrue();
+        assertThat(lines.get(2).path("cb").isNull()).isTrue();
+        assertThat(report.nativeCoverage().path("perTestAttribution").asBoolean())
+                .isFalse();
+        assertThatThrownBy(() -> Formats.jacocoReport(xml.replace("mi=\"2\"", "mi=\"-2\""), List.of(temp)))
+                .isInstanceOf(RuntimeException.class);
+    }
+
+    @Test
     void jacoco_resolves_source_and_preserves_uncovered_lines(@TempDir Path temp) throws IOException {
         Files.createDirectory(temp.resolve("prices"));
         Files.writeString(temp.resolve("prices/Rate.java"), "class Rate {}\n", StandardCharsets.UTF_8);

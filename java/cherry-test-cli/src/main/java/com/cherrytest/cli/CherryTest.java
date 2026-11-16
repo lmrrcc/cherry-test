@@ -106,80 +106,92 @@ public final class CherryTest {
         runDir.exportEnv();
         ProcessEnvironment.set("CHERRY_TEST_RUN_ID", runDir.id());
         ProcessEnvironment.set("CHERRY_TEST_COMPOSE_PROJECT", "cherry-test-" + runDir.id());
-        Runner.RunOptions options = new Runner.RunOptions(
-                workspace,
-                runDir,
-                plan.config(),
-                coverageRequested,
-                cli.quiet(),
-                cli.verbose() ? Runner.TestListing.AT_END_OF_RUN : Runner.TestListing.AFTER_EACH_PHASE,
-                cli.cargoTestArgs(),
-                cli.kinds(),
-                self);
-        RunOutcome outcome = Runner.runProjects(plan.projects(), options, plan.preflight());
-        Path mergedLcov = runDir.mergedLcov();
-        CoverageTotals coverageTotals = CoverageTotals.EMPTY;
-        boolean htmlEnabled = plan.config().defaults().htmlReport() && !cli.noHtml();
-        CoverageIgnore coverageIgnore = CoverageIgnore.load(workspace, plan.config());
-        if (coverageRequested) {
-            Coverage.mergeLcovFiles(outcome.lcovFiles(), mergedLcov);
-            coverageTotals = new CoverageTotals(
-                    phaseSummary(runDir, outcome.unitLcovFiles(), "unit", coverageIgnore),
-                    phaseSummary(runDir, outcome.integrationLcovFiles(), "integration", coverageIgnore),
-                    Coverage.summaryForLcov(mergedLcov, coverageIgnore));
-        }
-        if (!cli.quiet()) {
-            Terminal.println("==> report snapshot");
-        }
-        ReportSnapshot snapshot = ReportModel.buildReportSnapshot(
-                workspace,
-                runDir,
-                plan.projects(),
-                outcome,
-                plan.preflight(),
-                coverageTotals,
-                plan.config(),
-                coverageRequested,
-                !cli.noCrap());
-        boolean reportFailed = false;
-        if (htmlEnabled) {
-            if (!cli.quiet()) {
-                Terminal.println("==> html report");
-            }
+        try (NativeEvents events = NativeEvents.open(
+                workspace, runDir.id(), coverageRequested, Runner.phasesFor(cli.kinds()), runDir.reports())) {
             try {
-                HtmlReport.writeHtmlReport(snapshot);
-                if (HtmlReport.shouldOpenReport(cli.noOpen(), plan.config().defaults())) {
+                Runner.RunOptions options = new Runner.RunOptions(
+                        workspace,
+                        runDir,
+                        plan.config(),
+                        coverageRequested,
+                        cli.quiet(),
+                        cli.verbose() ? Runner.TestListing.AT_END_OF_RUN : Runner.TestListing.AFTER_EACH_PHASE,
+                        cli.cargoTestArgs(),
+                        cli.kinds(),
+                        self,
+                        events);
+                RunOutcome outcome = Runner.runProjects(plan.projects(), options, plan.preflight());
+                Path mergedLcov = runDir.mergedLcov();
+                CoverageTotals coverageTotals = CoverageTotals.EMPTY;
+                boolean htmlEnabled = plan.config().defaults().htmlReport() && !cli.noHtml();
+                CoverageIgnore coverageIgnore = CoverageIgnore.load(workspace, plan.config());
+                if (coverageRequested) {
+                    Coverage.mergeLcovFiles(outcome.lcovFiles(), mergedLcov);
+                    coverageTotals = new CoverageTotals(
+                            phaseSummary(runDir, outcome.unitLcovFiles(), "unit", coverageIgnore),
+                            phaseSummary(runDir, outcome.integrationLcovFiles(), "integration", coverageIgnore),
+                            Coverage.summaryForLcov(mergedLcov, coverageIgnore));
+                }
+                if (!cli.quiet()) {
+                    Terminal.println("==> report snapshot");
+                }
+                ReportSnapshot snapshot = ReportModel.buildReportSnapshot(
+                        workspace,
+                        runDir,
+                        plan.projects(),
+                        outcome,
+                        plan.preflight(),
+                        coverageTotals,
+                        plan.config(),
+                        coverageRequested,
+                        !cli.noCrap());
+                boolean reportFailed = false;
+                if (htmlEnabled) {
+                    if (!cli.quiet()) {
+                        Terminal.println("==> html report");
+                    }
                     try {
-                        HtmlReport.openHtmlReport(snapshot.reportPath());
+                        HtmlReport.writeHtmlReport(snapshot);
+                        if (HtmlReport.shouldOpenReport(
+                                cli.noOpen(), plan.config().defaults())) {
+                            try {
+                                HtmlReport.openHtmlReport(snapshot.reportPath());
+                            } catch (RuntimeException error) {
+                                if (!cli.quiet()) {
+                                    Terminal.eprintln(
+                                            "warning: could not open html report: " + AnyhowError.alternate(error));
+                                }
+                            }
+                        }
                     } catch (RuntimeException error) {
+                        reportFailed = true;
                         if (!cli.quiet()) {
-                            Terminal.eprintln("warning: could not open html report: " + AnyhowError.alternate(error));
+                            Terminal.eprintln("warning: html report failed: " + AnyhowError.alternate(error));
                         }
                     }
                 }
-            } catch (RuntimeException error) {
-                reportFailed = true;
-                if (!cli.quiet()) {
-                    Terminal.eprintln("warning: html report failed: " + AnyhowError.alternate(error));
+                try {
+                    runDir.updateLatestSymlink(
+                            workspace, plan.config().defaults().runsBase());
+                } catch (RuntimeException error) {
+                    if (!cli.quiet()) {
+                        Terminal.eprintln("warning: latest symlink failed: " + AnyhowError.alternate(error));
+                    }
                 }
+                ReportOutput.printAggregateReport(snapshot, !cli.quiet(), cli.verbose() && !cli.quiet());
+                if (outcome.ranIntegration()) {
+                    try {
+                        Workspace.teardownScopes();
+                    } catch (RuntimeException teardownIgnoredLikeRust) {
+                        return events.complete(outcome.failed() || reportFailed ? 1 : 0);
+                    }
+                }
+                return events.complete(outcome.failed() || reportFailed ? 1 : 0);
+            } catch (RuntimeException error) {
+                events.failed(AnyhowError.alternate(error));
+                throw error;
             }
         }
-        try {
-            runDir.updateLatestSymlink(workspace, plan.config().defaults().runsBase());
-        } catch (RuntimeException error) {
-            if (!cli.quiet()) {
-                Terminal.eprintln("warning: latest symlink failed: " + AnyhowError.alternate(error));
-            }
-        }
-        ReportOutput.printAggregateReport(snapshot, !cli.quiet(), cli.verbose() && !cli.quiet());
-        if (outcome.ranIntegration()) {
-            try {
-                Workspace.teardownScopes();
-            } catch (RuntimeException teardownIgnoredLikeRust) {
-                return outcome.failed() || reportFailed ? 1 : 0;
-            }
-        }
-        return outcome.failed() || reportFailed ? 1 : 0;
     }
 
     private static @Nullable CoverageSummary phaseSummary(

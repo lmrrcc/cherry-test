@@ -24,6 +24,7 @@
     <module>cherry-test-core</module>
     <module>cherry-test-junit</module>
     <module>cherry-test-processor</module>
+    <module>cherry-test-provenance</module>
     <module>cherry-test-cli</module>
     <module>cherry-test-maven-plugin</module>
     <module>parity</module>

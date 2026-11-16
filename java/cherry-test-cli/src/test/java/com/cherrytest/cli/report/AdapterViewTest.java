@@ -90,8 +90,10 @@ class AdapterViewTest {
                 new AdapterView.CoveredFile(file.relative(), file.source(), hits(Map.of(2L, 4L, 3L, 0L)), true);
         String failedHtml = AdapterView.renderCoverageSnippets(failed, "unit", JumpIndex.empty());
         assertThat(failedHtml)
-                .contains("class=\"row ctx uncovered fail-line\"")
-                .contains("aria-label=\"failed line\">!</button>");
+                .contains("data-phase-outcome=\"failed\"")
+                .contains("class=\"row ctx uncovered\"")
+                .doesNotContain("fail-line")
+                .doesNotContain("aria-label=\"failed line\"");
     }
 
     @Test
