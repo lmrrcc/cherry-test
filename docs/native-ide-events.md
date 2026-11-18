@@ -110,3 +110,27 @@ A merged proof keeps `collectionId` as its own UUID and lists contributing UUIDs
 An individual collection may have `status: unknown, inputIdentityVerified: true` when compiler/source/process inputs and counters match but a class has no execution record in that collection. This does **not** certify current coverage on its own. A union can certify it only if the merged probes contain every required matching class identity. Missing captures, changed sources/classes, inconsistent artifacts, foreign sessions and incomplete runs never become current through this mechanism.
 
 Qualification included real mini Java/Kotlin services, shop Java's three instrumented JVMs, Rust shop, and JUG's isolated Spring/Quarkus/browser suites. Unsupported compiler provenance remains explicitly unknown. Report aggregation can group HTTP observations and collapse test names differently from the native execution inventory; the event stream preserves each package/phase execution instead of inventing line associations from report totals.
+
+## Native feedback extensions (2026-11-18)
+
+Schema version remains 1. `CHERRY_TEST_IDE_CAPABILITIES` negotiates comma-separated `test-events-v1`, `selectors-v1` and `repositories-v1`; consumers that do not request test events receive only the original run/phase event kinds.
+
+`run.started.capabilities` describes available behavior. `testProgressScope` explicitly distinguishes the Cherry JUnit extension lifecycle from phase-only adapters. New `@CherryTest` runs emit actual JUnit `BeforeEachCallback` / `TestWatcher` observations through a per-phase file channel. The CLI forwards `test.started` and `test.completed` while the adapter runs; observation time and forwarding time are separate. Other adapters do not invent a pending test inventory. The final adapter report remains authoritative. Per-test progress is execution information, never production-line attribution. Install the updated `cherry-test-junit` artifact for these callbacks; an older project dependency continues to supply final results only.
+
+`repositories:[{id,root,worktree}]` includes configured module repositories, including sibling repositories outside the configuration directory. Identity includes the worktree path, not only a commit hash. Phase objects carry `moduleRoot` and `repositoryId`. Source-before/after manifests capture the configuration workspace and explicitly configured source modules. Coverage evidence permits those module source/class roots while report artifacts remain in the owned run directory. Consumers must only trust external roots from a live launched configuration or a validated execution receipt, not from arbitrary imported JSON.
+
+Each final test may contain `selector:{kind,value,phaseKey,runtimeId,adapterId,manifest,exact,reason}`. Exact rerun is currently supported for unambiguous plain Maven JUnit method names and single Cargo test names. Parameterized/dynamic/display-name Java invocations, ordered or shared-instance JUnit classes, custom commands and unsupported adapters are explicitly inexact. They remain eligible for an explicit broader configured-suite rerun.
+
+The optional `CHERRY_TEST_IDE_SELECTION` environment variable names a UTF-8 JSON file:
+
+```json
+{"schemaVersion":1,"selectors":[{"kind":"junit-method","value":"demo.PriceTest::discount","phaseKey":"<recorded key>","runtimeId":"maven","adapterId":"maven","manifest":"<actual pom path>","exact":true,"reason":""}]}
+```
+
+Selection is limited to 1000 entries and 1 MiB. Before starting tests, the CLI revalidates every identity against the current plan and creates a narrowed plan. Maven supports several exact methods in a phase; Cargo currently accepts one exact name per phase. The acknowledged `run.started.selectionSHA256` hashes the exact request bytes only after validation and application. An older CLI that ignores this environment variable emits no acknowledgement and must not be presented as an exact rerun. The actual reported inventory must match selected names and multiplicity; missing, extra or broadened results produce an infrastructure failure. Coverage remains enabled if the configured phase supplies it, with the narrower scope retained.
+
+The command line and standalone HTML reporting interfaces remain available. These extensions do not change Git or test-to-line attribution semantics. Unknown/missing instrumentation remains unknown.
+
+The lifecycle callback also supplies a reflection-proven declared class/method identity and exact report-name aliases (plain name and declared parameter signature). Only those observed aliases are reconciled to a canonical native test name. `displayName` retains the original XML name; ordinary adapter/HTML reports are not rewritten. This avoids guessing that every parenthesized or decorated test label is a Java method. Ambiguous aliases are not promoted to exact declarations. The runner supplies `CHERRY_TEST_PACKAGE` from the actual configured job.
+
+Full modified Java reactor qualification on 2026-11-18: 425 tests, no failures/errors, two explicitly disabled Docker smoke controls. Actual cross-repository and selected-run validation is retained with the TurboJ consumer evidence. External-source coverage normalization and probe unions are confined to the configuration workspace plus explicitly configured canonical module roots, including symlink checks.

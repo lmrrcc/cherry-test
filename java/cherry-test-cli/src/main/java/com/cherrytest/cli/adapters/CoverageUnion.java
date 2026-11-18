@@ -16,7 +16,14 @@ public final class CoverageUnion {
     private record Input(JsonNode file, JsonNode executions) {}
 
     public static ObjectNode merge(Path workspace, List<Path> reports) throws IOException {
+        return merge(workspace, reports, List.of(workspace));
+    }
+
+    public static ObjectNode merge(Path workspace, List<Path> reports, List<Path> sourceRoots) throws IOException {
         Path root = workspace.toRealPath();
+        List<Path> trusted = new ArrayList<>();
+        trusted.add(root);
+        for (Path sourceRoot : sourceRoots) trusted.add(sourceRoot.toRealPath());
         var result = JsonNodeFactory.instance.objectNode();
         result.put("schemaVersion", 1);
         result.put("format", "jacoco-lines-v1");
@@ -46,13 +53,13 @@ public final class CoverageUnion {
         }
         for (var entry : sources.entrySet()) {
             if (entry.getValue().size() < 2) continue;
-            ObjectNode merged = mergeSource(root, entry.getKey(), entry.getValue());
+            ObjectNode merged = mergeSource(trusted, entry.getKey(), entry.getValue());
             files.add(merged);
         }
         return result;
     }
 
-    private static ObjectNode mergeSource(Path root, String source, List<Input> inputs) throws IOException {
+    private static ObjectNode mergeSource(List<Path> root, String source, List<Input> inputs) throws IOException {
         var file = JsonNodeFactory.instance.objectNode();
         file.put("source", source);
         var proof = file.putObject("provenance");
@@ -164,14 +171,19 @@ public final class CoverageUnion {
             throw new IOException("Conflicting coverage artifact identity");
     }
 
-    private static byte[] checked(Path root, Map.Entry<Path, String> artifact) throws IOException {
+    private static byte[] checked(List<Path> root, Map.Entry<Path, String> artifact) throws IOException {
         byte[] data = bytes(root, artifact.getKey());
         if (!hash(data).equals(artifact.getValue())) throw new IOException("Coverage union artifact changed");
         return data;
     }
 
     private static byte[] bytes(Path root, Path path) throws IOException {
-        if (!path.toRealPath().startsWith(root) || Files.size(path) > 64L * 1024 * 1024)
+        return bytes(List.of(root), path);
+    }
+
+    private static byte[] bytes(List<Path> roots, Path path) throws IOException {
+        Path canonical = path.toRealPath();
+        if (roots.stream().noneMatch(canonical::startsWith) || Files.size(path) > 64L * 1024 * 1024)
             throw new IOException("Invalid coverage union path/size");
         return Files.readAllBytes(path);
     }

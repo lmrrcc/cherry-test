@@ -56,11 +56,19 @@ public final class NativeEvents implements AutoCloseable {
     private final String runId;
     private final long started = System.nanoTime();
     private final Snapshot before;
+    private final List<Path> sourceRoots;
+    private final Set<String> capabilities;
+    private final @Nullable NativeSelection selection;
+    private @Nullable ObjectNode starting;
     private final @Nullable Path reportDirectory;
     private long sequence;
     private boolean finished;
     private final List<Path> coverageInputs = new java.util.ArrayList<>();
     private boolean collectionsComplete = true;
+    private final Map<String, String> progressIds = new java.util.HashMap<>();
+    private final Map<String, String> declaredNames = new java.util.HashMap<>();
+    private final Map<String, String> reportedNames = new java.util.HashMap<>();
+    private final Set<String> ambiguousProgressNames = new java.util.HashSet<>();
 
     private record Snapshot(SortedMap<String, String> hashes, List<String> errors) {}
 
@@ -70,11 +78,19 @@ public final class NativeEvents implements AutoCloseable {
             String runId,
             @Nullable Boolean coverageEnabled,
             List<String> scope,
-            @Nullable Path reportDirectory) {
+            @Nullable Path reportDirectory,
+            List<Path> modules) {
         this.writer = writer;
         this.workspace = workspace.toAbsolutePath().normalize();
         this.runId = runId;
         this.reportDirectory = reportDirectory;
+        sourceRoots = java.util.stream.Stream.concat(java.util.stream.Stream.of(this.workspace), modules.stream())
+                .map(path -> path.toAbsolutePath().normalize())
+                .distinct()
+                .toList();
+        String requested = ProcessEnvironment.get("CHERRY_TEST_IDE_CAPABILITIES");
+        capabilities = requested == null ? Set.of() : new java.util.HashSet<>(List.of(requested.split(",")));
+        selection = NativeSelection.load();
         before = writer == null ? new Snapshot(new TreeMap<>(), List.of()) : snapshot();
         if (writer != null) {
             ObjectNode node = event("run.started");
@@ -94,37 +110,65 @@ public final class NativeEvents implements AutoCloseable {
                     break;
                 }
             }
+            ObjectNode supported = node.putObject("capabilities");
+            supported.put("testProgress", capabilities.contains("test-events-v1"));
+            supported.put(
+                    "testProgressScope", "Cherry JUnit extension lifecycle; other adapters report phase progress only");
+            supported.put("exactSelectors", true);
+            if (capabilities.contains("repositories-v1")) {
+                ArrayNode repositories = node.putArray("repositories");
+                sourceRoots.stream()
+                        .map(NativeEvents::repositoryRoot)
+                        .distinct()
+                        .forEach(root -> {
+                            ObjectNode repository = repositories.addObject();
+                            repository.put("id", hashText(root.toString()));
+                            repository.put("root", root.toString());
+                            repository.put("worktree", root.toString());
+                        });
+            }
             node.put("compiledIdentity", "unknown");
             node.put("perTestAttribution", false);
             putSnapshot(node, "sourceBefore", before);
-            emit(node);
+            starting = node;
         }
     }
 
     public static NativeEvents open(
             Path workspace, String runId, boolean coverageEnabled, List<String> scope, Path reportDirectory) {
+        return open(workspace, runId, coverageEnabled, scope, reportDirectory, List.of());
+    }
+
+    public static NativeEvents open(
+            Path workspace,
+            String runId,
+            boolean coverageEnabled,
+            List<String> scope,
+            Path reportDirectory,
+            List<Path> modules) {
         String configured = ProcessEnvironment.get("CHERRY_TEST_IDE_EVENTS");
         if (configured == null || configured.isBlank()) {
-            return new NativeEvents(null, workspace, runId, coverageEnabled, scope, reportDirectory);
+            return new NativeEvents(null, workspace, runId, coverageEnabled, scope, reportDirectory, modules);
         }
         Path output = Path.of(configured);
         if (!output.isAbsolute()) {
             output = workspace.resolve(output);
         }
-        return openAt(workspace, runId, output, coverageEnabled, scope, reportDirectory);
+        return openAt(workspace, runId, output, coverageEnabled, scope, reportDirectory, modules);
     }
 
     static NativeEvents openAt(Path workspace, String runId, Path output) {
-        return openAt(workspace, runId, output, null, List.of(), null);
+        return openAt(workspace, runId, output, null, List.of(), null, List.of());
     }
 
-    private static NativeEvents openAt(
+    static NativeEvents openAt(
             Path workspace,
             String runId,
             Path output,
             @Nullable Boolean coverageEnabled,
             List<String> scope,
-            @Nullable Path reportDirectory) {
+            @Nullable Path reportDirectory,
+            List<Path> modules) {
         try {
             Path parent = output.toAbsolutePath().getParent();
             if (parent != null) {
@@ -137,16 +181,114 @@ public final class NativeEvents implements AutoCloseable {
                     runId,
                     coverageEnabled,
                     scope,
-                    reportDirectory);
+                    reportDirectory,
+                    modules);
         } catch (IOException error) {
             throw new AnyhowError("open native events: " + error.getMessage());
         }
+    }
+
+    public synchronized Plan preparePlan(Plan plan) {
+        Plan selected = selection == null ? plan : selection.apply(plan);
+        ObjectNode node = starting;
+        if (node != null && selection != null) node.put("selectionSHA256", selection.sha256());
+        start();
+        return selected;
+    }
+
+    public void validateSelection(AdapterRequest request, AdapterResponse response) {
+        if (selection != null) selection.validateResponse(request, normalizedResponse(request, response));
+    }
+
+    private AdapterResponse normalizedResponse(AdapterRequest request, AdapterResponse response) {
+        AdapterResponse normalized = response.copy();
+        for (int index = 0; index < normalized.tests().size(); index++) {
+            var test = normalized.tests().get(index);
+            String key = identity(request) + "\n" + test.name();
+            String declaration = ambiguousProgressNames.contains(key) ? null : declaredNames.get(key);
+            if (declaration != null && !declaration.equals(test.name())) {
+                reportedNames.put(identity(request) + "\n" + declaration, test.name());
+                normalized
+                        .tests()
+                        .set(
+                                index,
+                                new com.cherrytest.common.adapter.TestResult(
+                                        declaration,
+                                        test.status(),
+                                        test.durationMs(),
+                                        test.message(),
+                                        test.source(),
+                                        test.line(),
+                                        test.attachments(),
+                                        test.isolation()));
+            }
+        }
+        return normalized;
+    }
+
+    private void start() {
+        ObjectNode node = starting;
+        if (node != null) {
+            starting = null;
+            emit(node);
+        }
+    }
+
+    boolean testProgressEnabled() {
+        return writer != null && capabilities.contains("test-events-v1");
+    }
+
+    public synchronized void testProgress(AdapterRequest request, String adapter, JsonNode observation) {
+        if (!testProgressEnabled() || observation.path("schemaVersion").asInt() != 1) return;
+        String type = observation.path("event").asString();
+        if (!type.equals("test.started") && !type.equals("test.completed")) return;
+        String name = observation.path("name").asString();
+        if (name.isBlank() || observation.path("processId").asLong() <= 0) return;
+        String status = observation.path("status").asString();
+        if (!Set.of("pending", "passed", "failed", "skipped", "aborted").contains(status)) return;
+        start();
+        ObjectNode node = phaseEvent(type, request, adapter, adapter);
+        ObjectNode test = node.putObject("test");
+        String id = hashText(identity(request) + "\n" + name + "\n1");
+        test.put("id", id);
+        java.util.ArrayList<String> aliases = new java.util.ArrayList<>();
+        aliases.add(name);
+        for (JsonNode alias : observation.path("reportedNameAliases"))
+            if (alias.isString()) aliases.add(alias.asString());
+        for (String alias : aliases) {
+            String key = identity(request) + "\n" + alias;
+            String declared = observation.path("declaredName").asString(name);
+            if (declared.matches(
+                    "[\\p{javaJavaIdentifierStart}][\\p{javaJavaIdentifierPart}.$]*::[\\p{javaJavaIdentifierStart}][\\p{javaJavaIdentifierPart}]*"))
+                declaredNames.putIfAbsent(key, declared);
+            String previous = progressIds.putIfAbsent(key, id);
+            if (previous != null && !previous.equals(id)) ambiguousProgressNames.add(key);
+        }
+        String declaration = observation.path("declaredName").asString(name);
+        if (!declaration.matches(
+                "[\\p{javaJavaIdentifierStart}][\\p{javaJavaIdentifierPart}.$]*::[\\p{javaJavaIdentifierStart}][\\p{javaJavaIdentifierPart}]*"))
+            declaration = name;
+        test.put("name", declaration);
+        test.put("displayName", name);
+        test.put("status", status);
+        test.put("durationMs", observation.path("durationMs").asLong());
+        test.put("message", observation.path("message").asString(""));
+        test.put("locationRole", "test-source-or-reported-failure");
+        test.put("processId", observation.path("processId").asLong());
+        test.put("invocationId", observation.path("invocationId").asString());
+        node.put("observedTimestamp", observation.path("timestamp").asString());
+        emit(node);
+    }
+
+    public synchronized void progressUnavailable(AdapterRequest request, String adapter) {
+        collectionsComplete = false;
     }
 
     public synchronized void phaseStarted(AdapterRequest request, String adapter, String runtime) {
         if (writer == null) {
             return;
         }
+        start();
         ObjectNode node = phaseEvent("phase.started", request, adapter, runtime);
         node.put("coverageRequested", request.coverage());
         node.put("execution", request.execution().wireName());
@@ -162,6 +304,7 @@ public final class NativeEvents implements AutoCloseable {
         if (writer == null) {
             return;
         }
+        start();
         ObjectNode node = phaseEvent("phase.completed", request, adapter, runtime);
         collectionsComplete &= adapterCompleted && !ProcessRunner.cancelled();
         node.put("success", response.success());
@@ -184,21 +327,41 @@ public final class NativeEvents implements AutoCloseable {
         node.put("coverageComplete", "unknown");
         node.put("compiledIdentity", "unknown");
         node.put("perTestAttribution", false);
-        ObjectNode responseValue = AdapterJson.responseValue(response);
+        AdapterResponse nativeResponse = normalizedResponse(request, response);
+        ObjectNode responseValue = AdapterJson.responseValue(nativeResponse);
         node.set("diagnostics", responseValue.get("diagnostics"));
         ArrayNode tests = node.putArray("tests");
+        Map<String, Integer> totalNames = new TreeMap<>();
+        nativeResponse.tests().forEach(test -> totalNames.merge(test.name(), 1, Integer::sum));
         Map<String, Integer> occurrences = new TreeMap<>();
         for (JsonNode test : responseValue.path("tests")) {
             ObjectNode value = (ObjectNode) test.deepCopy();
             String name = test.path("name").asString();
             int occurrence = occurrences.merge(name, 1, Integer::sum);
-            value.put("id", hashText(identity(request) + "\n" + name + "\n" + occurrence));
+            String key = identity(request) + "\n" + name;
+            String observedId = totalNames.getOrDefault(name, 0) == 1 && !ambiguousProgressNames.contains(key)
+                    ? progressIds.get(key)
+                    : null;
+            value.put(
+                    "id",
+                    observedId == null ? hashText(identity(request) + "\n" + name + "\n" + occurrence) : observedId);
             value.set("durationMs", value.remove("duration_ms"));
             String source = test.path("source").isString() ? test.path("source").asString() : null;
             if (source != null) {
                 value.put("source", sourcePath(Path.of(source)));
             }
+            String reported = reportedNames.get(identity(request) + "\n" + name);
+            if (reported != null) value.put("displayName", reported);
             value.put("locationRole", "test-source-or-reported-failure");
+            if (capabilities.contains("selectors-v1")) {
+                var actual = nativeResponse.tests().stream()
+                        .filter(result -> result.name().equals(name))
+                        .findFirst()
+                        .orElseThrow();
+                value.set(
+                        "selector",
+                        NativeSelection.selector(request, adapter, actual, totalNames.getOrDefault(name, 0)));
+            }
             tests.add(value);
         }
         ArrayNode coverage = node.putArray("coverage");
@@ -240,6 +403,7 @@ public final class NativeEvents implements AutoCloseable {
         if (writer == null || finished) {
             return;
         }
+        start();
         Snapshot after = snapshot();
         ObjectNode node = event("run.completed");
         node.put("outcome", outcome);
@@ -247,7 +411,8 @@ public final class NativeEvents implements AutoCloseable {
         if (reports != null) {
             if (complete && collectionsComplete && coverageInputs.size() > 1) {
                 try {
-                    var merged = com.cherrytest.cli.adapters.CoverageUnion.merge(workspace, coverageInputs);
+                    var merged =
+                            com.cherrytest.cli.adapters.CoverageUnion.merge(workspace, coverageInputs, sourceRoots);
                     if (!merged.path("files").isEmpty()) {
                         Path artifact = reports.resolve("native-coverage-union.json");
                         Files.writeString(artifact, SerdeJsonWriter.pretty(merged));
@@ -288,13 +453,35 @@ public final class NativeEvents implements AutoCloseable {
         node.put("phaseId", request.phase());
         node.put("runtimeId", adapter);
         node.put("configuredPackageRuntime", runtime);
-        node.put("phaseKey", hashText(identity(request)));
+        node.put("phaseKey", phaseKey(request));
+        if (capabilities.contains("repositories-v1")) {
+            Path module = request.manifest().toAbsolutePath().normalize().getParent();
+            if (module == null) module = workspace;
+            node.put("moduleRoot", module.toString());
+            node.put("repositoryId", hashText(repositoryRoot(module).toString()));
+        }
         return node;
     }
 
-    private String identity(AdapterRequest request) {
-        return request.project() + "\n" + sourcePath(request.manifest()) + "\n" + request.packageName() + "\n"
-                + request.phase();
+    static String phaseKey(AdapterRequest request) {
+        return hashText(identity(request));
+    }
+
+    private static String identity(AdapterRequest request) {
+        Path root = request.root().toAbsolutePath().normalize();
+        Path manifest = request.manifest().toAbsolutePath().normalize();
+        String path = manifest.startsWith(root)
+                ? root.relativize(manifest).toString().replace('\\', '/')
+                : manifest.toString();
+        return request.project() + "\n" + path + "\n" + request.packageName() + "\n" + request.phase();
+    }
+
+    private static Path repositoryRoot(Path module) {
+        Path normalized = module.toAbsolutePath().normalize();
+        for (Path candidate = normalized; candidate != null; candidate = candidate.getParent()) {
+            if (Files.exists(candidate.resolve(".git"))) return candidate;
+        }
+        return normalized;
     }
 
     private ObjectNode event(String type) {
@@ -341,43 +528,47 @@ public final class NativeEvents implements AutoCloseable {
     private Snapshot snapshot() {
         TreeMap<String, String> hashes = new TreeMap<>();
         java.util.ArrayList<String> errors = new java.util.ArrayList<>();
-        try {
-            Files.walkFileTree(workspace, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) {
-                    Path name = directory.getFileName();
-                    return !directory.equals(workspace) && name != null && EXCLUDED.contains(name.toString())
-                            ? FileVisitResult.SKIP_SUBTREE
-                            : FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
-                    Path name = file.getFileName();
-                    String filename = name == null ? "" : name.toString();
-                    int dot = filename.lastIndexOf('.');
-                    if (attributes.isRegularFile() && dot >= 0 && EXTENSIONS.contains(filename.substring(dot + 1))) {
-                        try {
-                            if (attributes.size() > MAX_SOURCE_BYTES || hashes.size() >= 200_000) {
-                                errors.add("source capture limit: " + sourcePath(file));
-                            } else {
-                                hashes.put(sourcePath(file), hashFile(file));
-                            }
-                        } catch (IOException error) {
-                            errors.add(sourcePath(file) + ": " + error.getMessage());
-                        }
+        for (Path sourceRoot : sourceRoots) {
+            try {
+                Files.walkFileTree(sourceRoot, new SimpleFileVisitor<>() {
+                    @Override
+                    public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) {
+                        Path name = directory.getFileName();
+                        return !directory.equals(sourceRoot) && name != null && EXCLUDED.contains(name.toString())
+                                ? FileVisitResult.SKIP_SUBTREE
+                                : FileVisitResult.CONTINUE;
                     }
-                    return FileVisitResult.CONTINUE;
-                }
 
-                @Override
-                public FileVisitResult visitFileFailed(Path file, IOException error) {
-                    errors.add(sourcePath(file) + ": " + error.getMessage());
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        } catch (IOException error) {
-            errors.add(error.getMessage() == null ? error.toString() : error.getMessage());
+                    @Override
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+                        Path name = file.getFileName();
+                        String filename = name == null ? "" : name.toString();
+                        int dot = filename.lastIndexOf('.');
+                        if (attributes.isRegularFile()
+                                && dot >= 0
+                                && EXTENSIONS.contains(filename.substring(dot + 1))) {
+                            try {
+                                if (attributes.size() > MAX_SOURCE_BYTES || hashes.size() >= 200_000) {
+                                    errors.add("source capture limit: " + sourcePath(file));
+                                } else {
+                                    hashes.put(sourcePath(file), hashFile(file));
+                                }
+                            } catch (IOException error) {
+                                errors.add(sourcePath(file) + ": " + error.getMessage());
+                            }
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException error) {
+                        errors.add(sourcePath(file) + ": " + error.getMessage());
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (IOException error) {
+                errors.add(error.getMessage() == null ? error.toString() : error.getMessage());
+            }
         }
         return new Snapshot(hashes, List.copyOf(errors));
     }
@@ -395,7 +586,11 @@ public final class NativeEvents implements AutoCloseable {
     }
 
     private static String hashText(String text) {
-        return HexFormat.of().formatHex(digest().digest(text.getBytes(StandardCharsets.UTF_8)));
+        return hashBytes(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    static String hashBytes(byte[] bytes) {
+        return HexFormat.of().formatHex(digest().digest(bytes));
     }
 
     private static MessageDigest digest() {

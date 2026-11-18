@@ -213,7 +213,7 @@ public final class Builtins {
                 Path path = RustPath.canonicalize(
                         sourcePath(request, attachment.path().toString()));
                 if (!path.startsWith(RustPath.canonicalize(request.output()))) {
-                    if (!path.startsWith(RustPath.canonicalize(request.root()))) {
+                    if (!Adapters.sourceAllowed(request, path)) {
                         throw new AnyhowError("Playwright attachment escapes workspace");
                     }
                     createDirectories(imported);
@@ -297,7 +297,8 @@ public final class Builtins {
                 }
                 Path lcov = request.output().resolve(result.coverage().size() + ".lcov");
                 Formats.JacocoReport jacoco = Formats.jacocoReport(read(file), roots);
-                CoverageEvidence.enrich(jacoco.nativeCoverage(), captureDirectory, build, captureToken, request.root());
+                CoverageEvidence.enrich(
+                        jacoco.nativeCoverage(), captureDirectory, build, captureToken, Adapters.sourceRoots(request));
                 write(lcov, jacoco.lcov());
                 write(
                         lcov.resolveSibling(lcov.getFileName() + ".native.json"),

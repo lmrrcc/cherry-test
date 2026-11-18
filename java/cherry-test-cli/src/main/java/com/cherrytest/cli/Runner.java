@@ -144,6 +144,8 @@ public final class Runner {
 
     public static RunOutcome runProjects(List<ProjectGroup> projects, RunOptions options, PreflightPlan preflight) {
         Plan plan = Plan.plan(projects, options, preflight);
+        NativeEvents nativeEvents = options.nativeEvents();
+        if (nativeEvents != null) plan = nativeEvents.preparePlan(plan);
         if (options.parallelism().workers() > 1) {
             plan = Durations.load(Durations.path(
                             options.workspaceRoot(), options.config().defaults().runsBase()))
@@ -274,6 +276,7 @@ public final class Runner {
         SortedMap<String, String> jobEnvironment = new TreeMap<>(RustOrdering.STRING_ORDER);
         jobEnvironment.putAll(environment);
         jobEnvironment.put("CHERRY_TEST_REPORT_DIR", reportDir.toString());
+        jobEnvironment.put("CHERRY_TEST_PACKAGE", planned.packageName());
         extendWithProvisioned(jobEnvironment, job);
         if (planned.coverage() && !adapter.equals("maven") && !adapter.equals("gradle")) {
             String collection = java.util.UUID.randomUUID().toString();
@@ -283,6 +286,11 @@ public final class Runner {
                     "CHERRY_TEST_PROVENANCE_DIR",
                     planned.output().resolve("provenance").toString());
         }
+
+        NativeEvents events = options.nativeEvents();
+        Path progress = planned.output().resolve("native-test-events");
+        if (events != null && events.testProgressEnabled())
+            jobEnvironment.put("CHERRY_TEST_IDE_TEST_EVENTS", progress.toString());
 
         AdapterRequest request = new AdapterRequest(
                 planned.protocol(),
@@ -301,14 +309,23 @@ public final class Runner {
                 planned.options(),
                 planned.container(),
                 planned.select());
-        NativeEvents events = options.nativeEvents();
         if (events != null) events.phaseStarted(request, adapter, adapter);
         String failure = setupError != null ? setupError : job.containerError();
         if (failure != null) {
             return new Invocation(request, AdapterResponse.failure(failure), failure);
         }
         try {
-            return new Invocation(request, invokeWithSidecars(adapter, request, jobEnvironment, options), null);
+            AdapterResponse response;
+            if (events != null && events.testProgressEnabled()) {
+                try (NativeProgress monitor = new NativeProgress(events, request, adapter, progress)) {
+                    monitor.start();
+                    response = invokeWithSidecars(adapter, request, jobEnvironment, options);
+                }
+            } else {
+                response = invokeWithSidecars(adapter, request, jobEnvironment, options);
+            }
+            if (events != null) events.validateSelection(request, response);
+            return new Invocation(request, response, null);
         } catch (RuntimeException error) {
             String message = AnyhowError.alternate(error);
             return new Invocation(request, AdapterResponse.failure(message), message);
@@ -452,7 +469,7 @@ public final class Runner {
         return new RunOutcome(results, lcovFiles, unit, integration, failed, timings);
     }
 
-    private static void normalizeCoverage(AdapterRequest request, List<Path> files, Path output) {
+    static void normalizeCoverage(AdapterRequest request, List<Path> files, Path output) {
         StringBuilder result = new StringBuilder();
         for (Path file : files) {
             String text;
@@ -465,10 +482,6 @@ public final class Runner {
             for (String line : RustText.lines(text)) {
                 if (line.startsWith("SF:")) {
                     Path path = Builtins.sourcePath(request, line.substring(3));
-                    if (!path.startsWith(request.root())) {
-                        include = false;
-                        continue;
-                    }
                     Path canonical;
                     try {
                         canonical = path.toRealPath();
@@ -476,10 +489,13 @@ public final class Runner {
                         throw AnyhowError.context(
                                 "coverage source " + path, new AnyhowError(RustIoError.display(exception)));
                     }
-                    include = canonical.startsWith(request.root());
-                    Path relative = RustPath.stripPrefix(canonical, request.root());
-                    if (relative != null) {
-                        result.append("SF:").append(relative).append('\n');
+                    include = Adapters.sourceAllowed(request, canonical);
+                    if (include) {
+                        Path relative = RustPath.stripPrefix(
+                                canonical, request.root().toAbsolutePath().normalize());
+                        result.append("SF:")
+                                .append(relative == null ? canonical : relative)
+                                .append('\n');
                     }
                 } else if (include) {
                     result.append(line).append('\n');

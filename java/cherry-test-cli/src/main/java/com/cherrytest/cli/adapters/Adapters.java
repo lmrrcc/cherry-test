@@ -215,8 +215,7 @@ public final class Adapters {
                 Path source = resolved != null
                         ? resolved
                         : Builtins.sourcePath(request, test.source().toString());
-                if (Files.exists(source)
-                        && !RustPath.canonicalize(source).startsWith(RustPath.canonicalize(request.root()))) {
+                if (Files.exists(source) && !sourceAllowed(request, source)) {
                     throw new AnyhowError("test source escapes workspace");
                 }
                 test = test.withSource(source);
@@ -288,6 +287,17 @@ public final class Adapters {
         if (active || sources == 0 || lines == 0) {
             throw new AnyhowError("coverage contains no complete measured source records");
         }
+    }
+
+    public static List<Path> sourceRoots(AdapterRequest request) {
+        Path root = RustPath.canonicalize(request.root());
+        Path parent = request.manifest().toAbsolutePath().normalize().getParent();
+        return parent == null ? List.of(root) : List.of(root, RustPath.canonicalize(parent));
+    }
+
+    public static boolean sourceAllowed(AdapterRequest request, Path source) {
+        Path canonical = RustPath.canonicalize(source);
+        return sourceRoots(request).stream().anyMatch(canonical::startsWith);
     }
 
     private static void confined(Path root, Path path) {

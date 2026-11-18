@@ -20,12 +20,41 @@ import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolver;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
-public final class CherryTestExtension implements ParameterResolver, InvocationInterceptor {
+public final class CherryTestExtension
+        implements ParameterResolver,
+                InvocationInterceptor,
+                org.junit.jupiter.api.extension.BeforeEachCallback,
+                org.junit.jupiter.api.extension.TestWatcher {
     static final String PACKAGE_PROPERTY = "cherrytest.package";
     static final String PACKAGE_VARIABLE = "CHERRY_TEST_PACKAGE";
     static final String PROVISIONER_VARIABLE = "CHERRY_TEST_PROVISIONER";
     private static final ExtensionContext.Namespace NAMESPACE =
             ExtensionContext.Namespace.create(CherryTestExtension.class);
+
+    @Override
+    public void beforeEach(ExtensionContext context) {
+        NativeTestProgress.started(context);
+    }
+
+    @Override
+    public void testSuccessful(ExtensionContext context) {
+        NativeTestProgress.completed(context, "passed", null);
+    }
+
+    @Override
+    public void testFailed(ExtensionContext context, @Nullable Throwable cause) {
+        NativeTestProgress.completed(context, "failed", cause);
+    }
+
+    @Override
+    public void testAborted(ExtensionContext context, @Nullable Throwable cause) {
+        NativeTestProgress.completed(context, "aborted", cause);
+    }
+
+    @Override
+    public void testDisabled(ExtensionContext context, java.util.Optional<String> reason) {
+        NativeTestProgress.completed(context, "skipped", null);
+    }
 
     @Override
     public boolean supportsParameter(ParameterContext parameterContext, ExtensionContext extensionContext) {

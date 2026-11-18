@@ -236,6 +236,20 @@ class CoverageEvidenceTest {
                 .anyMatch(l -> l.path("line").asInt() == 2
                         && l.path("cb").asInt() == 2
                         && l.path("mb").asInt() == 0));
+        Path configuration = Files.createDirectories(root.resolve("configuration"));
+        Path externalOne = Files.copy(one, configuration.resolve("one.native.json"));
+        Path externalTwo = Files.copy(two, configuration.resolve("two.native.json"));
+        assertThrows(IOException.class, () -> CoverageUnion.merge(configuration, List.of(externalOne, externalTwo)));
+        var externalUnion = CoverageUnion.merge(configuration, List.of(externalOne, externalTwo), List.of(root));
+        assertEquals(
+                "verified",
+                externalUnion
+                        .path("files")
+                        .get(0)
+                        .path("provenance")
+                        .path("status")
+                        .asString());
+        assertEquals(file.path("lines"), externalUnion.path("files").get(0).path("lines"));
         ((ObjectNode) second.path("files").get(0).path("provenance")).put("status", "unknown");
         ((ObjectNode) second.path("files").get(0).path("provenance")).put("inputIdentityVerified", false);
         Files.writeString(two, second.toString());

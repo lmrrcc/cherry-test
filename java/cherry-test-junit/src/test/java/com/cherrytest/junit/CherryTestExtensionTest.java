@@ -79,6 +79,54 @@ class CherryTestExtensionTest {
     }
 
     @Test
+    void native_progress_uses_actual_junit_lifecycle_and_failure_outcomes() throws Exception {
+        Path directory = workspace.resolve("native-events");
+        ProcessEnvironment.set("CHERRY_TEST_IDE_TEST_EVENTS", directory.toString());
+        try {
+            Events result = run();
+            assertThat(result.succeeded().count()).isEqualTo(1);
+            assertThat(result.failed().count()).isEqualTo(1);
+            List<JsonNode> events;
+            try (var paths = Files.list(directory)) {
+                events = paths.map(path -> {
+                            try {
+                                return JSON.readTree(Files.readString(path));
+                            } catch (IOException error) {
+                                throw new java.io.UncheckedIOException(error);
+                            }
+                        })
+                        .toList();
+            }
+            assertThat(events).hasSize(4);
+            assertThat(events.stream()
+                            .filter(event -> event.path("event").asString().equals("test.started")))
+                    .allMatch(event -> event.path("status").asString().equals("pending"));
+            var finished = events.stream()
+                    .filter(event -> event.path("event").asString().equals("test.completed"))
+                    .toList();
+            assertThat(finished)
+                    .extracting(event -> event.path("status").asString())
+                    .containsExactlyInAnyOrder("passed", "failed");
+            for (JsonNode end : finished) {
+                var start = events.stream()
+                        .filter(event -> event.path("event").asString().equals("test.started")
+                                && event.path("invocationId").equals(end.path("invocationId")))
+                        .findFirst()
+                        .orElseThrow();
+                assertThat(end.path("name")).isEqualTo(start.path("name"));
+                assertThat(end.path("processId").asLong())
+                        .isEqualTo(ProcessHandle.current().pid());
+                assertThat(end.path("durationMs").asLong()).isGreaterThanOrEqualTo(0);
+                assertThat(java.time.Instant.parse(end.path("timestamp").asString()))
+                        .isAfterOrEqualTo(
+                                java.time.Instant.parse(start.path("timestamp").asString()));
+            }
+        } finally {
+            ProcessEnvironment.remove("CHERRY_TEST_IDE_TEST_EVENTS");
+        }
+    }
+
+    @Test
     void runs_scoped_tests_with_an_injected_test_env() {
         Events events = run();
         assertThat(events.succeeded().count()).isEqualTo(1);

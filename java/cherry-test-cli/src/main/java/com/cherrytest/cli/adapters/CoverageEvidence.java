@@ -18,9 +18,15 @@ final class CoverageEvidence {
     private CoverageEvidence() {}
 
     static void enrich(ObjectNode report, Path captures, Path build, String token, Path root) {
+        enrich(report, captures, build, token, List.of(root));
+    }
+
+    static void enrich(ObjectNode report, Path captures, Path build, String token, List<Path> roots) {
         if (!Files.isDirectory(captures)) return;
         try {
-            verify(report, captures, build, token, root.toRealPath());
+            List<Path> realRoots = new ArrayList<>();
+            for (Path root : roots) realRoots.add(root.toRealPath());
+            verify(report, captures, build, token, realRoots);
         } catch (IOException | RuntimeException invalid) {
             for (JsonNode file : report.path("files")) {
                 ObjectNode proof = ((ObjectNode) file).putObject("provenance");
@@ -31,7 +37,7 @@ final class CoverageEvidence {
         }
     }
 
-    private static void verify(ObjectNode report, Path captures, Path build, String token, Path root)
+    private static void verify(ObjectNode report, Path captures, Path build, String token, List<Path> root)
             throws IOException {
         Map<String, Compiled> compiled = new TreeMap<>();
         Map<String, String> processes = new TreeMap<>();
@@ -238,8 +244,9 @@ final class CoverageEvidence {
         return result;
     }
 
-    private static byte[] bytes(Path path, Path root) throws IOException {
-        if (!path.toRealPath().startsWith(root) || Files.size(path) > MAX_BYTES)
+    private static byte[] bytes(Path path, List<Path> roots) throws IOException {
+        Path real = path.toRealPath();
+        if (roots.stream().noneMatch(real::startsWith) || Files.size(path) > MAX_BYTES)
             throw new IOException("Invalid capture artifact path or size");
         try (InputStream stream = Files.newInputStream(path)) {
             byte[] bytes = stream.readNBytes((int) MAX_BYTES + 1);

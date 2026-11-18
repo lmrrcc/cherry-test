@@ -122,7 +122,20 @@ public final class CherryTest {
         env.put("CHERRY_TEST_RUN_ID", runDir.id());
         env.put("CHERRY_TEST_COMPOSE_PROJECT", "cherry-test-" + runDir.id());
         try (NativeEvents events = NativeEvents.open(
-                workspace, runDir.id(), coverageRequested, Runner.phasesFor(cli.kinds()), runDir.reports())) {
+                workspace,
+                runDir.id(),
+                coverageRequested,
+                Runner.phasesFor(cli.kinds()),
+                runDir.reports(),
+                plan.projects().stream()
+                        .flatMap(project -> project.members().stream())
+                        .map(member -> workspace
+                                .resolve(member.manifestPath())
+                                .toAbsolutePath()
+                                .normalize()
+                                .getParent())
+                        .filter(java.util.Objects::nonNull)
+                        .toList())) {
             try {
                 Runner.RunOptions options = new Runner.RunOptions(
                         workspace,
