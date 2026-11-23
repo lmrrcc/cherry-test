@@ -27,7 +27,7 @@ import tools.jackson.databind.JsonNode;
 
 public final class Builtins {
     public static final List<String> NAMES =
-            List.of("cargo", "vitest", "maven", "gradle", "cmake", "playwright", "command");
+            List.of("cargo", "vitest", "maven", "gradle", "cmake", "playwright", "command", "pitest");
 
     private Builtins() {}
 
@@ -45,6 +45,7 @@ public final class Builtins {
             case "maven", "gradle" -> jvm(request, name);
             case "cmake" -> nativeBuild(request);
             case "command" -> command(request);
+            case "pitest" -> Pitest.run(request.snapshot());
             default -> throw new AnyhowError("unknown bundled adapter " + name);
         };
     }

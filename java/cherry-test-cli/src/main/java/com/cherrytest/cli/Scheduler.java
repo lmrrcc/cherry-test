@@ -1,6 +1,7 @@
 package com.cherrytest.cli;
 
 import com.cherrytest.cli.adapters.ProcessRunner;
+import com.cherrytest.cli.report.MutationReport;
 import com.cherrytest.common.adapter.ExecutionMode;
 import com.cherrytest.common.container.ContainerSpec;
 import com.cherrytest.common.process.CommandOutput;
@@ -231,7 +232,10 @@ public final class Scheduler {
             for (Plan.Job job : phase.jobs()) {
                 jobs.add(Map.entry(position++, job));
             }
-            if (merge && !stages.isEmpty()) {
+            if (merge
+                    && !stages.isEmpty()
+                    && !phase.phase().equals("mutation")
+                    && !stages.getLast().lastPhase().equals("mutation")) {
                 Stage last = stages.removeLast();
                 List<Map.Entry<Integer, Plan.Job>> merged = new ArrayList<>(last.jobs());
                 merged.addAll(jobs);
@@ -266,7 +270,8 @@ public final class Scheduler {
                     SortedMap<String, String> environment =
                             layers.jobEnv(state, job.key().phase(), job.key().project());
                     Runner.JobOutcome outcome = Runner.executeJob(job, environment, state.preflight, setup, options);
-                    options.runDir().mergeJobReport(Runner.jobReportDir(job.request()));
+                    if (!MutationReport.isPitest(job.request()))
+                        options.runDir().mergeJobReport(Runner.jobReportDir(job.request()));
                     finished.add(new Finished(entry.getKey(), outcome));
                 }
             } else {
@@ -282,7 +287,8 @@ public final class Scheduler {
                 stageFinished.sort(Comparator.comparingInt(Finished::order));
                 for (Finished done : stageFinished) {
                     for (Prepared item : prepared) {
-                        if (item.position() == done.order()) {
+                        if (item.position() == done.order()
+                                && !MutationReport.isPitest(item.job().request())) {
                             options.runDir()
                                     .mergeJobReport(
                                             Runner.jobReportDir(item.job().request()));

@@ -110,6 +110,8 @@ public final class HtmlReport {
                     .append(String.join(", ", counts))
                     .append("</a></p>");
         }
+        Path reports = snapshot.reportPath().getParent();
+        if (reports != null) body.append(MutationReport.index(reports));
         body.append(renderTestsSection(snapshot, jumps));
         body.append(renderProjectSections(snapshot, jumps));
         if (snapshot.crap().enabled()) {

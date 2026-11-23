@@ -49,7 +49,7 @@ public final class Adapters {
                 ObjectNode node = NODES.objectNode();
                 ArrayNode execution = node.putArray("execution");
                 execution.add("local");
-                execution.add("container");
+                if (!name.equals("pitest")) execution.add("container");
                 node.put("name", name);
                 ArrayNode operations = node.putArray("operations");
                 operations.add("describe");
@@ -68,6 +68,7 @@ public final class Adapters {
                 List<String> manifests = switch (name) {
                     case "cargo" -> List.of("Cargo.toml");
                     case "maven" -> List.of("pom.xml");
+                    case "pitest" -> List.of("pom.xml", "build.gradle", "build.gradle.kts");
                     case "gradle" -> List.of("build.gradle", "build.gradle.kts");
                     case "cmake" -> List.of("CMakeLists.txt");
                     default -> List.of("package.json");
@@ -241,7 +242,15 @@ public final class Adapters {
             }
             validateLcov(content);
         }
-        if (request.strict() && response.tests().isEmpty()) {
+        boolean mutation = request.phase().equals("mutation")
+                && "pitest"
+                        .equals(request.options()
+                                .getOrDefault("mutation_tool", NODES.nullNode())
+                                .asString());
+        if (mutation && (response.success() || Files.exists(request.output().resolve("mutation.json")))) {
+            Pitest.readReport(request.output().resolve("mutation.json"));
+        }
+        if (request.strict() && response.tests().isEmpty() && !mutation) {
             response.success(false);
             response.diagnostics().add("required phase produced zero tests");
         }

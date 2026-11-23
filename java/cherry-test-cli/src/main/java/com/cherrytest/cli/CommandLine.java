@@ -268,7 +268,7 @@ final class CommandLine {
                       --no-crap                Do not calculate cyclomatic complexity or report CRAP
                       --execution <EXECUTION>  [possible values: local, container]
                       --strict
-                      --kinds <KINDS>          Phases to run. mutation runs only when it is named here [possible values: unit, integration, functional, ui, visual, mutation]
+                      --kinds <KINDS>          Phases to run. Default runs include changed-source PIT for JVM packages [possible values: unit, integration, functional, ui, visual, mutation]
                       --jobs <N|auto>          Jobs to run at once, or auto for one per CPU (default: defaults.parallel.jobs, else 1)
                       --shard <I/N>            Run only shard I of N; packages are spread by recorded durations
                       --no-html

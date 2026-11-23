@@ -336,6 +336,12 @@ final class AdapterView {
             } catch (IOException exception) {
                 throw new AnyhowError(RustIoError.display(exception), null);
             }
+            if (MutationReport.isPitest(request) && Files.isRegularFile(directory.resolve("mutation.json"))) {
+                head.append(MutationReport.details(
+                        request,
+                        com.cherrytest.cli.adapters.Pitest.readReport(directory.resolve("mutation.json")),
+                        reports));
+            }
             for (String diagnostic : response.diagnostics()) {
                 head.append("<pre>").append(escape(diagnostic)).append("</pre>");
             }

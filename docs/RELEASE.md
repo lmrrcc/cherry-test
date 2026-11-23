@@ -1,61 +1,54 @@
 # Releases
 
-Git tags on `lmrrcc/test` update source only. **Homebrew and `lmrr-cc.pages.dev` binaries update only after the [lmrr.cc](https://github.com/lmrrcc/lmrr.cc) distribution pipeline runs.**
+The canonical Cherry Test repository is [lmrrcc/cherry-test](https://github.com/lmrrcc/cherry-test). In the maintainer checkout, the `cherry-release` remote points there; `origin` and `test-split` point to older repositories. Check the remote URL before publishing. Do not push a release to an old repository merely because its remote is named `origin`.
 
-Tagged releases (`v*`) trigger that pipeline via `repository_dispatch` when `LMRR_RELEASE_TOKEN` is configured.
+## Prepare and verify
 
-## Homebrew / lmrr-cc.pages.dev
-
-`brew install lmrr/cc/review-it` downloads pre-built tarballs from `https://lmrr-cc.pages.dev/releases/`, not from the git tag. After tagging `v0.3.7` on cherry-test, run a publish step or Homebrew stays on the last published version.
-
-**Install on another machine (after publish):**
+1. Update the Rust workspace version, its entries in `Cargo.lock`, the Java parent and module versions, and version strings shipped by the Java CLI. Keep Rust and Java on the same release version.
+2. Commit any sample changes in their own repositories and push those commits before committing updated submodule pointers in Cherry Test.
+3. Review the complete release diff and run the checks below. Record failures or unavailable checks in the release notes; a failed required check must be resolved before publication.
 
 ```bash
-curl -fsSL https://lmrr-cc.pages.dev/install/brew-tap.sh | bash
-brew install lmrr/cc/review-it
-review-it --version
+cargo fmt --all --check
+cargo test -p cherry-test -p cherry-test-core -p cherry-test-common -p cherry-test-macros
+cargo build -p cherry-test
+cargo audit
+(cd java && ./mvnw -B -ntp verify)
+cargo cherry-test --root app/mini --no-open
 ```
 
-**Publish review-it only (recommended for review-it version bumps):**
+The sample smoke requires initialized submodules, their installed dependencies, and Docker. Frontend changes also require the relevant package-manager audit. Changes to mutation execution require real Maven/Java and Gradle/Kotlin runs: verify that unchanged sources are excluded and that killed, surviving, and uncovered mutants appear separately from ordinary test counts.
 
-GitHub → **lmrrcc/lmrr.cc** → Actions → **Release tool** → Run workflow:
+## Publish the source release
 
-| Input | Example |
-|-------|---------|
-| tool_id | `review-it` |
-| version | `0.3.7` |
-| source_repo | `lmrrcc/test` |
-| source_ref | `v0.3.7` |
-
-Verify:
+Use a new immutable tag, such as `v0.3.17`, on the reviewed release commit. First check the canonical branch and existing tags, then push the branch without force and publish the tag. If the branch advanced, reconcile and rerun affected checks before publishing.
 
 ```bash
-curl -fsSL https://lmrr-cc.pages.dev/formulae/review-it.rb | head -5
-curl -fsSL https://lmrr-cc.pages.dev/releases/review-it/0.3.7/manifest.json
+git remote get-url cherry-release
+git ls-remote cherry-release refs/heads/main refs/tags/v0.3.17
+git push cherry-release main
+git tag -a v0.3.17 -m 'Cherry Test 0.3.17'
+git push cherry-release v0.3.17
+gh release create v0.3.17 --repo lmrrcc/cherry-test --verify-tag \
+  --title 'Cherry Test 0.3.17' --notes-file /path/to/release-notes.md
 ```
 
-Do not use **Release all tools** for a review-it-only bump unless cherry-test and skills share the same semver.
+Release notes should describe the changes, compatibility and default-behavior changes, validation performed, and any distribution limitations. A GitHub release provides source archives. It does not, by itself, provide prebuilt binaries or update Homebrew.
 
-## Maintainer setup
+Validated local builds can be attached to the GitHub release with `gh release upload`. Package Rust binaries with their target triple in the filename and provide SHA-256 checksums. The Java CLI shaded jar requires JDK 25. Verify each attached artifact's version; uploading artifacts to GitHub does not update the website or Homebrew.
 
-1. Create a GitHub PAT with `repo` scope on `lmrrcc/lmrr.cc` (or use `gh secret set LMRR_RELEASE_TOKEN --repo lmrrcc/test --body "$(gh auth token)"` when logged in as an owner).
-2. Add repository secret `LMRR_RELEASE_TOKEN` on `lmrrcc/test`.
-3. Tag and push:
+Install the tagged Rust release directly from the canonical source repository:
 
 ```bash
-git tag v0.3.7
-git push origin v0.3.7
+cargo install --git https://github.com/lmrrcc/cherry-test --tag v0.3.17 --locked --bins cherry-test
 ```
 
-The pipeline builds `cherry-test` and `review-it` for macOS and Linux, uploads binaries to Cloudflare R2, updates Homebrew formulae, and publishes library crates to the sparse registry at `https://lmrr.cc/cargo/`.
+For the Java edition, check out the tag and run `java/install.sh` with JDK 25 available. See the [Java build and installation instructions](../java/README.md).
 
-## Manual release
+## Binary distribution is a separate step
 
-Run workflows on `lmrrcc/lmrr.cc`:
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on `v*` tag pushes. Its only job sends a `cherry-test-release` repository-dispatch event to [lmrrcc/lmrr.cc](https://github.com/lmrrcc/lmrr.cc), using the `LMRR_RELEASE_TOKEN` repository secret. The payload identifies the version tag, source repository, and commit SHA. This workflow does not build binaries, create a GitHub release, or publish Java artifacts itself.
 
-- **Release all tools** — `workflow_dispatch` with version and `lmrrcc/test` as source (same version for every tool).
-- **Release tool** — single tool id from `tools/tools.yaml` (preferred for `review-it` only).
+As checked on 2026-11-23, the distribution repository exposed no GitHub Actions workflows. Do not assume that a successful dispatch updates `lmrr-cc.pages.dev`, Homebrew formulae, or the private Cargo registry. The distribution workflow and its credentials must be restored and its available inputs inspected before requesting a binary release. Do not use the older `review-it` release instructions for Cherry Test.
 
-## Library crates
-
-Consumers add [`.cargo/config.toml` from lmrr.cc](https://github.com/lmrrcc/lmrr.cc/blob/main/docs/example-cargo-config.toml) and depend on crates with `registry = "lmrr"`.
+After a distribution run becomes available, verify the resulting Cherry Test binary version, published checksums, and installation metadata before announcing binary availability. Report a source release and binary publication separately when only the source release has completed.

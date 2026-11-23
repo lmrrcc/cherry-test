@@ -79,7 +79,23 @@ pub fn run_projects(
         ))
         .estimate(&mut plan);
     }
-    let finished = crate::scheduler::run(&plan, projects, opts, preflight)?;
+    let mutation_position = plan
+        .phases
+        .iter()
+        .position(|phase| phase.phase == "mutation")
+        .unwrap_or(plan.phases.len());
+    let mutation = crate::plan::Plan {
+        phases: plan.phases.split_off(mutation_position),
+    };
+    let offset = plan.jobs().count();
+    let mut finished = crate::scheduler::run(&plan, projects, opts, preflight)?;
+    if !mutation.phases.is_empty() {
+        finished.extend(
+            crate::scheduler::run(&mutation, projects, opts, preflight)?
+                .into_iter()
+                .map(|(position, outcome)| (position + offset, outcome)),
+        );
+    }
     if let Err(error) = crate::isolation::run(&plan, projects, opts, preflight) {
         eprintln!("warning: failed-test isolation stopped: {error:#}");
     }
@@ -137,7 +153,14 @@ pub fn execute_job(
     let response = adapters::save(&request, response, &opts.run_dir.reports)?;
     if !opts.quiet {
         let _output = output_lock();
-        if opts.test_listing == TestListing::AfterEachPhase {
+        if crate::report::mutation::is_pitest(&request) {
+            if let Some(mutation) = adapters::pitest::read_report(&request.output)? {
+                println!("  {}", crate::report::mutation::summary(&mutation));
+            }
+        }
+        if opts.test_listing == TestListing::AfterEachPhase
+            && (!crate::report::mutation::is_pitest(&request) || !response.tests.is_empty())
+        {
             crate::report::print_phase_results(&response.tests);
         }
         if !response.success {
@@ -456,7 +479,7 @@ fn failure_summary(response: &AdapterResponse) -> String {
 
 pub(crate) fn phases_for(kinds: &[String]) -> Vec<&'static str> {
     let mut phases = vec!["unit", "integration", "functional", "ui", "visual"];
-    if kinds.iter().any(|kind| kind == "mutation") {
+    if kinds.is_empty() || kinds.iter().any(|kind| kind == "mutation") {
         phases.push("mutation");
     }
     phases
@@ -483,7 +506,13 @@ pub(crate) fn phase_adapter<'a>(
     if host_command_phase(phase) {
         return runner
             .and_then(|runner| runner.adapter.as_deref())
-            .unwrap_or("command");
+            .unwrap_or_else(|| {
+                if matches!(package.adapter.as_deref(), Some("maven" | "gradle")) {
+                    "pitest"
+                } else {
+                    "command"
+                }
+            });
     }
     runner
         .and_then(|runner| runner.adapter.as_deref())
@@ -559,21 +588,21 @@ mod tests {
     }
 
     #[test]
-    fn mutation_stays_out_of_a_default_run() {
-        assert!(!phases_for(&[]).contains(&"mutation"));
+    fn mutation_is_available_by_default_and_respects_explicit_kinds() {
+        assert!(phases_for(&[]).contains(&"mutation"));
         assert!(!phases_for(&["unit".into()]).contains(&"mutation"));
         assert!(phases_for(&["mutation".into()]).contains(&"mutation"));
         assert!(phases_for(&["unit".into(), "mutation".into()]).contains(&"mutation"));
     }
 
     #[test]
-    fn mutation_runs_a_local_command_and_skips_coverage() {
+    fn mutation_runs_pitest_for_jvm_packages_locally_and_skips_coverage() {
         let package = PackageConfig {
             adapter: Some("maven".into()),
             execution: Some(ExecutionMode::Container),
             ..Default::default()
         };
-        assert_eq!(phase_adapter("mutation", None, &package), "command");
+        assert_eq!(phase_adapter("mutation", None, &package), "pitest");
         assert_eq!(phase_adapter("unit", None, &package), "maven");
         let runner = ExternalRunner {
             adapter: Some("command".into()),

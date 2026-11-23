@@ -312,8 +312,10 @@ pub fn run(
                 let setup = setup_job(job, &mut state, &layers, opts);
                 let env = layers.job_env(&state, &job.key.phase, &job.key.project);
                 let outcome = execute_job(job, &env, &state.preflight, setup, opts)?;
-                opts.run_dir
-                    .merge_job_report(&job_report_dir(&job.request))?;
+                if !crate::report::mutation::is_pitest(&job.request) {
+                    opts.run_dir
+                        .merge_job_report(&job_report_dir(&job.request))?;
+                }
                 finished.push((*position, outcome));
             }
         } else {
@@ -333,8 +335,10 @@ pub fn run(
             stage_finished.sort_by_key(|(position, _)| *position);
             for (position, _) in &stage_finished {
                 if let Some(item) = prepared.iter().find(|item| item.position == *position) {
-                    opts.run_dir
-                        .merge_job_report(&job_report_dir(&item.job.request))?;
+                    if !crate::report::mutation::is_pitest(&item.job.request) {
+                        opts.run_dir
+                            .merge_job_report(&job_report_dir(&item.job.request))?;
+                    }
                 }
             }
             finished.extend(stage_finished);

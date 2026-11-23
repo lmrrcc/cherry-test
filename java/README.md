@@ -12,7 +12,7 @@ identical reports** for the same project and the same tool outputs.
 | `rustcompat` kit: Rust-exact number formatting, text semantics, string/path ordering, serde_json bytes | done, golden-tested |
 | `cherry-test-common`, `cherry-test-core` | done; every Rust test ported under its Rust name |
 | `cherry-test-junit` (`@CherryTest`, `TestEnv`, HTTP records) and `cherry-test-processor` | done |
-| `cherry-test-cli` (all 7 built-in adapters, external protocol v1, coverage, CRAP, HTML and terminal reports) | done; matching Rust test names retained |
+| `cherry-test-cli` (built-in adapters including changed-source PIT, external protocol v1, coverage, CRAP, HTML and terminal reports) | done; matching Rust test names retained |
 | Parity harness: record/replay, orchestration, byte and pixel gates | done |
 | Byte and pixel parity on `app/shop` | see [current validation](PARITY.md#validation-on-2026-10-16) |
 | Byte and pixel parity on `app/mini` | see [current validation](PARITY.md#validation-on-2026-10-16) |
@@ -52,6 +52,31 @@ cd java
 
 `verify` compiles with `--release 25` under Error Prone and NullAway, runs the tests with JaCoCo and checks
 formatting. `./mvnw spotless:apply` fixes formatting.
+
+## Mutation testing
+
+The Java CLI automatically runs PIT on changed production sources of Maven/Gradle packages and includes
+the results in its terminal and HTML reports, just like the Rust CLI. See [project mutation testing](../README.md#mutation-testing)
+for configuration and source selection.
+
+To mutation-test Cherry Test's own Java implementation directly, [PIT](https://pitest.org/) is also available
+through the opt-in `mutation` Maven profile. From `java/`, run:
+
+```bash
+./mvnw -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
+```
+
+For a smaller run, select a module and its dependencies:
+
+```bash
+./mvnw -Pmutation -pl cherry-test-common -am test-compile org.pitest:pitest-maven:mutationCoverage
+```
+
+PIT mutates `com.cherrytest.*` using the module's `*Test` classes; integration tests (`*IT`) and standalone
+test fixtures are not selected directly. Each module writes `target/pit-reports/index.html` and
+`target/pit-reports/mutations.xml`. These are PIT reports, separate from Cherry Test's aggregate report.
+Normal `./mvnw verify` does not run mutation testing. PIT failures fail the command; surviving mutants are
+reported without a minimum score by default. Add `-DmutationThreshold=80`, for example, to enforce an 80% score.
 
 ## Golden vectors
 

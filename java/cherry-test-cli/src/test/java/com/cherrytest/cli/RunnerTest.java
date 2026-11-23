@@ -50,8 +50,8 @@ class RunnerTest {
     }
 
     @Test
-    void mutation_stays_out_of_a_default_run() {
-        assertThat(Runner.phasesFor(List.of())).doesNotContain("mutation");
+    void mutation_is_planned_for_default_runs_and_explicit_selection() {
+        assertThat(Runner.phasesFor(List.of())).contains("mutation");
         assertThat(Runner.phasesFor(List.of("unit"))).doesNotContain("mutation");
         assertThat(Runner.phasesFor(List.of("mutation"))).contains("mutation");
         assertThat(Runner.phasesFor(List.of("unit", "mutation"))).contains("mutation");
@@ -60,7 +60,7 @@ class RunnerTest {
     @Test
     void mutation_runs_a_local_command_and_skips_coverage() {
         PackageConfig maven = packageConfig("maven", ExecutionMode.CONTAINER, PackageRuntime.RUST);
-        assertThat(Runner.phaseAdapter("mutation", null, maven)).isEqualTo("command");
+        assertThat(Runner.phaseAdapter("mutation", null, maven)).isEqualTo("pitest");
         assertThat(Runner.phaseAdapter("unit", null, maven)).isEqualTo("maven");
         ExternalRunner runner = new ExternalRunner("command", null, new TreeMap<>(), "mvn", List.of(), null);
         assertThat(Runner.phaseAdapter("mutation", runner, maven)).isEqualTo("command");

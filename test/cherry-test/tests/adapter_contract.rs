@@ -68,7 +68,8 @@ fn success_failure_and_malformed_plugin_results_reach_cli_exit_status() {
         assert_eq!(
             result.status.success(),
             expected,
-            "{}",
+            "stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&result.stdout),
             String::from_utf8_lossy(&result.stderr)
         );
         assert!(directory

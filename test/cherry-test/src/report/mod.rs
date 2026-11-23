@@ -5,6 +5,7 @@ mod diff_view;
 mod highlight;
 mod html;
 mod model;
+pub(crate) mod mutation;
 mod terminal;
 mod test_view;
 mod theme;

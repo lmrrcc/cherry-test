@@ -81,7 +81,7 @@ One configuration root produces one combined report. Independent configuration r
 | Test containers | Docker Compose starts the configured service stacks for scoped integration tests |
 | Mocks | Use mocks from your test framework, or run a mock service in Compose |
 | Reports | Terminal summary, HTML report, LCOV files, and recorded integration requests |
-| Mutation testing | Use an external tool alongside Cherry Test; no built-in mutation report yet |
+| Mutation testing | Automatic PIT on changed Java/Kotlin production source files, with terminal and HTML results; other languages use external commands |
 | CRAP scoring | Calculated on a normal run from cyclomatic complexity and line coverage. `--no-crap` skips it |
 
 Adapters can run local tools or container toolchains. Add an external executable adapter to support another language without rebuilding Cherry Test. See [language adapters](docs/adapters.md) and the [six-backend price sample](app/mini/polyglot/README.md).
@@ -384,7 +384,7 @@ python3 app/mini/polyglot/tools/prepare.py
 cargo cherry-test prices --root app/mini --execution container --strict --no-open
 ```
 
-Use `--kinds unit,integration`, `--kinds functional`, or `--kinds visual` to select phases. `--kinds mutation` runs the external mutation tools configured on the sample packages and is not part of a default run. Open the generated report and follow **Test phases** to inspect screenshots and covered or uncovered source lines. [Full sample instructions](app/mini/polyglot/README.md).
+Use `--kinds unit,integration`, `--kinds functional`, or `--kinds visual` to select phases. Without a phase filter, JVM packages also run the built-in changed-source PIT adapter. `--kinds mutation` selects mutation alone, including the external tools configured for other runtimes. Open the generated report and follow **Test phases** to inspect screenshots and covered or uncovered source lines. [Full sample instructions](app/mini/polyglot/README.md).
 
 ## Integration tests, mocks, and test containers
 
@@ -548,9 +548,9 @@ test -s target/cherry-test/latest/coverage/merged.lcov
 
 Run it in a fresh CI checkout with `coverage: true` and `html_report: true`. Use your CI provider's artifact step even if the test step fails. Upload the actual run directory's `reports/` and `coverage/` folders under `target/cherry-test/runs/`; `latest` is a local symlink. Adjust paths if your configuration uses another output directory.
 
-**The command's success status is only one part of a merge decision.** Strict mode rejects failed or skipped tests, empty required phases, and missing requested coverage. Report-generation failures also fail the run. Review the configured package and phase selection: a successful run only covers the tests you selected. Set any minimum coverage or mutation score in a separate CI check.
+**The command's success status is only one part of a merge decision.** Strict mode rejects failed or skipped tests, empty required phases, and missing requested coverage. Report-generation failures also fail the run. Review the configured package and phase selection: a successful run only covers the tests you selected. Enforce minimum coverage in a separate CI check and configure any minimum mutation score in the mutation tool.
 
-Define your merge policy in CI: expected packages and tests, allowed skips, and required coverage. `--strict` rejects skips, empty phases, missing requested coverage, and invalid adapter results. A normal run reports CRAP. A high score does not fail the run. Minimum-coverage and mutation-score gates still need separate checks. Configure those additional checks separately and make the resulting CI jobs required checks in your repository settings.
+Define your merge policy in CI: expected packages and tests, allowed skips, and required coverage. `--strict` rejects skips, empty phases, missing requested coverage, and invalid adapter results. A normal run reports CRAP. A high score does not fail the run. PIT can enforce a configured `mutationThreshold`; see [mutation testing](#mutation-testing). Make the test job and additional coverage or quality checks required checks in your repository settings.
 
 When reviewing AI-written code, examine changes to the tests and configuration too. A removed assertion, a new exclusion, or a narrowed package selection can make a result look better without improving the code. Use the report alongside source review and any security or dependency checks your project requires.
 
@@ -560,7 +560,40 @@ Mutation testing checks whether tests notice small changes to the program. A too
 
 This helps find weak assertions even in code with high line coverage. Surviving mutants need review: some reveal missing tests, while others do not change the observable behavior.
 
-**Current status:** Cherry Test does not create mutants, calculate a mutation score, or include mutant details in its HTML report. A normal run does not start mutation. Pass `--kinds mutation` to run the `mutation` command configured on each package. That command uses the tool's own exit status. Cherry Test does not collect mutation output as coverage.
+For packages using `adapter: maven` or `adapter: gradle`, a normal Cherry Test run automatically runs **PIT on changed production source files** after the other phases finish. It compares against the project's `diff_base` (default `main`), including staged, unstaged, and untracked edits. Only existing Java files under `src/main/java/` and Kotlin files under `src/main/kotlin/` are selected. Deleted files and test-only changes do not start PIT. This selects whole changed files, not only edited lines.
+
+In CI, fetch the configured baseline ref and enough history to resolve its merge base with `HEAD` in each tested repository, including submodules.
+
+Cherry Test compiles the project and maps each changed file to its compiled classes, including nested classes, Kotlin file facades, and multiple classes in one file. It supplies exact class targets to PIT using temporary build configuration; it does not permanently edit the project's POM or Gradle build. A working local JDK and Maven/Gradle toolchain are required, even when ordinary test phases run in containers. PIT dependencies are downloaded through the build tool. Keep the mutation working directory beside the selected build manifest; wrappers are also discovered in ancestor directories.
+
+```yaml
+defaults:
+  diff_base: main
+projects:
+  app:
+    path: .
+    packages:
+      prices:
+        adapter: maven
+        manifest: prices/pom.xml
+        kinds: [unit]
+```
+
+```bash
+cherry-test --no-open                    # ordinary phases, then changed-source PIT
+cherry-test --kinds mutation --no-open   # changed-source PIT only
+cherry-test --kinds unit --no-open       # explicitly select only unit tests
+```
+
+The terminal and HTML report show the mutation score and PIT statuses, including **KILLED**, **SURVIVED**, and **NO_COVERAGE**. The **Changed-source mutation testing** section links to individual mutants, source locations, descriptions, and killing tests. Mutants stay separate from normal test counts and LCOV coverage. Each mutation job keeps `mutation.json` plus PIT's XML and HTML under its adapter report directory. No changed production source is reported explicitly, without claiming a 100% score.
+
+A missing Git base, failed compilation, PIT failure, missing report, or invalid report fails the phase. Selected sources that produce zero mutants also fail the phase, including changes consisting only of non-mutatable declarations such as interfaces. Surviving mutants are reported; they do not by themselves fail the run unless a PIT threshold is configured. Put build arguments such as `-DmutationThreshold=80` under a Maven package's `mutation.args`. To disable automatic mutation for a package, set `options: {mutation: false}`. An explicit `mutation.adapter` can select a custom adapter instead.
+
+Maven mutation runs use PIT's test discovery, which can include classes outside Surefire's normal test naming patterns. Exclude fixtures that require a separate container process with a package-specific argument such as `mutation.args: ["-DexcludedTestClasses=example.ContainerContract"]`. Keep unit and integration tests that exercise the mutated classes in PIT's JVM eligible.
+
+For older JVM configurations that use `mutation.adapter: command`, remove that override and its old command/task arguments to use the built-in changed-source reports. The bundled sample uses this built-in adapter for its Java and Kotlin packages.
+
+Other runtimes retain their opt-in external mutation commands: pass `--kinds mutation` to run them. The sample packages demonstrate these tools:
 
 | Environment | Tool | Sample package |
 | --- | --- | --- |
@@ -580,7 +613,7 @@ cargo install cargo-mutants --locked
 cherry-test --root app/mini --kinds mutation --no-open
 ```
 
-C and C++ need `mull-runner` and the matching `mull-ir-frontend` compiler plugin. Java uses the `mutation` Maven profile. Kotlin uses Gradle with `polyglot/tools/pitest.init.gradle.kts`, which leaves the locked unit-test classpath unchanged. Node, React, and Vue use `@stryker-mutator/core` and `@stryker-mutator/vitest-runner`. A missing tool fails that package. Keep the tool's report beside the Cherry Test report, and use the mutation tool's own failure policy for merge checks.
+C and C++ need `mull-runner` and the matching `mull-ir-frontend` compiler plugin. Java and Kotlin use the built-in PIT adapter described above. Node, React, and Vue use `@stryker-mutator/core` and `@stryker-mutator/vitest-runner`. A missing tool fails that package. External mutation adapters keep their own reports and exit-status policies.
 
 ## CRAP score
 
@@ -714,7 +747,7 @@ cherry-test -- --nocapture
 | `--init-only` | Create or load the configuration, then exit without running tests |
 | `--force-init` | Regenerate `cherry-test.yaml` from discovery |
 | `--no-coverage` | Run without collecting coverage |
-| `--kinds <list>` | Run only these phases. `mutation` runs only when it is named |
+| `--kinds <list>` | Run only these phases. Without this filter, Maven/Gradle packages also run changed-source PIT |
 | `--jobs <N\|auto>` | Run up to N jobs at once; `auto` uses one per budgeted CPU; default `defaults.parallel.jobs` or 1 |
 | `--shard <I/N>` | Run only the packages of shard I of N |
 | `--isolate`, `--no-isolate` | Rerun failed tests alone to classify them, or do not; default `defaults.isolate.on_failure` |
@@ -789,7 +822,7 @@ The runner loads `.env.test` from the configuration root when present, or from t
 - **External results:** custom tools must follow the adapter protocol to import detailed tests, coverage, and artifacts.
 - **Continue-on-failure:** `--keep-going` is only checked between discovered configuration roots. It is not a general recovery policy for all errors; within a root, package processing already continues after package failures.
 - **Concurrent container runs:** each CLI run uses a separate Compose project name. Your Compose files must also avoid fixed host ports or fixed container names to support concurrent runs.
-- **Quality metrics:** mutation testing stays an external tool and runs only when `--kinds` names `mutation`. CRAP is calculated on a normal run unless `--no-crap` is set. A high CRAP score is reported and does not by itself fail the run. Minimum coverage thresholds stay a separate CI check.
+- **Quality metrics:** automatic changed-source mutation uses PIT for Maven/Gradle packages with conventional production source directories. Other mutation tools remain opt-in external commands. CRAP is calculated on a normal run unless `--no-crap` is set. A high CRAP score is reported and does not by itself fail the run. Minimum coverage thresholds stay a separate CI check.
 
 ## Development
 

@@ -2,6 +2,7 @@ pub mod builtins;
 pub mod container;
 pub mod formats;
 pub mod lcov;
+pub mod pitest;
 pub mod process;
 
 use std::io::Read;
@@ -27,7 +28,12 @@ pub fn cli(args: AdapterCli) -> Result<i32> {
     }
     let response = match args.operation.as_str() {
         "describe" => {
-            serde_json::json!({"protocol": PROTOCOL_VERSION, "name": args.name, "operations": ["describe", "discover", "run"], "execution": ["local", "container"]})
+            let execution = if args.name == "pitest" {
+                vec!["local"]
+            } else {
+                vec!["local", "container"]
+            };
+            serde_json::json!({"protocol": PROTOCOL_VERSION, "name": args.name, "operations": ["describe", "discover", "run"], "execution": execution})
         }
         "discover" => {
             let mut input = String::new();
@@ -40,6 +46,7 @@ pub fn cli(args: AdapterCli) -> Result<i32> {
                 "cargo" => vec!["Cargo.toml"],
                 "maven" => vec!["pom.xml"],
                 "gradle" => vec!["build.gradle", "build.gradle.kts"],
+                "pitest" => vec!["pom.xml", "build.gradle", "build.gradle.kts"],
                 "cmake" => vec!["CMakeLists.txt"],
                 _ => vec!["package.json"],
             };
@@ -192,7 +199,19 @@ pub fn validate(request: &AdapterRequest, response: &mut AdapterResponse) -> Res
         confined(&request.output, path)?;
         validate_lcov(&std::fs::read_to_string(&path)?)?;
     }
-    if request.strict && response.tests.is_empty() {
+    let pitest_phase = request.phase == "mutation"
+        && request
+            .options
+            .get("mutation_tool")
+            .and_then(|value| value.as_str())
+            == Some("pitest");
+    if pitest_phase {
+        let report = pitest::read_report(&request.output)?;
+        if response.success && report.is_none() {
+            bail!("PIT mutation report missing");
+        }
+    }
+    if request.strict && response.tests.is_empty() && !pitest_phase {
         response.success = false;
         response
             .diagnostics
@@ -419,6 +438,30 @@ mod tests {
         validate(&request, &mut response).unwrap();
         assert!(!response.success);
         assert_eq!(response.diagnostics.len(), 2);
+    }
+
+    #[test]
+    fn strict_mutation_requires_evidence_but_does_not_invent_test_counts() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut request = request(temp.path());
+        request.phase = "mutation".into();
+        request.coverage = false;
+        request
+            .options
+            .insert("mutation_tool".into(), "pitest".into());
+        std::fs::create_dir_all(&request.output).unwrap();
+        assert!(validate(&request, &mut AdapterResponse::default()).is_err());
+        std::fs::write(
+            request.output.join("mutation.json"),
+            r#"{"tool":"pitest","status":"no_changes","sources":[],"mutants":[]}"#,
+        )
+        .unwrap();
+        let mut response = AdapterResponse::default();
+        validate(&request, &mut response).unwrap();
+        assert!(response.success);
+        assert!(response.tests.is_empty());
+        std::fs::write(request.output.join("mutation.json"), "not JSON").unwrap();
+        assert!(validate(&request, &mut AdapterResponse::default()).is_err());
     }
 
     #[test]

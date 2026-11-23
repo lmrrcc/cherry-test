@@ -94,6 +94,18 @@ pub fn plan(
 ) -> Result<Plan> {
     for project in projects {
         for member in &project.members {
+            let package = &opts.config.projects[&project.id].packages[&member.name];
+            if package
+                .options
+                .get("mutation")
+                .is_some_and(|value| !value.is_boolean())
+            {
+                bail!(
+                    "options.mutation must be a boolean for {}/{}",
+                    project.id,
+                    member.name
+                );
+            }
             for kind in opts.config.package_kinds(&member.name, &project.id) {
                 if TestKind::parse(&kind).is_none() {
                     bail!("unknown test kind {kind}");
@@ -109,12 +121,28 @@ pub fn plan(
         let mut jobs = Vec::new();
         for project in projects {
             for member in &project.members {
+                let package = &opts.config.projects[&project.id].packages[&member.name];
                 let configured = opts.config.package_kinds(&member.name, &project.id);
-                if !configured.iter().any(|kind| kind == phase) {
+                let enabled = if phase == "mutation" {
+                    package
+                        .options
+                        .get("mutation")
+                        .and_then(|value| value.as_bool())
+                        != Some(false)
+                        && (matches!(package.adapter.as_deref(), Some("maven" | "gradle"))
+                            || !opts.kinds.is_empty()
+                                && configured.iter().any(|kind| kind == phase))
+                } else {
+                    configured.iter().any(|kind| kind == phase)
+                };
+                if !enabled {
                     continue;
                 }
                 jobs.push(job(opts, preflight, &project.id, member, phase));
             }
+        }
+        if phase == "mutation" && jobs.is_empty() {
+            continue;
         }
         phases.push(PhasePlan { phase, jobs });
     }
@@ -154,6 +182,16 @@ fn job(
         if !runner.command.is_empty() {
             options.insert("command".into(), runner.command.clone().into());
         }
+    }
+    if phase == "mutation" && adapter == "pitest" {
+        options.insert("mutation_tool".into(), "pitest".into());
+        if let Some(build_tool) = package.adapter.as_deref() {
+            options.insert("mutation_build_tool".into(), build_tool.into());
+        }
+        options.insert(
+            "mutation_diff_base".into(),
+            opts.config.diff_base_for_project(project_id).into(),
+        );
     }
     let mut args = runner.map(|r| r.args.clone()).unwrap_or_default();
     if adapter == "cargo" {
@@ -460,6 +498,130 @@ pub(crate) mod tests {
         let plan = plan(&projects, &opts, &PreflightPlan::default()).unwrap();
         assert_eq!(plan.phases.len(), 1);
         assert_eq!(plan.phases[0].jobs.len(), 1);
+    }
+
+    #[test]
+    fn automatically_plans_changed_source_mutation_for_jvm_packages() {
+        for build_tool in ["maven", "gradle"] {
+            let (root, mut config, projects) = fixture();
+            let project = config.projects.get_mut("shop").unwrap();
+            project.diff_base = Some("release".into());
+            let package = project.packages.get_mut("api").unwrap();
+            package.adapter = Some(build_tool.into());
+            package.mutation = Some(ExternalRunner {
+                command: "legacy-command".into(),
+                args: vec!["-Pmutation".into()],
+                options: BTreeMap::from([("threads".into(), 2.into())]),
+                ..Default::default()
+            });
+            let run_dir = RunDir::create(root.path(), std::path::Path::new("runs")).unwrap();
+            let opts = options(root.path(), &run_dir, &config, &[]);
+            let plan = plan(&projects, &opts, &PreflightPlan::default()).unwrap();
+            let phase = plan.phases.last().unwrap();
+            assert_eq!(phase.phase, "mutation");
+            assert_eq!(phase.jobs.len(), 1);
+            let job = &phase.jobs[0];
+            assert_eq!(job.adapter, "pitest");
+            assert_eq!(job.key.id(), "shop/api/mutation");
+            assert_eq!(job.request.options["mutation_tool"], "pitest");
+            assert_eq!(job.request.options["mutation_build_tool"], build_tool);
+            assert_eq!(job.request.options["mutation_diff_base"], "release");
+            assert_eq!(job.request.options["threads"], 2);
+            assert_eq!(job.request.args, ["-Pmutation"]);
+            assert!(!job.request.coverage);
+        }
+    }
+
+    #[test]
+    fn mutation_honors_explicit_phase_selection_and_package_opt_out() {
+        let (root, mut config, projects) = fixture();
+        config
+            .projects
+            .get_mut("shop")
+            .unwrap()
+            .packages
+            .get_mut("api")
+            .unwrap()
+            .adapter = Some("maven".into());
+        let run_dir = RunDir::create(root.path(), std::path::Path::new("runs")).unwrap();
+        let kinds = vec!["unit".into()];
+        let opts = options(root.path(), &run_dir, &config, &kinds);
+        let planned = plan(&projects, &opts, &PreflightPlan::default()).unwrap();
+        assert!(planned.jobs().all(|job| job.key.phase == "unit"));
+        let kinds = vec!["mutation".into()];
+        let opts = options(root.path(), &run_dir, &config, &kinds);
+        let planned = plan(&projects, &opts, &PreflightPlan::default()).unwrap();
+        assert_eq!(
+            planned.jobs().map(|job| job.key.id()).collect::<Vec<_>>(),
+            ["shop/api/mutation"]
+        );
+        config
+            .projects
+            .get_mut("shop")
+            .unwrap()
+            .packages
+            .get_mut("api")
+            .unwrap()
+            .options
+            .insert("mutation".into(), false.into());
+        for kinds in [vec![], kinds] {
+            let opts = options(root.path(), &run_dir, &config, &kinds);
+            let planned = plan(&projects, &opts, &PreflightPlan::default()).unwrap();
+            assert!(planned.jobs().all(|job| job.key.phase != "mutation"));
+        }
+    }
+
+    #[test]
+    fn non_jvm_mutation_stays_opt_in_and_explicit_adapters_are_preserved() {
+        let (root, mut config, projects) = fixture();
+        let package = config
+            .projects
+            .get_mut("shop")
+            .unwrap()
+            .packages
+            .get_mut("web")
+            .unwrap();
+        package.kinds.push("mutation".into());
+        package.mutation = Some(ExternalRunner {
+            adapter: Some("custom-mutation".into()),
+            ..Default::default()
+        });
+        let run_dir = RunDir::create(root.path(), std::path::Path::new("runs")).unwrap();
+        let opts = options(root.path(), &run_dir, &config, &[]);
+        assert!(plan(&projects, &opts, &PreflightPlan::default())
+            .unwrap()
+            .jobs()
+            .all(|job| job.key.phase != "mutation"));
+        let kinds = vec!["mutation".into()];
+        let opts = options(root.path(), &run_dir, &config, &kinds);
+        let planned = plan(&projects, &opts, &PreflightPlan::default()).unwrap();
+        assert_eq!(
+            planned
+                .jobs()
+                .map(|job| job.adapter.as_str())
+                .collect::<Vec<_>>(),
+            ["custom-mutation"]
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_mutation_opt_out_instead_of_ignoring_it() {
+        let (root, mut config, projects) = fixture();
+        config
+            .projects
+            .get_mut("shop")
+            .unwrap()
+            .packages
+            .get_mut("api")
+            .unwrap()
+            .options
+            .insert("mutation".into(), "false".into());
+        let run_dir = RunDir::create(root.path(), std::path::Path::new("runs")).unwrap();
+        let opts = options(root.path(), &run_dir, &config, &[]);
+        assert!(plan(&projects, &opts, &PreflightPlan::default())
+            .unwrap_err()
+            .to_string()
+            .contains("options.mutation must be a boolean"));
     }
 
     #[test]

@@ -153,7 +153,13 @@ public final class Runner {
         }
         List<Scheduler.Finished> finished = Scheduler.run(plan, projects, options, preflight);
         try {
-            Isolation.run(plan, projects, options, preflight);
+            Isolation.run(
+                    new Plan(plan.phases().stream()
+                            .filter(phase -> !phase.phase().equals("mutation"))
+                            .toList()),
+                    projects,
+                    options,
+                    preflight);
         } catch (RuntimeException error) {
             Terminal.eprintln("warning: failed-test isolation stopped: " + AnyhowError.alternate(error));
         }
@@ -220,8 +226,17 @@ public final class Runner {
                 Adapters.save(request, response, options.runDir().reports());
         if (!options.quiet()) {
             synchronized (OUTPUT) {
-                if (options.testListing() == TestListing.AFTER_EACH_PHASE) {
+                if (options.testListing() == TestListing.AFTER_EACH_PHASE
+                        && (!com.cherrytest.cli.report.MutationReport.isPitest(request)
+                                || !saved.tests().isEmpty())) {
                     ReportOutput.printPhaseResults(saved.tests());
+                }
+                if (com.cherrytest.cli.report.MutationReport.isPitest(request)
+                        && Files.isRegularFile(request.output().resolve("mutation.json"))) {
+                    Terminal.println("  "
+                            + com.cherrytest.cli.report.MutationReport.summary(
+                                    com.cherrytest.cli.adapters.Pitest.readReport(
+                                            request.output().resolve("mutation.json"))));
                 }
                 if (!saved.success()) {
                     Terminal.eprintln("  failed: " + failureSummary(saved));
@@ -566,10 +581,17 @@ public final class Runner {
 
     static List<String> phasesFor(List<String> kinds) {
         List<String> phases = new ArrayList<>(List.of("unit", "integration", "functional", "ui", "visual"));
-        if (kinds.contains("mutation")) {
+        if (kinds.isEmpty() || kinds.contains("mutation")) {
             phases.add("mutation");
         }
         return phases;
+    }
+
+    static boolean automaticMutation(PackageConfig config) {
+        var enabled = config.options().get("mutation");
+        if (enabled != null && !enabled.isBoolean()) throw new AnyhowError("options.mutation must be a boolean");
+        return ("maven".equals(config.adapter()) || "gradle".equals(config.adapter()))
+                && (enabled == null || enabled.booleanValue());
     }
 
     private static boolean hostCommandPhase(String phase) {
@@ -586,7 +608,9 @@ public final class Runner {
 
     static String phaseAdapter(String phase, @Nullable ExternalRunner runner, PackageConfig packageConfig) {
         if (hostCommandPhase(phase)) {
-            return runner != null && runner.adapter() != null ? runner.adapter() : "command";
+            return runner != null && runner.adapter() != null
+                    ? runner.adapter()
+                    : automaticMutation(packageConfig) ? "pitest" : "command";
         }
         if (runner != null && runner.adapter() != null) {
             return runner.adapter();

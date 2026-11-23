@@ -91,6 +91,33 @@ class PlanTest {
     }
 
     @Test
+    void automatically_adds_changed_source_mutation_for_jvm_packages() throws IOException {
+        String yaml =
+                FIXTURE.replace("kinds: [unit, integration]", "adapter: maven\n        kinds: [unit, integration]");
+        var config = config(root, yaml);
+        Plan plan = Plan.plan(projects(), options(root, config, List.of()), emptyPreflight());
+        Plan.Job mutation = plan.phases().getLast().jobs().getFirst();
+        assertThat(mutation.key().phase()).isEqualTo("mutation");
+        assertThat(mutation.adapter()).isEqualTo("pitest");
+        assertThat(mutation.request().coverage()).isFalse();
+        assertThat(Objects.requireNonNull(mutation.request().options().get("mutation_tool"))
+                        .asString())
+                .isEqualTo("pitest");
+        assertThat(Plan.plan(projects(), options(root, config, List.of("unit")), emptyPreflight())
+                        .jobs()
+                        .map(job -> job.key().phase()))
+                .doesNotContain("mutation");
+        assertThat(Scheduler.stages(plan, new Scheduler.Parallelism(4, new Plan.Resources(4000, Long.MAX_VALUE), false))
+                        .getLast()
+                        .lastPhase())
+                .isEqualTo("mutation");
+        String disabled = yaml.replace("adapter: maven", "adapter: maven\n        options: {mutation: false}");
+        assertThat(Plan.plan(projects(), options(root, config(root, disabled), List.of("mutation")), emptyPreflight())
+                        .jobs())
+                .isEmpty();
+    }
+
+    @Test
     void plans_only_the_selected_kinds() throws IOException {
         Runner.RunOptions options = options(root, config(root, FIXTURE), List.of("integration"));
         Plan plan = Plan.plan(projects(), options, emptyPreflight());

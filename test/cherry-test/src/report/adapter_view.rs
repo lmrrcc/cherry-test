@@ -157,7 +157,7 @@ fn escape(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-fn relative_link(reports: &Path, path: &Path) -> Result<String> {
+pub(super) fn relative_link(reports: &Path, path: &Path) -> Result<String> {
     let path = path.canonicalize()?;
     let root = reports.canonicalize()?;
     let relative = path
@@ -307,6 +307,11 @@ fn load_phase_sections(reports: &Path) -> Result<Vec<PhaseSection>> {
             escape(&request.package),
             escape(&request.phase)
         );
+        if super::mutation::is_pitest(&request) {
+            if let Some(mutation) = crate::adapters::pitest::read_report(directory)? {
+                head.push_str(&super::mutation::details(&request, &mutation, reports)?);
+            }
+        }
         for entry in std::fs::read_dir(directory)? {
             let path = entry?.path();
             if path.is_file()

@@ -90,7 +90,7 @@ pub struct RunCli {
         long,
         value_delimiter = ',',
         value_parser = ["unit", "integration", "functional", "ui", "visual", "mutation"],
-        help = "Phases to run. mutation runs only when it is named here"
+        help = "Phases to run. Default runs include changed-source mutation testing for JVM packages"
     )]
     pub kinds: Vec<String>,
 

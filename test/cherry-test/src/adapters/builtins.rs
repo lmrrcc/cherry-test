@@ -13,6 +13,7 @@ pub const NAMES: &[&str] = &[
     "cmake",
     "playwright",
     "command",
+    "pitest",
 ];
 
 pub fn run(name: &str, input: &AdapterRequest) -> Result<AdapterResponse> {
@@ -32,6 +33,7 @@ pub fn run(name: &str, input: &AdapterRequest) -> Result<AdapterResponse> {
         "maven" | "gradle" => jvm(&mut request, name),
         "cmake" => native(&mut request),
         "command" => command(&mut request),
+        "pitest" => super::pitest::run(&request),
         _ => bail!("unknown bundled adapter {name}"),
     }
 }

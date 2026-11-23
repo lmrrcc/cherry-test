@@ -12,6 +12,7 @@ A new adapter does not require a new Rust build of Cherry Test. Register its com
 | `vitest` | Vitest | Vitest JSON | V8 / LCOV |
 | `maven` | Maven Surefire and Failsafe | JUnit XML | JaCoCo XML converted to LCOV |
 | `gradle` | Gradle Test | JUnit XML | JaCoCo XML converted to LCOV |
+| `pitest` | PIT through Maven or Gradle | Separate changed-source mutation report | Not merged into LCOV |
 | `cmake` | CMake and CTest | CTest JUnit XML | Clang / LLVM |
 | `playwright` | Playwright | Playwright JSON, screenshots, traces | Coverage supplied by the application setup |
 | `command` | Your command | Adapter JSON | LCOV supplied by your command |
@@ -51,7 +52,9 @@ projects:
 
 Use `--execution local` to use installed toolchains, or `--execution container` to run tools in `options.image`. A package can override the default with `execution`. External adapters receive the selected mode and implement it themselves. Add a `container:` block to harden container execution, as described in [Container settings](#container-settings).
 
-Use `--kinds unit,integration` to select phases. `--kinds mutation` runs a package's `mutation` command on the host and does not collect that output as coverage. A default run does not include it. `--no-crap` skips the CRAP calculation. A normal run includes it. `--strict` fails a run when a selected phase reports zero tests, a skipped test, missing requested coverage, invalid output, or a runner failure. A failed test always fails the phase, even if its adapter reports `success: true`. `--no-coverage` explicitly disables the coverage requirement.
+Use `--kinds unit,integration` to select phases. Without a phase filter, Maven/Gradle packages also run `pitest` on changed production source files, after all ordinary phases, even with `phase_barrier: false`. `--kinds mutation` selects only mutation. Other runtimes keep their opt-in `mutation` commands. Mutation runs on the host and is not collected as coverage. See [mutation testing](../README.md#mutation-testing) for source selection, reports, and the package opt-out.
+
+`--no-crap` skips the CRAP calculation. A normal run includes it. `--strict` fails a run when a selected phase reports zero tests, a skipped test, missing requested coverage, invalid output, or a runner failure. PIT phases instead require a validated `mutation.json`, including an explicit `no_changes` outcome when nothing needs mutation; mutants do not inflate test totals. A failed test always fails the phase, even if its adapter reports `success: true`. `--no-coverage` explicitly disables the coverage requirement.
 
 Service coverage requires instrumentation and collection in the adapter or service setup. Starting Docker alone does not measure code. The mini price adapter demonstrates service coverage in integration, functional, and visual phases, with a fresh service process for each phase.
 

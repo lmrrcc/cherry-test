@@ -6,6 +6,59 @@ use anyhow::{Context, Result};
 
 use crate::config::ReviewChangedScope;
 
+pub fn strict_changed_files_for_base(directory: &Path, diff_base: &str) -> Result<Vec<PathBuf>> {
+    fn checked(directory: &Path, args: &[&str]) -> Result<Vec<u8>> {
+        let output = Command::new("git")
+            .current_dir(directory)
+            .args(args)
+            .output()
+            .context("start git for changed-source selection")?;
+        anyhow::ensure!(
+            output.status.success(),
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+        Ok(output.stdout)
+    }
+    let root = String::from_utf8(checked(directory, &["rev-parse", "--show-toplevel"])?)?;
+    let root = PathBuf::from(root.trim_end_matches(['\n', '\r']));
+    let mut paths = Vec::new();
+    if is_empty_tree_base(diff_base) {
+        paths.extend(checked(&root, &["ls-files", "-z", "--cached"])?)
+    } else {
+        let revision = format!("{diff_base}^{{commit}}");
+        let base = String::from_utf8(checked(
+            &root,
+            &["rev-parse", "--verify", "--end-of-options", &revision],
+        )?)?;
+        let merge_base = String::from_utf8(checked(&root, &["merge-base", base.trim(), "HEAD"])?)?;
+        paths.extend(checked(
+            &root,
+            &["diff", "--name-only", "-z", merge_base.trim(), "--"],
+        )?)
+    }
+    paths.extend(checked(
+        &root,
+        &["diff", "--cached", "--name-only", "-z", "--"],
+    )?);
+    paths.extend(checked(
+        &root,
+        &["ls-files", "-z", "--others", "--exclude-standard"],
+    )?);
+    let mut changed = Vec::new();
+    for path in paths
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+    {
+        let path = std::str::from_utf8(path).context("changed source path is not UTF-8")?;
+        changed.push(root.join(path));
+    }
+    changed.sort();
+    changed.dedup();
+    Ok(changed)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NestedGitScope {
     pub module_id: String,

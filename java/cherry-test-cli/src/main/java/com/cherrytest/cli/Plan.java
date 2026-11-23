@@ -113,15 +113,23 @@ public record Plan(List<PhasePlan> phases) {
             List<Job> jobs = new ArrayList<>();
             for (ProjectGroup project : projects) {
                 for (WorkspaceMember member : project.members()) {
-                    if (!options.config()
+                    PackageConfig configured = options.config().packageConfig(project.id(), member.name());
+                    boolean automatic = phase.equals("mutation") && Runner.automaticMutation(configured);
+                    boolean selected = options.config()
                             .packageKinds(member.name(), project.id())
-                            .contains(phase)) {
+                            .contains(phase);
+                    var mutation = configured.options().get("mutation");
+                    if (mutation != null && !mutation.isBoolean())
+                        throw new AnyhowError("options.mutation must be a boolean");
+                    if ((phase.equals("mutation") && mutation != null && !mutation.booleanValue())
+                            || (!selected && !automatic)
+                            || (phase.equals("mutation") && options.kinds().isEmpty() && !automatic)) {
                         continue;
                     }
                     jobs.add(job(options, preflight, project.id(), member, phase));
                 }
             }
-            phases.add(new PhasePlan(phase, jobs));
+            if (!phase.equals("mutation") || !jobs.isEmpty()) phases.add(new PhasePlan(phase, jobs));
         }
         return new Plan(phases);
     }
@@ -155,6 +163,16 @@ public record Plan(List<PhasePlan> phases) {
             if (!runner.command().isEmpty()) {
                 requestOptions.put("command", JsonNodeFactory.instance.stringNode(runner.command()));
             }
+        }
+        if (adapter.equals("pitest")) {
+            String buildTool = packageConfig.adapter();
+            if (!"maven".equals(buildTool) && !"gradle".equals(buildTool)) {
+                throw new AnyhowError("PIT requires a Maven or Gradle package adapter");
+            }
+            String diffBase = options.config().diffBaseForProject(projectId);
+            requestOptions.put("mutation_tool", JsonNodeFactory.instance.stringNode("pitest"));
+            requestOptions.put("mutation_build_tool", JsonNodeFactory.instance.stringNode(buildTool));
+            requestOptions.put("mutation_diff_base", JsonNodeFactory.instance.stringNode(diffBase));
         }
         List<String> args = new ArrayList<>(runner == null ? List.of() : runner.args());
         if (adapter.equals("cargo")) {

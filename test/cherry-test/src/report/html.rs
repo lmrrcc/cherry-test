@@ -25,8 +25,15 @@ pub fn write_html_report(snapshot: &ReportSnapshot) -> anyhow::Result<()> {
         }
         None => JumpIndex::default(),
     };
-    fs::write(&snapshot.report_path, render_report(snapshot, &jumps))
-        .with_context(|| format!("write {}", snapshot.report_path.display()))?;
+    let mutation = match snapshot.report_path.parent() {
+        Some(parent) => super::mutation::index(parent)?,
+        None => String::new(),
+    };
+    fs::write(
+        &snapshot.report_path,
+        render_report_with_mutation(snapshot, &jumps, &mutation),
+    )
+    .with_context(|| format!("write {}", snapshot.report_path.display()))?;
     Ok(())
 }
 
@@ -105,15 +112,26 @@ fn open_command(path: &Path) -> Command {
     }
 }
 
+#[cfg(test)]
 fn render_html(snapshot: &ReportSnapshot) -> String {
     render_report(snapshot, &JumpIndex::default())
 }
 
+#[cfg(test)]
 fn render_report(snapshot: &ReportSnapshot, jumps: &JumpIndex) -> String {
+    render_report_with_mutation(snapshot, jumps, "")
+}
+
+fn render_report_with_mutation(
+    snapshot: &ReportSnapshot,
+    jumps: &JumpIndex,
+    mutation: &str,
+) -> String {
     let status = format_status_html(snapshot);
     let mut body = String::from("<section id=\"projects_summary\"><h2>projects</h2>");
     body.push_str(&render_projects_table(snapshot));
     body.push_str("</section><p><a href=\"phases.html\">Test phases, screenshots, logs and source coverage</a></p>");
+    body.push_str(mutation);
     if !snapshot.isolation.is_empty() {
         let counts: Vec<String> = snapshot
             .isolation
